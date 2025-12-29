@@ -1,0 +1,315 @@
+"use client"
+
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User } from "lucide-react"
+import type { RouteSheet } from "@/lib/types"
+import { formatCOP } from "@/lib/format-utils"
+import { useState, useEffect } from "react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { getPlanillas, updatePlanillaEstado } from "@/lib/actions/planillas"
+
+interface AlistadorViewProps {
+  onLogout: () => void
+  user: { id: string; nombre: string }
+}
+
+interface ConsolidatedProduct {
+  codigo: string
+  descripcion: string
+  categoria: string
+  cantidadTotal: number
+  valorUnidad: number
+}
+
+export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
+  const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expandedDeliveryPersons, setExpandedDeliveryPersons] = useState<Set<string>>(new Set())
+  const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  async function loadData() {
+    try {
+      const planillas = await getPlanillas()
+      setRouteSheets(planillas)
+    } catch (err) {
+      console.error("[v0] Error loading planillas:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const pendingSheets = routeSheets.filter(
+    (s) => s.entregador && (s.estado === "pendiente" || s.estado === "alistando"),
+  )
+
+  const unassignedSheets = routeSheets.filter((s) => !s.entregador)
+
+  const groupedByDeliveryPerson = pendingSheets.reduce(
+    (acc, sheet) => {
+      const entregador = sheet.entregador!
+      if (!acc[entregador]) {
+        acc[entregador] = []
+      }
+      acc[entregador].push(sheet)
+      return acc
+    },
+    {} as Record<string, RouteSheet[]>,
+  )
+
+  const getConsolidatedProducts = (sheets: RouteSheet[]): ConsolidatedProduct[] => {
+    const productMap = new Map<string, ConsolidatedProduct>()
+
+    sheets.forEach((sheet) => {
+      sheet.orders.forEach((order) => {
+        order.items.forEach((item) => {
+          const existing = productMap.get(item.codigo)
+          if (existing) {
+            existing.cantidadTotal += item.cantidad
+          } else {
+            productMap.set(item.codigo, {
+              codigo: item.codigo,
+              descripcion: item.descripcion,
+              categoria: item.categoria,
+              cantidadTotal: item.cantidad,
+              valorUnidad: item.valorUnidad,
+            })
+          }
+        })
+      })
+    })
+
+    return Array.from(productMap.values()).sort((a, b) => a.descripcion.localeCompare(b.descripcion))
+  }
+
+  const handleStartPreparation = async (entregador: string) => {
+    try {
+      const sheetsToUpdate = routeSheets.filter((s) => s.entregador === entregador && s.estado === "pendiente")
+
+      for (const sheet of sheetsToUpdate) {
+        await updatePlanillaEstado(sheet.id, "alistando")
+      }
+
+      await loadData()
+    } catch (err) {
+      console.error("[v0] Error starting preparation:", err)
+    }
+  }
+
+  const handleCompletePreparation = async (entregador: string) => {
+    try {
+      const sheetsToUpdate = routeSheets.filter((s) => s.entregador === entregador && s.estado === "alistando")
+
+      for (const sheet of sheetsToUpdate) {
+        await updatePlanillaEstado(sheet.id, "alistado", user.id)
+      }
+
+      await loadData()
+    } catch (err) {
+      console.error("[v0] Error completing preparation:", err)
+    }
+  }
+
+  const toggleDeliveryPerson = (entregador: string) => {
+    const newExpanded = new Set(expandedDeliveryPersons)
+    if (newExpanded.has(entregador)) {
+      newExpanded.delete(entregador)
+    } else {
+      newExpanded.add(entregador)
+    }
+    setExpandedDeliveryPersons(newExpanded)
+  }
+
+  const toggleRoute = (routeId: string) => {
+    const newExpanded = new Set(expandedRoutes)
+    if (newExpanded.has(routeId)) {
+      newExpanded.delete(routeId)
+    } else {
+      newExpanded.add(routeId)
+    }
+    setExpandedRoutes(newExpanded)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-3 md:px-4 py-3 md:py-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-purple-500">
+                <Package className="h-4 w-4 md:h-5 md:w-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-base md:text-xl font-bold">Alistador de Bodega</h1>
+                <p className="text-xs text-muted-foreground hidden sm:block">Preparación optimizada por entregador</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={onLogout}>
+              <LogOut className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Salir</span>
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-7xl">
+        {unassignedSheets.length > 0 && (
+          <Alert className="mb-4 md:mb-6 bg-amber-50 border-amber-200">
+            <AlertDescription className="text-xs md:text-sm text-amber-800">
+              Hay {unassignedSheets.length} ruta(s) esperando asignación de entregador por parte del coordinador
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {pendingSheets.length === 0 ? (
+          <Card className="p-8 md:p-12 text-center">
+            <Package className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas para alistar</h3>
+            <p className="text-sm md:text-base text-muted-foreground">
+              Espere a que el coordinador genere las planillas y asigne los entregadores
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-4 md:space-y-6">
+            {Object.entries(groupedByDeliveryPerson).map(([entregador, sheets]) => {
+              const isExpanded = expandedDeliveryPersons.has(entregador)
+              const consolidatedProducts = getConsolidatedProducts(sheets)
+              const totalRoutes = sheets.length
+              const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
+              const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
+              const allPending = sheets.every((s) => s.estado === "pendiente")
+              const allReady = sheets.every((s) => s.estado === "alistando")
+
+              return (
+                <Card key={entregador} className="overflow-hidden border-2">
+                  <div className="p-4 md:p-5 bg-gradient-to-r from-purple-50 to-blue-50">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 md:gap-3 mb-2">
+                          <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-purple-600">
+                            <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
+                          </div>
+                          <div>
+                            <h2 className="font-bold text-lg md:text-xl">{entregador}</h2>
+                            <p className="text-xs md:text-sm text-muted-foreground">
+                              {totalRoutes} ruta{totalRoutes > 1 ? "s" : ""} · {totalOrders} pedidos · Total:{" "}
+                              {formatCOP(totalAmount)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-3">
+                          <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-purple-700 rounded-full font-medium">
+                            {consolidatedProducts.length} productos diferentes
+                          </span>
+                          <span
+                            className={`text-xs px-2 md:px-3 py-1 rounded-full font-medium ${
+                              allPending
+                                ? "bg-yellow-100 text-yellow-700"
+                                : allReady
+                                  ? "bg-blue-100 text-blue-700"
+                                  : "bg-orange-100 text-orange-700"
+                            }`}
+                          >
+                            {allPending ? "Por alistar" : allReady ? "Listo para completar" : "En proceso"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 justify-end">
+                        <Button variant="outline" size="sm" onClick={() => toggleDeliveryPerson(entregador)}>
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </Button>
+                        {allPending && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleStartPreparation(entregador)}
+                            className="bg-blue-600 text-xs md:text-sm"
+                          >
+                            Iniciar
+                          </Button>
+                        )}
+                        {allReady && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleCompletePreparation(entregador)}
+                            className="bg-green-600 text-xs md:text-sm"
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1 md:mr-2" />
+                            Completar
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="p-3 md:p-5">
+                      <div className="mb-4 md:mb-6">
+                        <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 md:p-4 mb-4">
+                          <h3 className="font-bold text-base md:text-lg mb-1 text-green-800 flex items-center gap-2">
+                            <Package className="h-4 w-4 md:h-5 md:w-5" />
+                            Lista de Productos Consolidados
+                          </h3>
+                          <p className="text-xs md:text-sm text-green-700 mb-4">
+                            Recorra la bodega una sola vez recogiendo estos productos
+                          </p>
+                        </div>
+                        <div className="overflow-x-auto border rounded-lg">
+                          <table className="w-full text-xs md:text-sm">
+                            <thead className="bg-muted">
+                              <tr>
+                                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
+                                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
+                                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">
+                                  Categoría
+                                </th>
+                                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cant.</th>
+                                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold hidden md:table-cell">
+                                  Valor Unit.
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {consolidatedProducts.map((product) => (
+                                <tr key={product.codigo} className="border-b hover:bg-muted/50">
+                                  <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
+                                  <td className="py-2 md:py-3 px-2 md:px-4">{product.descripcion}</td>
+                                  <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                      {product.categoria}
+                                    </span>
+                                  </td>
+                                  <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base md:text-lg">
+                                    {product.cantidadTotal}
+                                  </td>
+                                  <td className="text-right py-2 md:py-3 px-2 md:px-4 hidden md:table-cell">
+                                    {formatCOP(product.valorUnidad)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
+        )}
+      </main>
+    </>
+  )
+}
