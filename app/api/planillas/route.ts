@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,9 @@ export async function POST(request: NextRequest) {
     for (const sheet of routeSheets) {
       console.log(`[API] Procesando planilla: ${sheet.ruta}`);
       
+      // Generar UUID válido para la planilla
+      const planillaId = randomUUID();
+      
       // Insertar planilla
       await sql`
         INSERT INTO planillas (
@@ -44,7 +48,7 @@ export async function POST(request: NextRequest) {
           total_entregado, total_fiado, total_repaso, total_devolucion,
           estado, observaciones, created_at, updated_at
         ) VALUES (
-          ${sheet.id}, 
+          ${planillaId}, 
           ${sheet.fecha}, 
           ${sheet.ruta}, 
           ${sheet.entregador || null},
@@ -60,25 +64,28 @@ export async function POST(request: NextRequest) {
         )
       `;
       
-      console.log(`[API] ✓ Planilla ${sheet.id} insertada`);
+      console.log(`[API] ✓ Planilla ${planillaId} insertada`);
       insertCount++;
 
       // Insertar pedidos
       for (let i = 0; i < sheet.orders.length; i++) {
         const order = sheet.orders[i];
         
+        // Generar UUID válido para cada pedido
+        const pedidoId = randomUUID();
+        
         await sql`
           INSERT INTO pedidos (
             id, planilla_id, secuencia, cliente, direccion, telefono,
             barrio, total, estado, observaciones, created_at, updated_at
           ) VALUES (
-            ${order.id}, 
-            ${sheet.id}, 
+            ${pedidoId}, 
+            ${planillaId}, 
             ${i + 1}, 
             ${order.cliente},
-            ${''},
-            ${''},
-            ${''},
+            ${order.direccion || ''},
+            ${order.telefono || ''},
+            ${order.barrio || ''},
             ${order.total}, 
             ${'pendiente'}, 
             ${order.comentarios || null},
@@ -93,7 +100,7 @@ export async function POST(request: NextRequest) {
             INSERT INTO pedido_productos (
               pedido_id, codigo, nombre, cantidad, precio_unitario, total, devuelto
             ) VALUES (
-              ${order.id}, 
+              ${pedidoId}, 
               ${item.codigo}, 
               ${item.descripcion}, 
               ${item.cantidad},
@@ -170,7 +177,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN pedidos ped ON p.id = ped.planilla_id
       GROUP BY p.id
       ORDER BY p.created_at DESC
-    `
+    `;
 
     console.log(`[API /planillas GET] ✓ Obtenidas ${planillas.length} planillas`);
     return NextResponse.json({ planillas });
