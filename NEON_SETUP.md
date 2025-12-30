@@ -14,34 +14,34 @@ Este proyecto ahora usa Neon como base de datos PostgreSQL. Sigue estos pasos pa
 Una vez conectado Neon, ejecuta los siguientes scripts en orden desde v0:
 
 ### Script 1: Crear tablas principales
-```sql
+\`\`\`sql
 -- Este script ya existe en: scripts/01-create-tables.sql
 -- Se ejecuta automáticamente al crear las tablas iniciales
-```
+\`\`\`
 
 ### Script 2: Crear tabla de sesiones
-```sql
+\`\`\`sql
 -- Ejecutar: scripts/001_create_sessions_table.sql
 -- Crea la tabla para manejar sesiones de autenticación
-```
+\`\`\`
 
 ### Script 3: Actualizar tabla de usuarios
-```sql
+\`\`\`sql
 -- Ejecutar: scripts/002_update_usuarios_table.sql
 -- Agrega el campo password_hash para autenticación
-```
+\`\`\`
 
 ### Script 4: Crear tablas de comisiones
-```sql
+\`\`\`sql
 -- Ejecutar: scripts/003_create_comisiones_tables.sql
 -- Crea las tablas para el sistema de comisiones
-```
+\`\`\`
 
 ### Script 5: Crear usuario administrador
-```sql
+\`\`\`sql
 -- Ejecutar: scripts/003_create_admin_user.sql
 -- Crea el usuario administrador inicial
-```
+\`\`\`
 
 ## 3. Credenciales de Administrador
 
@@ -73,9 +73,9 @@ Después de ejecutar los scripts, podrás iniciar sesión con:
 
 Asegúrate de tener configurada en v0:
 
-```env
+\`\`\`env
 DATABASE_URL=postgresql://[user]:[password]@[host]/[database]
-```
+\`\`\`
 
 Esta variable se configura automáticamente al conectar la integración de Neon.
 

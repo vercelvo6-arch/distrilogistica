@@ -24,24 +24,31 @@ export default function LoginPage() {
     setIsLoading(true)
     setError(null)
 
+    console.log("[v0] Client: Starting login")
+
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        credentials: "include", // Ensure cookies are sent/received
       })
 
+      console.log("[v0] Client: Response status:", response.status)
+
       const data = await response.json()
+      console.log("[v0] Client: Response data:", data)
 
       if (!response.ok) {
         throw new Error(data.error || "Error al iniciar sesión")
       }
 
-      router.push("/")
-      router.refresh()
+      console.log("[v0] Client: Login successful, navigating to /")
+
+      window.location.href = "/"
     } catch (error: unknown) {
+      console.error("[v0] Client: Login error:", error)
       setError(error instanceof Error ? error.message : "Error al iniciar sesión")
-    } finally {
       setIsLoading(false)
     }
   }

@@ -22,13 +22,13 @@ Sistema completo de gestión logística para optimizar procesos de entrega y ali
 
 Ejecuta los siguientes scripts SQL en orden:
 
-```bash
+\`\`\`bash
 scripts/01-create-tables.sql              # Tablas principales
 scripts/001_create_sessions_table.sql     # Tabla de sesiones
 scripts/002_update_usuarios_table.sql     # Actualizar usuarios
 scripts/003_create_comisiones_tables.sql  # Tablas de comisiones
 scripts/003_create_admin_user.sql         # Usuario admin
-```
+\`\`\`
 
 ### 3. Credenciales de Acceso
 
@@ -103,7 +103,7 @@ scripts/003_create_admin_user.sql         # Usuario admin
 
 ## 🛠️ Desarrollo
 
-```bash
+\`\`\`bash
 # Instalar dependencias
 npm install
 
@@ -115,7 +115,7 @@ npm run build
 
 # Iniciar producción
 npm start
-```
+\`\`\`
 
 ## 📦 Dependencias Principales
 

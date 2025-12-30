@@ -14,15 +14,15 @@ Este script hashea la contraseña automáticamente con bcrypt:
 
 1. Asegúrate de que Neon esté conectado
 2. Ejecuta el script:
-   ```bash
+   \`\`\`bash
    node scripts/create-master-admin.ts
-   ```
+   \`\`\`
 
 ### Opción 2: SQL Manual
 
 Si prefieres SQL directo, necesitarás hashear la contraseña primero:
 
-```sql
+\`\`\`sql
 -- Ejecuta esto en tu consola de Neon
 DELETE FROM usuarios WHERE email = 'distrisantysas@gmail.com';
 
@@ -43,7 +43,7 @@ INSERT INTO usuarios (
   'activo',
   NOW()
 );
-```
+\`\`\`
 
 ## Permisos del Administrador
 
