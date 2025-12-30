@@ -1,4 +1,5 @@
 "use client"
+
 import { CoordinadorView } from "@/components/coordinador-view"
 import { AlistadorView } from "@/components/alistador-view"
 import { EntregadorView } from "@/components/entregador-view"
@@ -11,12 +12,22 @@ interface MainAppProps {
 }
 
 export function MainApp({ user }: MainAppProps) {
-  const handleLogout = () => {
-    // Limpiar cookie del lado del cliente
-    document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax"
-    
-    // Redirigir al login
-    window.location.href = "/auth/login"
+  const handleLogout = async () => {
+    try {
+      // Llamar al endpoint de logout para eliminar la sesión de la BD
+      await fetch('/api/logout', { 
+        method: 'POST',
+        credentials: 'include'
+      })
+    } catch (error) {
+      console.error('[v0] Error during logout:', error)
+    } finally {
+      // Limpiar cookie del lado del cliente (por si acaso)
+      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax"
+      
+      // Redirigir al login
+      window.location.href = "/auth/login"
+    }
   }
 
   return (
