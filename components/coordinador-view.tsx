@@ -67,9 +67,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     setError(null)
 
     try {
+      console.log("[COORD] 1. Leyendo archivos...")
       const nurturingText = await nurturingFile.text()
       const planillaText = await planillaFile.text()
 
+      console.log("[COORD] 2. Parseando CSVs...")
       const sales = parseNurturingCSV(nurturingText)
       const products = parsePlanillaCSV(planillaText)
 
@@ -85,15 +87,30 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         return
       }
 
+      console.log("[COORD] 3. Generando órdenes...")
       const fecha = new Date().toISOString().split("T")[0]
       const orders = generateOrdersFromSales(sales, products, fecha)
+      
+      console.log("[COORD] 4. Generando planillas...")
       const sheets = generateRouteSheets(orders)
+      
+      console.log("[COORD] 5. Planillas generadas:", sheets.length)
+      console.log("[COORD] 6. Primera planilla:", sheets[0])
 
-      await createPlanillas(sheets)
+      console.log("[COORD] 7. Llamando a createPlanillas...")
+      const result = await createPlanillas(sheets)
+      console.log("[COORD] 8. Resultado:", result)
+
+      console.log("[COORD] 9. Recargando planillas...")
       await loadPlanillas()
 
+      console.log("[COORD] 10. ✓ TODO COMPLETADO")
       setIsProcessing(false)
+      
     } catch (err) {
+      console.error("[COORD] ❌ ERROR en paso:", err)
+      console.error("[COORD] Stack trace:", err instanceof Error ? err.stack : 'No stack')
+      console.error("[COORD] Error message:", err instanceof Error ? err.message : String(err))
       setError("Error al procesar los archivos: " + (err as Error).message)
       setIsProcessing(false)
     }
