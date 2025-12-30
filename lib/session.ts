@@ -20,7 +20,7 @@ export async function createSession(userId: string) {
   const cookieStore = await cookies()
   cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
     httpOnly: true,
-    secure: true, // ✅ FIXED: Ahora funciona en modo incógnito con HTTPS
+    secure: true,
     sameSite: "lax",
     expires: expiresAt,
     path: "/",
@@ -82,7 +82,7 @@ export async function deleteSession() {
   
   if (sessionToken) {
     const sql = getDB()
-    await sql`DELETE FROM sessions WHERE id = ${sessionToken}` // ✅ FIXED: Cambié "sq" a "sql"
+    await sql`DELETE FROM sessions WHERE id = ${sessionToken}`
   }
   
   cookieStore.delete(SESSION_COOKIE_NAME)
@@ -90,7 +90,7 @@ export async function deleteSession() {
 
 export async function cleanupExpiredSessions() {
   const sql = getDB()
-  await sql`DELETE FROM sessions WHERE expires_at < NOW()` // ✅ FIXED: Cambié "sq" a "sql"
+  await sql`DELETE FROM sessions WHERE expires_at < NOW()`
 }
 
 export { SESSION_COOKIE_NAME }
