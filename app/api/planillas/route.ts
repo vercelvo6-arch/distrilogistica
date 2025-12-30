@@ -1,143 +1,185 @@
-import { NextResponse } from "next/server"
-import { getDB } from "@/lib/db"
-import type { RouteSheet } from "@/lib/types"
+import { NextRequest, NextResponse } from 'next/server';
+import { getDB } from '@/lib/db';
+import { getSession } from '@/lib/session';
 
-export async function POST(request: Request) {
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: NextRequest) {
+  console.log("[API /planillas POST] ========== INICIO ==========");
+  
   try {
-    const { planillas } = await request.json()
+    const session = await getSession();
+    if (!session) {
+      console.error("[API] No hay sesión");
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    console.log("[API] ✓ Sesión válida:", session.user.email);
+
+    const body = await request.json();
+    const { routeSheets } = body;
     
-    if (!planillas || !Array.isArray(planillas)) {
-      return NextResponse.json(
-        { error: "Datos de planillas inválidos" },
-        { status: 400 }
-      )
+    console.log("[API] Planillas recibidas:", routeSheets?.length);
+    
+    if (!routeSheets || !Array.isArray(routeSheets)) {
+      console.error("[API] Datos inválidos");
+      return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
     }
 
-    const sql = getDB()
+    const sql = getDB();
+    console.log("[API] ✓ Conexión DB obtenida");
 
-    // Insertar cada planilla en la base de datos
-    for (const planilla of planillas as RouteSheet[]) {
-      // 1. Insertar la planilla
-      const [insertedPlanilla] = await sql`
+    // Test de conexión
+    const testQuery = await sql`SELECT 1 as test`;
+    console.log("[API] ✓ Test query OK:", testQuery);
+
+    let insertCount = 0;
+
+    for (const sheet of routeSheets) {
+      console.log(`[API] Procesando planilla: ${sheet.ruta}`);
+      
+      // Insertar planilla
+      await sql`
         INSERT INTO planillas (
-          id, ruta, fecha, entregador, estado, total_amount, total_orders
+          id, fecha, tipo_ruta, entregador, total_cargue,
+          total_entregado, total_fiado, total_repaso, total_devolucion,
+          estado, observaciones, created_at, updated_at
         ) VALUES (
-          ${planilla.id},
-          ${planilla.ruta},
-          ${planilla.fecha},
-          ${planilla.entregador || null},
-          ${planilla.estado},
-          ${planilla.totalAmount},
-          ${planilla.totalOrders}
+          ${sheet.id}, 
+          ${sheet.fecha}, 
+          ${sheet.ruta}, 
+          ${sheet.entregador || null},
+          ${sheet.totalAmount}, 
+          ${0}, 
+          ${0}, 
+          ${0}, 
+          ${0}, 
+          ${'pendiente'}, 
+          ${null},
+          NOW(),
+          NOW()
         )
-        RETURNING id
-      `
+      `;
+      
+      console.log(`[API] ✓ Planilla ${sheet.id} insertada`);
+      insertCount++;
 
-      // 2. Insertar los pedidos de esta planilla
-      for (const order of planilla.orders) {
-        const [insertedOrder] = await sql`
+      // Insertar pedidos
+      for (let i = 0; i < sheet.orders.length; i++) {
+        const order = sheet.orders[i];
+        
+        await sql`
           INSERT INTO pedidos (
-            id, planilla_id, cliente, ruta, fecha, entregador, 
-            estado, total_original, total_actual
+            id, planilla_id, secuencia, cliente, direccion, telefono,
+            barrio, total, estado, observaciones, created_at, updated_at
           ) VALUES (
-            ${order.id},
-            ${planilla.id},
+            ${order.id}, 
+            ${sheet.id}, 
+            ${i + 1}, 
             ${order.cliente},
-            ${order.ruta},
-            ${order.fecha},
-            ${order.entregador || null},
-            ${order.estado},
-            ${order.totalOriginal},
-            ${order.totalActual}
+            ${''},
+            ${''},
+            ${''},
+            ${order.total}, 
+            ${'pendiente'}, 
+            ${order.comentarios || null},
+            NOW(),
+            NOW()
           )
-          RETURNING id
-        `
+        `;
 
-        // 3. Insertar los productos de cada pedido
-        for (const product of order.products) {
+        // Insertar productos del pedido
+        for (const item of order.items) {
           await sql`
             INSERT INTO pedido_productos (
-              pedido_id, codigo, descripcion, categoria, ubicacion,
-              cantidad, valor_unitario, subtotal, devuelto
+              pedido_id, codigo, nombre, cantidad, precio_unitario, total, devuelto
             ) VALUES (
-              ${order.id},
-              ${product.codigo},
-              ${product.descripcion},
-              ${product.categoria},
-              ${product.ubicacion},
-              ${product.cantidad},
-              ${product.valorUnitario},
-              ${product.subtotal},
-              ${product.devuelto}
+              ${order.id}, 
+              ${item.codigo}, 
+              ${item.descripcion}, 
+              ${item.cantidad},
+              ${item.valorUnidad}, 
+              ${item.subtotal}, 
+              ${false}
             )
-          `
+          `;
         }
       }
+      
+      console.log(`[API] ✓ Planilla ${sheet.ruta} completada con ${sheet.orders.length} pedidos`);
     }
 
-    return NextResponse.json({ 
-      success: true,
-      message: `${planillas.length} planillas creadas exitosamente`
-    })
+    console.log(`[API] ========== ÉXITO: ${insertCount} planillas insertadas ==========`);
+    return NextResponse.json({ success: true, count: insertCount });
 
   } catch (error) {
-    console.error("[v0] Error creating planillas:", error)
-    return NextResponse.json(
-      { error: "Error al crear planillas: " + (error as Error).message },
-      { status: 500 }
-    )
+    console.error("[API] ========== ERROR FATAL ==========");
+    console.error("[API] Error:", error);
+    console.error("[API] Stack:", error instanceof Error ? error.stack : 'No stack');
+    
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : null
+    }, { status: 500 });
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  console.log("[API /planillas GET] Obteniendo planillas");
+  
   try {
-    const sql = getDB()
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const sql = getDB();
     
-    // Obtener todas las planillas con sus pedidos
     const planillas = await sql`
       SELECT 
         p.*,
         json_agg(
           json_build_object(
             'id', ped.id,
+            'planilla_id', ped.planilla_id,
+            'secuencia', ped.secuencia,
             'cliente', ped.cliente,
-            'ruta', ped.ruta,
-            'fecha', ped.fecha,
-            'entregador', ped.entregador,
+            'direccion', ped.direccion,
+            'telefono', ped.telefono,
+            'barrio', ped.barrio,
+            'total', ped.total,
             'estado', ped.estado,
-            'totalOriginal', ped.total_original,
-            'totalActual', ped.total_actual,
-            'products', (
+            'observaciones', ped.observaciones,
+            'pedido_productos', (
               SELECT json_agg(
                 json_build_object(
+                  'pedido_id', pp.pedido_id,
                   'codigo', pp.codigo,
-                  'descripcion', pp.descripcion,
-                  'categoria', pp.categoria,
-                  'ubicacion', pp.ubicacion,
+                  'nombre', pp.nombre,
                   'cantidad', pp.cantidad,
-                  'valorUnitario', pp.valor_unitario,
-                  'subtotal', pp.subtotal,
+                  'precio_unitario', pp.precio_unitario,
+                  'total', pp.total,
                   'devuelto', pp.devuelto
                 )
               )
               FROM pedido_productos pp
               WHERE pp.pedido_id = ped.id
             )
-          )
-        ) as orders
+          ) ORDER BY ped.secuencia
+        ) FILTER (WHERE ped.id IS NOT NULL) as pedidos
       FROM planillas p
-      LEFT JOIN pedidos ped ON ped.planilla_id = p.id
+      LEFT JOIN pedidos ped ON p.id = ped.planilla_id
       GROUP BY p.id
-      ORDER BY p.fecha DESC, p.ruta
+      ORDER BY p.created_at DESC
     `
 
-    return NextResponse.json(planillas)
+    console.log(`[API /planillas GET] ✓ Obtenidas ${planillas.length} planillas`);
+    return NextResponse.json({ planillas });
 
   } catch (error) {
-    console.error("[v0] Error fetching planillas:", error)
+    console.error("[API /planillas GET] ERROR:", error);
     return NextResponse.json(
       { error: "Error al obtener planillas" },
       { status: 500 }
-    )
+    );
   }
 }
