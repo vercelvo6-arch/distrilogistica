@@ -4,115 +4,129 @@ import { getDB } from "@/lib/db"
 import { getSession } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import type { RouteSheet } from "@/lib/types"
-import { calcularComisionPlanilla } from "./comisiones"
 
 export async function createPlanillas(routeSheets: RouteSheet[]) {
-  console.log("[createPlanillas] Iniciando creación de planillas:", routeSheets.length)
+  console.log("[createPlanillas] ========== INICIO ==========")
+  console.log("[createPlanillas] Recibidas planillas:", routeSheets.length)
   
-  const sql = getDB()
-  const session = await getSession()
-
-  if (!session) {
-    console.error("[createPlanillas] No hay sesión activa")
-    throw new Error("No autenticado")
-  }
-
-  console.log("[createPlanillas] Usuario:", session.user.nombre, "Rol:", session.user.rol)
-
   try {
-    // Insert planillas
-    for (const sheet of routeSheets) {
-      console.log(`[createPlanillas] Procesando planilla: ${sheet.id}, Ruta: ${sheet.ruta}`)
+    // Validar sesión
+    const session = await getSession()
+    if (!session) {
+      console.error("[createPlanillas] ❌ No hay sesión")
+      throw new Error("No autenticado")
+    }
+    console.log("[createPlanillas] ✓ Sesión válida:", session.user.email)
+
+    // Obtener conexión
+    const sql = getDB()
+    console.log("[createPlanillas] ✓ Conexión a BD obtenida")
+
+    // Probar conexión
+    const testQuery = await sql`SELECT 1 as test`
+    console.log("[createPlanillas] ✓ Test query OK:", testQuery)
+
+    let insertCount = 0
+
+    // Procesar cada planilla
+    for (let sheetIndex = 0; sheetIndex < routeSheets.length; sheetIndex++) {
+      const sheet = routeSheets[sheetIndex]
+      console.log(`[createPlanillas] [${sheetIndex + 1}/${routeSheets.length}] Procesando: ${sheet.ruta}`)
       
-      // Insertar planilla principal
-      await sql`
-        INSERT INTO planillas (
-          id, fecha, tipo_ruta, entregador, total_cargue,
-          total_entregado, total_fiado, total_repaso, total_devolucion,
-          estado, observaciones, created_at, updated_at
-        ) VALUES (
-          ${sheet.id}, 
-          ${sheet.fecha}, 
-          ${sheet.ruta}, 
-          ${sheet.entregador || null},
-          ${sheet.totalAmount}, 
-          ${0}, 
-          ${0}, 
-          ${0}, 
-          ${0}, 
-          ${'pendiente'}, 
-          ${null},
-          NOW(),
-          NOW()
-        )
-      `
-
-      console.log(`[createPlanillas] ✓ Planilla ${sheet.id} insertada`)
-
-      // Insert pedidos
-      for (let index = 0; index < sheet.orders.length; index++) {
-        const order = sheet.orders[index]
-        
-        console.log(`[createPlanillas] Insertando pedido ${order.id} (${index + 1}/${sheet.orders.length})`)
-        
-        await sql`
-          INSERT INTO pedidos (
-            id, planilla_id, secuencia, cliente, direccion, telefono,
-            barrio, total, estado, observaciones, created_at, updated_at
+      try {
+        // Insertar planilla
+        const planillaResult = await sql`
+          INSERT INTO planillas (
+            id, fecha, tipo_ruta, entregador, total_cargue,
+            total_entregado, total_fiado, total_repaso, total_devolucion,
+            estado, observaciones, created_at, updated_at
           ) VALUES (
-            ${order.id}, 
             ${sheet.id}, 
-            ${index + 1}, 
-            ${order.cliente},
-            ${''},  -- direccion vacía por ahora
-            ${''},  -- telefono vacío por ahora
-            ${''},  -- barrio vacío por ahora
-            ${order.total}, 
+            ${sheet.fecha}, 
+            ${sheet.ruta}, 
+            ${sheet.entregador || null},
+            ${sheet.totalAmount}, 
+            ${0}, 
+            ${0}, 
+            ${0}, 
+            ${0}, 
             ${'pendiente'}, 
-            ${order.comentarios || null},
+            ${null},
             NOW(),
             NOW()
-          )
+          ) RETURNING id
         `
+        
+        console.log(`[createPlanillas] ✓ Planilla ${sheet.id} insertada`)
+        insertCount++
 
-        // Insert pedido_productos
-        for (const item of order.items) {
-          console.log(`[createPlanillas] Insertando producto ${item.codigo} del pedido ${order.id}`)
+        // Insertar pedidos
+        for (let orderIndex = 0; orderIndex < sheet.orders.length; orderIndex++) {
+          const order = sheet.orders[orderIndex]
           
           await sql`
-            INSERT INTO pedido_productos (
-              pedido_id, codigo, nombre, cantidad, precio_unitario, total, devuelto
+            INSERT INTO pedidos (
+              id, planilla_id, secuencia, cliente, direccion, telefono,
+              barrio, total, estado, observaciones, created_at, updated_at
             ) VALUES (
               ${order.id}, 
-              ${item.codigo}, 
-              ${item.descripcion}, 
-              ${item.cantidad},
-              ${item.valorUnidad}, 
-              ${item.subtotal}, 
-              ${false}
+              ${sheet.id}, 
+              ${orderIndex + 1}, 
+              ${order.cliente},
+              ${''},
+              ${''},
+              ${''},
+              ${order.total}, 
+              ${'pendiente'}, 
+              ${order.comentarios || null},
+              NOW(),
+              NOW()
             )
           `
+
+          // Insertar productos del pedido
+          for (const item of order.items) {
+            await sql`
+              INSERT INTO pedido_productos (
+                pedido_id, codigo, nombre, cantidad, precio_unitario, total, devuelto
+              ) VALUES (
+                ${order.id}, 
+                ${item.codigo}, 
+                ${item.descripcion}, 
+                ${item.cantidad},
+                ${item.valorUnidad}, 
+                ${item.subtotal}, 
+                ${false}
+              )
+            `
+          }
         }
         
-        console.log(`[createPlanillas] ✓ Pedido ${order.id} completo con ${order.items.length} productos`)
+        console.log(`[createPlanillas] ✓ Planilla ${sheet.ruta} completada (${sheet.orders.length} pedidos)`)
+        
+      } catch (sheetError) {
+        console.error(`[createPlanillas] ❌ Error en planilla ${sheet.ruta}:`, sheetError)
+        throw sheetError
       }
-      
-      console.log(`[createPlanillas] ✓ Planilla ${sheet.id} completada con ${sheet.orders.length} pedidos`)
     }
 
-    console.log("[createPlanillas] ✓ TODAS las planillas creadas exitosamente")
+    console.log(`[createPlanillas] ========== ÉXITO: ${insertCount} planillas insertadas ==========`)
+    
     revalidatePath("/")
-    return { success: true, count: routeSheets.length }
+    return { success: true, count: insertCount }
     
   } catch (error) {
-    console.error("[createPlanillas] ❌ ERROR:", error)
-    console.error("[createPlanillas] Error stack:", error instanceof Error ? error.stack : "No stack available")
+    console.error("[createPlanillas] ========== ERROR FATAL ==========")
+    console.error("[createPlanillas] Error:", error)
+    console.error("[createPlanillas] Stack:", error instanceof Error ? error.stack : 'No stack')
+    console.error("[createPlanillas] Message:", error instanceof Error ? error.message : String(error))
+    
     throw new Error(`Error al crear planillas: ${error instanceof Error ? error.message : 'Error desconocido'}`)
   }
 }
 
 export async function getPlanillas() {
-  console.log("[getPlanillas] Obteniendo planillas de la BD")
+  console.log("[getPlanillas] Obteniendo planillas...")
   const sql = getDB()
 
   try {
@@ -154,9 +168,6 @@ export async function getPlanillas() {
       ORDER BY p.created_at DESC
     `
 
-    console.log(`[getPlanillas] ✓ Obtenidas ${planillas.length} planillas`)
-
-    // Transform to RouteSheet format
     const routeSheets: RouteSheet[] = planillas.map((planilla: any) => {
       const pedidos = planilla.pedidos || []
       
@@ -198,6 +209,7 @@ export async function getPlanillas() {
       }
     })
 
+    console.log(`[getPlanillas] ✓ Obtenidas ${routeSheets.length} planillas`)
     return routeSheets
     
   } catch (error) {
@@ -207,7 +219,6 @@ export async function getPlanillas() {
 }
 
 export async function updatePlanillaEstado(planillaId: string, estado: string, userId?: string) {
-  console.log(`[updatePlanillaEstado] Planilla: ${planillaId}, Estado: ${estado}, Usuario: ${userId}`)
   const sql = getDB()
 
   try {
@@ -228,7 +239,6 @@ export async function updatePlanillaEstado(planillaId: string, estado: string, u
       `
     }
 
-    console.log(`[updatePlanillaEstado] ✓ Estado actualizado`)
     revalidatePath("/")
     return { success: true }
     
@@ -239,7 +249,6 @@ export async function updatePlanillaEstado(planillaId: string, estado: string, u
 }
 
 export async function updatePedidoEstado(pedidoId: string, estado: string) {
-  console.log(`[updatePedidoEstado] Pedido: ${pedidoId}, Estado: ${estado}`)
   const sql = getDB()
 
   try {
@@ -251,7 +260,6 @@ export async function updatePedidoEstado(pedidoId: string, estado: string) {
       WHERE id = ${pedidoId}
     `
 
-    console.log(`[updatePedidoEstado] ✓ Estado actualizado`)
     revalidatePath("/")
     return { success: true }
     
@@ -262,7 +270,6 @@ export async function updatePedidoEstado(pedidoId: string, estado: string) {
 }
 
 export async function updateProductoDevuelto(pedidoId: string, codigo: string, devuelto: boolean) {
-  console.log(`[updateProductoDevuelto] Pedido: ${pedidoId}, Producto: ${codigo}, Devuelto: ${devuelto}`)
   const sql = getDB()
 
   try {
@@ -272,7 +279,6 @@ export async function updateProductoDevuelto(pedidoId: string, codigo: string, d
       WHERE pedido_id = ${pedidoId} AND codigo = ${codigo}
     `
 
-    console.log(`[updateProductoDevuelto] ✓ Producto actualizado`)
     revalidatePath("/")
     return { success: true }
     
@@ -291,7 +297,6 @@ export async function updatePlanillaTotales(
     total_devolucion: number
   },
 ) {
-  console.log(`[updatePlanillaTotales] Planilla: ${planillaId}`, totales)
   const sql = getDB()
 
   try {
@@ -305,15 +310,6 @@ export async function updatePlanillaTotales(
       WHERE id = ${planillaId}
     `
 
-    console.log(`[updatePlanillaTotales] ✓ Totales actualizados`)
-
-    try {
-      await calcularComisionPlanilla(planillaId)
-      console.log(`[updatePlanillaTotales] ✓ Comisión calculada`)
-    } catch (err) {
-      console.error("[updatePlanillaTotales] Error calculando comisión:", err)
-    }
-
     revalidatePath("/")
     return { success: true }
     
@@ -324,7 +320,6 @@ export async function updatePlanillaTotales(
 }
 
 export async function completarPlanilla(planillaId: string) {
-  console.log(`[completarPlanilla] Planilla: ${planillaId}`)
   const sql = getDB()
 
   try {
@@ -334,9 +329,6 @@ export async function completarPlanilla(planillaId: string) {
       WHERE id = ${planillaId}
     `
 
-    await calcularComisionPlanilla(planillaId)
-
-    console.log(`[completarPlanilla] ✓ Planilla completada`)
     revalidatePath("/")
     return { success: true }
     
