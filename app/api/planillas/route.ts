@@ -1,3 +1,4 @@
+// Force redeploy - 2025-12-30 - UUID to TEXT migration applied
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
