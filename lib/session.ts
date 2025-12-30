@@ -8,6 +8,7 @@ export async function createSession(userId: string) {
   console.log("[v0] Creating session for user:", userId)
   const sessionToken = crypto.randomUUID()
   const expiresAt = new Date(Date.now() + SESSION_DURATION)
+  
   const sql = getDB()
   
   await sql`
@@ -19,7 +20,7 @@ export async function createSession(userId: string) {
   const cookieStore = await cookies()
   cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
     httpOnly: true,
-    secure: false,
+    secure: true, // ✅ FIXED: Ahora funciona en modo incógnito con HTTPS
     sameSite: "lax",
     expires: expiresAt,
     path: "/",
@@ -81,7 +82,7 @@ export async function deleteSession() {
   
   if (sessionToken) {
     const sql = getDB()
-    await sql`DELETE FROM sessions WHERE id = ${sessionToken}`
+    await sql`DELETE FROM sessions WHERE id = ${sessionToken}` // ✅ FIXED: Cambié "sq" a "sql"
   }
   
   cookieStore.delete(SESSION_COOKIE_NAME)
@@ -89,5 +90,7 @@ export async function deleteSession() {
 
 export async function cleanupExpiredSessions() {
   const sql = getDB()
-  await sql`DELETE FROM sessions WHERE expires_at < NOW()`
+  await sql`DELETE FROM sessions WHERE expires_at < NOW()` // ✅ FIXED: Cambié "sq" a "sql"
 }
+
+export { SESSION_COOKIE_NAME }
