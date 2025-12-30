@@ -1,30 +1,22 @@
 "use client"
-
 import { CoordinadorView } from "@/components/coordinador-view"
 import { AlistadorView } from "@/components/alistador-view"
 import { EntregadorView } from "@/components/entregador-view"
 import { CajaView } from "@/components/caja-view"
 import { AdministradorView } from "@/components/administrador-view"
 import type { User } from "@/lib/types"
-import { useRouter } from "next/navigation"
 
 interface MainAppProps {
   user: User
 }
 
 export function MainApp({ user }: MainAppProps) {
-  const router = useRouter()
-
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-      })
-      router.push("/auth/login")
-      router.refresh()
-    } catch (error) {
-      console.error("Error al cerrar sesión:", error)
-    }
+  const handleLogout = () => {
+    // Limpiar cookie del lado del cliente
+    document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax"
+    
+    // Redirigir al login
+    window.location.href = "/auth/login"
   }
 
   return (
