@@ -174,7 +174,9 @@ export async function POST(request: NextRequest) {
               errors.push({
                 planilla: sheet.ruta,
                 pedido: orderIndex + 1,
-                error: orderError instanceof Error ? orderError.message : 'Error desconocido'
+                pedidoId: pedidoId,
+                error: orderError instanceof Error ? orderError.message : 'Error desconocido',
+                stack: orderError instanceof Error ? orderError.stack : null
               });
             }
           }
@@ -193,7 +195,9 @@ export async function POST(request: NextRequest) {
         console.error(`[API] ❌ Error en planilla ${sheetIndex + 1}:`, sheetError);
         errors.push({
           planilla: sheet.ruta || `Planilla ${sheetIndex + 1}`,
-          error: sheetError instanceof Error ? sheetError.message : 'Error desconocido'
+          planillaId: sheet.id,
+          error: sheetError instanceof Error ? sheetError.message : 'Error desconocido',
+          stack: sheetError instanceof Error ? sheetError.stack : null
         });
       }
     }
@@ -202,14 +206,17 @@ export async function POST(request: NextRequest) {
     console.log(`\n[API] ========== RESUMEN ==========`);
     console.log(`[API] ✓ Planillas insertadas: ${insertCount}/${routeSheets.length}`);
     console.log(`[API] ✓ Errores: ${errors.length}`);
+    if (errors.length > 0) {
+      console.log(`[API] ⚠️ PRIMER ERROR:`, JSON.stringify(errors[0], null, 2));
+    }
     console.log(`[API] ✓ Duración: ${duration}ms`);
     console.log(`[API] ========== FIN ==========\n`);
     
     return NextResponse.json({ 
-      success: true, 
+      success: insertCount > 0, 
       count: insertCount,
       planillas: createdPlanillas,
-      errors: errors.length > 0 ? errors : undefined,
+      errors: errors, // SIEMPRE devolver errores para debugging
       duration: `${duration}ms`
     });
 
