@@ -18,13 +18,12 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
     const cantidad = Number.parseInt(cantidadStr.replace(/[^\d]/g, "")) || 0
 
     const precioStr = values[6] || "0"
-    // Remove $, spaces, dots (thousands separator), then replace comma with dot for decimals
     const precio =
       Number.parseFloat(precioStr.replace(/\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")) || 0
 
     const record: SalesRecord = {
       numeroArticulo: values[0] || "",
-      nombreProducto: values[2] || "", // Nombre is in column 2
+      nombreProducto: values[2] || "",
       cantidadComprada: cantidad,
       totalesUnidad: precio,
       ruta: values[10] || "",
@@ -87,7 +86,6 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
   })
 
   const orders: Order[] = []
-  const timestamp = Date.now()
   let orderCounter = 0
 
   ordersByClienteRuta.forEach((clienteSales, key) => {
@@ -101,16 +99,18 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
         descripcion: product?.descripcion || sale.nombreProducto,
         categoria: product?.categoria || "",
         cantidad: sale.cantidadComprada,
-        valorUnidad: sale.totalesUnidad / sale.cantidadComprada, // Calculate unit price from total
-        subtotal: sale.totalesUnidad, // Use the total from NURTURING column 6 directly
+        valorUnidad: sale.totalesUnidad / sale.cantidadComprada,
+        subtotal: sale.totalesUnidad,
       }
     })
 
     const total = items.reduce((sum, item) => sum + item.subtotal, 0)
 
-    // ID simplificado: ORD + timestamp + contador
+    // ID único con timestamp + contador + random
+    const uniqueId = `ORD${Date.now()}${String(orderCounter).padStart(4, '0')}${Math.random().toString(36).substr(2, 4)}`
+    
     orders.push({
-      id: `ORD${timestamp}${String(orderCounter).padStart(3, '0')}`,
+      id: uniqueId,
       cliente: clienteSales[0].vendidoA,
       ruta: clienteSales[0].ruta,
       fecha,
@@ -139,14 +139,17 @@ export function generateRouteSheets(orders: Order[]): RouteSheet[] {
   })
 
   const sheets: RouteSheet[] = []
-  const timestamp = Date.now()
+  let sheetCounter = 0
 
   routeMap.forEach((routeOrders, ruta) => {
+    sheetCounter++
     const totalAmount = routeOrders.reduce((sum, order) => sum + order.total, 0)
 
-    // ID simplificado: PLN + timestamp + R + ruta
+    // ID único: timestamp + contador + ruta + random para evitar duplicados
+    const uniqueId = `PLN${Date.now()}${String(sheetCounter).padStart(3, '0')}R${ruta}${Math.random().toString(36).substr(2, 3)}`
+
     sheets.push({
-      id: `PLN${timestamp}R${ruta}`,
+      id: uniqueId,
       ruta,
       fecha: routeOrders[0].fecha,
       orders: routeOrders,
