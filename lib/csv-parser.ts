@@ -87,8 +87,12 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
   })
 
   const orders: Order[] = []
+  const timestamp = Date.now()
+  let orderCounter = 0
 
   ordersByClienteRuta.forEach((clienteSales, key) => {
+    orderCounter++
+    
     const items: OrderItem[] = clienteSales.map((sale) => {
       const product = productMap.get(sale.numeroArticulo)
 
@@ -104,8 +108,9 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
 
     const total = items.reduce((sum, item) => sum + item.subtotal, 0)
 
+    // ID simplificado: ORD + timestamp + contador
     orders.push({
-      id: `order-${key}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `ORD${timestamp}${String(orderCounter).padStart(3, '0')}`,
       cliente: clienteSales[0].vendidoA,
       ruta: clienteSales[0].ruta,
       fecha,
@@ -134,12 +139,14 @@ export function generateRouteSheets(orders: Order[]): RouteSheet[] {
   })
 
   const sheets: RouteSheet[] = []
+  const timestamp = Date.now()
 
   routeMap.forEach((routeOrders, ruta) => {
     const totalAmount = routeOrders.reduce((sum, order) => sum + order.total, 0)
 
+    // ID simplificado: PLN + timestamp + R + ruta
     sheets.push({
-      id: `route-${ruta}-${Date.now()}`,
+      id: `PLN${timestamp}R${ruta}`,
       ruta,
       fecha: routeOrders[0].fecha,
       orders: routeOrders,
