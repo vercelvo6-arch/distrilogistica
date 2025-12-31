@@ -12,7 +12,7 @@ import { ENTREGADORES } from "@/lib/types"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createPlanillas, getPlanillas } from "@/lib/actions/planillas"
+import { getPlanillas } from "@/lib/actions/planillas"
 import { getDB } from "@/lib/db"
 
 interface CoordinadorViewProps {
@@ -37,7 +37,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       const planillas = await getPlanillas()
       setRouteSheets(planillas)
     } catch (err) {
-      console.error("[v0] Error loading planillas:", err)
+      console.error("[COORD] Error loading planillas:", err)
     } finally {
       setLoading(false)
     }
@@ -97,9 +97,19 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       console.log("[COORD] 5. Planillas generadas:", sheets.length)
       console.log("[COORD] 6. Primera planilla:", sheets[0])
 
-      console.log("[COORD] 7. Llamando a createPlanillas...")
-      const result = await createPlanillas(sheets)
+      console.log("[COORD] 7. Llamando a API /planillas...")
+      const response = await fetch('/api/planillas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routeSheets: sheets })
+      })
+
+      const result = await response.json()
       console.log("[COORD] 8. Resultado:", result)
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al crear planillas')
+      }
 
       console.log("[COORD] 9. Recargando planillas...")
       await loadPlanillas()
