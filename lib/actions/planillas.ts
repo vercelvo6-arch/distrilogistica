@@ -1,339 +1,385 @@
-"use server"
+"use client"
 
+import type React from "react"
+
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { User, Upload, FileSpreadsheet, LogOut, Truck } from "lucide-react"
+import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateRouteSheets } from "@/lib/csv-parser"
+import type { RouteSheet, Entregador, User as UserType } from "@/lib/types"
+import { ENTREGADORES } from "@/lib/types"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { formatCOP } from "@/lib/format-utils"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getDB } from "@/lib/db"
-import { getSession } from "@/lib/session"
-import { revalidatePath } from "next/cache"
-import type { RouteSheet } from "@/lib/types"
 
-export async function createPlanillas(routeSheets: RouteSheet[]) {
-  console.log("[createPlanillas] ========== INICIO ==========")
-  console.log("[createPlanillas] Recibidas planillas:", routeSheets.length)
-  
-  try {
-    // Validar sesión
-    const session = await getSession()
-    if (!session) {
-      console.error("[createPlanillas] ❌ No hay sesión")
-      throw new Error("No autenticado")
-    }
-    console.log("[createPlanillas] ✓ Sesión válida:", session.user.email)
-
-    // Obtener conexión
-    const sql = getDB()
-    console.log("[createPlanillas] ✓ Conexión a BD obtenida")
-
-    // Probar conexión
-    const testQuery = await sql`SELECT 1 as test`
-    console.log("[createPlanillas] ✓ Test query OK:", testQuery)
-
-    let insertCount = 0
-
-    // Procesar cada planilla
-    for (let sheetIndex = 0; sheetIndex < routeSheets.length; sheetIndex++) {
-      const sheet = routeSheets[sheetIndex]
-      console.log(`[createPlanillas] [${sheetIndex + 1}/${routeSheets.length}] Procesando: ${sheet.ruta}`)
-      
-      try {
-        // Insertar planilla
-        const planillaResult = await sql`
-          INSERT INTO planillas (
-            id, fecha, tipo_ruta, entregador, total_cargue,
-            total_entregado, total_fiado, total_repaso, total_devolucion,
-            estado, observaciones, created_at, updated_at
-          ) VALUES (
-            ${sheet.id}, 
-            ${sheet.fecha}, 
-            ${sheet.ruta}, 
-            ${sheet.entregador || null},
-            ${sheet.totalAmount}, 
-            ${0}, 
-            ${0}, 
-            ${0}, 
-            ${0}, 
-            ${'pendiente'}, 
-            ${null},
-            NOW(),
-            NOW()
-          ) RETURNING id
-        `
-        
-        console.log(`[createPlanillas] ✓ Planilla ${sheet.id} insertada`)
-        insertCount++
-
-        // Insertar pedidos
-        for (let orderIndex = 0; orderIndex < sheet.orders.length; orderIndex++) {
-          const order = sheet.orders[orderIndex]
-          
-          await sql`
-            INSERT INTO pedidos (
-              id, planilla_id, secuencia, cliente, direccion, telefono,
-              barrio, total, estado, observaciones, created_at, updated_at
-            ) VALUES (
-              ${order.id}, 
-              ${sheet.id}, 
-              ${orderIndex + 1}, 
-              ${order.cliente},
-              ${''},
-              ${''},
-              ${''},
-              ${order.total}, 
-              ${'pendiente'}, 
-              ${order.comentarios || null},
-              NOW(),
-              NOW()
-            )
-          `
-
-          // Insertar productos del pedido
-          for (const item of order.items) {
-            await sql`
-              INSERT INTO pedido_productos (
-                pedido_id, codigo, nombre, cantidad, precio_unitario, total, devuelto
-              ) VALUES (
-                ${order.id}, 
-                ${item.codigo}, 
-                ${item.descripcion}, 
-                ${item.cantidad},
-                ${item.valorUnidad}, 
-                ${item.subtotal}, 
-                ${false}
-              )
-            `
-          }
-        }
-        
-        console.log(`[createPlanillas] ✓ Planilla ${sheet.ruta} completada (${sheet.orders.length} pedidos)`)
-        
-      } catch (sheetError) {
-        console.error(`[createPlanillas] ❌ Error en planilla ${sheet.ruta}:`, sheetError)
-        throw sheetError
-      }
-    }
-
-    console.log(`[createPlanillas] ========== ÉXITO: ${insertCount} planillas insertadas ==========`)
-    
-    revalidatePath("/")
-    return { success: true, count: insertCount }
-    
-  } catch (error) {
-    console.error("[createPlanillas] ========== ERROR FATAL ==========")
-    console.error("[createPlanillas] Error:", error)
-    console.error("[createPlanillas] Stack:", error instanceof Error ? error.stack : 'No stack')
-    console.error("[createPlanillas] Message:", error instanceof Error ? error.message : String(error))
-    
-    throw new Error(`Error al crear planillas: ${error instanceof Error ? error.message : 'Error desconocido'}`)
-  }
+interface CoordinadorViewProps {
+  onLogout: () => void
+  user: UserType
 }
 
-export async function getPlanillas() {
-  console.log("[getPlanillas] Obteniendo planillas...")
-  const sql = getDB()
+export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
+  const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
+  const [nurturingFile, setNurturingFile] = useState<File | null>(null)
+  const [planillaFile, setPlanillaFile] = useState<File | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  try {
-    const planillas = await sql`
-      SELECT 
-        p.*,
-        json_agg(
-          json_build_object(
-            'id', ped.id,
-            'planilla_id', ped.planilla_id,
-            'secuencia', ped.secuencia,
-            'cliente', ped.cliente,
-            'direccion', ped.direccion,
-            'telefono', ped.telefono,
-            'barrio', ped.barrio,
-            'total', ped.total,
-            'estado', ped.estado,
-            'observaciones', ped.observaciones,
-            'pedido_productos', (
-              SELECT json_agg(
-                json_build_object(
-                  'pedido_id', pp.pedido_id,
-                  'codigo', pp.codigo,
-                  'nombre', pp.nombre,
-                  'cantidad', pp.cantidad,
-                  'precio_unitario', pp.precio_unitario,
-                  'total', pp.total,
-                  'devuelto', pp.devuelto
-                )
-              )
-              FROM pedido_productos pp
-              WHERE pp.pedido_id = ped.id
-            )
-          ) ORDER BY ped.secuencia
-        ) FILTER (WHERE ped.id IS NOT NULL) as pedidos
-      FROM planillas p
-      LEFT JOIN pedidos ped ON p.id = ped.planilla_id
-      GROUP BY p.id
-      ORDER BY p.created_at DESC
-    `
+  useEffect(() => {
+    loadPlanillas()
+  }, [])
 
-    const routeSheets: RouteSheet[] = planillas.map((planilla: any) => {
-      const pedidos = planilla.pedidos || []
+  async function loadPlanillas() {
+    try {
+      console.log("[COORD] Cargando planillas desde API...")
       
-      return {
-        id: planilla.id,
-        ruta: planilla.tipo_ruta,
-        fecha: planilla.fecha,
-        entregador: planilla.entregador,
-        estado: planilla.estado,
-        totalOrders: pedidos.length,
-        totalAmount: Number(planilla.total_cargue) || 0,
-        montoCargue: Number(planilla.total_cargue) || 0,
-        montoEntregado: Number(planilla.total_entregado) || 0,
-        montoFiado: Number(planilla.total_fiado) || 0,
-        montoDevoluciones: Number(planilla.total_devolucion) || 0,
-        montoRepasos: Number(planilla.total_repaso) || 0,
-        orders: pedidos.map((pedido: any) => ({
-          id: pedido.id,
-          cliente: pedido.cliente,
-          ruta: planilla.tipo_ruta,
-          fecha: planilla.fecha,
-          estado: pedido.estado,
-          total: Number(pedido.total) || 0,
+      const response = await fetch('/api/planillas', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (!response.ok) {
+        throw new Error('Error al cargar planillas')
+      }
+      
+      const data = await response.json()
+      console.log("[COORD] Planillas cargadas:", data.planillas?.length || 0)
+      
+      // Transformar datos del API al formato RouteSheet
+      const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
+        id: p.id,
+        ruta: p.tipo_ruta,
+        fecha: p.fecha,
+        entregador: p.entregador,
+        estado: p.estado,
+        totalOrders: p.pedidos?.length || 0,
+        totalAmount: Number(p.total_cargue) || 0,
+        montoCargue: Number(p.total_cargue) || 0,
+        montoEntregado: Number(p.total_entregado) || 0,
+        montoFiado: Number(p.total_fiado) || 0,
+        montoDevoluciones: Number(p.total_devolucion) || 0,
+        montoRepasos: Number(p.total_repaso) || 0,
+        orders: (p.pedidos || []).map((ped: any) => ({
+          id: ped.id,
+          cliente: ped.cliente,
+          ruta: p.tipo_ruta,
+          fecha: p.fecha,
+          estado: ped.estado,
+          total: Number(ped.total) || 0,
           montoPagado: 0,
-          saldoPendiente: Number(pedido.total) || 0,
-          comentarios: pedido.observaciones,
-          entregador: planilla.entregador,
-          items: (pedido.pedido_productos || []).map((producto: any) => ({
-            codigo: producto.codigo,
-            descripcion: producto.nombre,
-            categoria: "",
-            cantidad: Number(producto.cantidad) || 0,
-            valorUnidad: Number(producto.precio_unitario) || 0,
-            subtotal: Number(producto.total) || 0,
-            devuelto: producto.devuelto || false,
+          saldoPendiente: Number(ped.total) || 0,
+          comentarios: ped.observaciones,
+          items: (ped.productos || []).map((prod: any) => ({
+            codigo: prod.codigo,
+            descripcion: prod.nombre,
+            categoria: '',
+            cantidad: Number(prod.cantidad) || 0,
+            valorUnidad: Number(prod.precio_unitario) || 0,
+            subtotal: Number(prod.total) || 0,
           })),
         })),
         cuentasPorCobrar: [],
-      }
-    })
-
-    console.log(`[getPlanillas] ✓ Obtenidas ${routeSheets.length} planillas`)
-    return routeSheets
-    
-  } catch (error) {
-    console.error("[getPlanillas] ❌ ERROR:", error)
-    throw error
+      }))
+      
+      setRouteSheets(planillas)
+      console.log("[COORD] ✓ Planillas establecidas:", planillas.length)
+      
+    } catch (err) {
+      console.error("[COORD] Error loading planillas:", err)
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
-export async function updatePlanillaEstado(planillaId: string, estado: string, userId?: string) {
-  const sql = getDB()
+  const handleNurturingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      setNurturingFile(e.target.files[0])
+      setError(null)
+    }
+  }
 
-  try {
-    if (estado === "alistado" && userId) {
-      await sql`
-        UPDATE planillas 
-        SET estado = ${estado}, 
-            alistado_por = ${userId}, 
-            alistado_en = NOW(),
-            updated_at = NOW()
-        WHERE id = ${planillaId}
-      `
-    } else {
-      await sql`
-        UPDATE planillas 
-        SET estado = ${estado}, updated_at = NOW()
-        WHERE id = ${planillaId}
-      `
+  const handlePlanillaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      setPlanillaFile(e.target.files[0])
+      setError(null)
+    }
+  }
+
+  const handleGeneratePlanillas = async () => {
+    if (!nurturingFile || !planillaFile) {
+      setError("Por favor cargue ambos archivos")
+      return
     }
 
-    revalidatePath("/")
-    return { success: true }
-    
-  } catch (error) {
-    console.error("[updatePlanillaEstado] ❌ ERROR:", error)
-    throw error
+    setIsProcessing(true)
+    setError(null)
+
+    try {
+      console.log("[COORD] 1. Leyendo archivos...")
+      const nurturingText = await nurturingFile.text()
+      const planillaText = await planillaFile.text()
+
+      console.log("[COORD] 2. Parseando CSVs...")
+      const sales = parseNurturingCSV(nurturingText)
+      const products = parsePlanillaCSV(planillaText)
+
+      if (sales.length === 0) {
+        setError("No se encontraron ventas en el archivo NURTURING")
+        setIsProcessing(false)
+        return
+      }
+
+      if (products.length === 0) {
+        setError("No se encontró inventario en el archivo PLANILLA")
+        setIsProcessing(false)
+        return
+      }
+
+      console.log("[COORD] 3. Generando órdenes...")
+      const fecha = new Date().toISOString().split("T")[0]
+      const orders = generateOrdersFromSales(sales, products, fecha)
+      
+      console.log("[COORD] 4. Generando planillas...")
+      const sheets = generateRouteSheets(orders)
+      
+      console.log("[COORD] 5. Planillas generadas:", sheets.length)
+      console.log("[COORD] 6. Primera planilla:", sheets[0])
+
+      console.log("[COORD] 7. Llamando a API /planillas...")
+      const response = await fetch('/api/planillas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routeSheets: sheets })
+      })
+
+      const result = await response.json()
+      console.log("[COORD] 8. Resultado:", result)
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al crear planillas')
+      }
+
+      console.log("[COORD] 9. Recargando planillas...")
+      await loadPlanillas()
+
+      console.log("[COORD] 10. ✓ TODO COMPLETADO")
+      setIsProcessing(false)
+      
+    } catch (err) {
+      console.error("[COORD] ❌ ERROR en paso:", err)
+      console.error("[COORD] Stack trace:", err instanceof Error ? err.stack : 'No stack')
+      console.error("[COORD] Error message:", err instanceof Error ? err.message : String(err))
+      setError("Error al procesar los archivos: " + (err as Error).message)
+      setIsProcessing(false)
+    }
   }
-}
 
-export async function updatePedidoEstado(pedidoId: string, estado: string) {
-  const sql = getDB()
+  const handleAssignEntregador = async (sheetId: string, entregador: Entregador) => {
+    try {
+      const sql = getDB()
+      await sql`UPDATE planillas SET entregador = ${entregador}, updated_at = NOW() WHERE id = ${sheetId}`
 
-  try {
-    await sql`
-      UPDATE pedidos 
-      SET estado = ${estado},
-          entregado_en = ${estado === "entregado" ? new Date().toISOString() : null},
-          updated_at = NOW()
-      WHERE id = ${pedidoId}
-    `
-
-    revalidatePath("/")
-    return { success: true }
-    
-  } catch (error) {
-    console.error("[updatePedidoEstado] ❌ ERROR:", error)
-    throw error
+      const updated = routeSheets.map((s) =>
+        s.id === sheetId
+          ? {
+              ...s,
+              entregador,
+              orders: s.orders.map((order) => ({ ...order, entregador })),
+            }
+          : s,
+      )
+      setRouteSheets(updated)
+    } catch (err) {
+      setError("Error al asignar entregador: " + (err as Error).message)
+    }
   }
-}
 
-export async function updateProductoDevuelto(pedidoId: string, codigo: string, devuelto: boolean) {
-  const sql = getDB()
+  const allRoutesAssigned = routeSheets.length > 0 && routeSheets.every((s) => s.entregador)
 
-  try {
-    await sql`
-      UPDATE pedido_productos 
-      SET devuelto = ${devuelto}
-      WHERE pedido_id = ${pedidoId} AND codigo = ${codigo}
-    `
-
-    revalidatePath("/")
-    return { success: true }
-    
-  } catch (error) {
-    console.error("[updateProductoDevuelto] ❌ ERROR:", error)
-    throw error
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
   }
-}
 
-export async function updatePlanillaTotales(
-  planillaId: string,
-  totales: {
-    total_entregado: number
-    total_fiado: number
-    total_repaso: number
-    total_devolucion: number
-  },
-) {
-  const sql = getDB()
+  return (
+    <>
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-4 py-3 md:py-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-blue-500">
+                <User className="h-4 w-4 md:h-5 md:w-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-base md:text-xl font-bold">Coordinador Logístico</h1>
+                <p className="text-xs text-muted-foreground hidden sm:block">
+                  Generación y asignación de planillas diarias
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={onLogout}>
+              <LogOut className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Salir</span>
+            </Button>
+          </div>
+        </div>
+      </header>
 
-  try {
-    await sql`
-      UPDATE planillas 
-      SET total_entregado = ${totales.total_entregado},
-          total_fiado = ${totales.total_fiado},
-          total_repaso = ${totales.total_repaso},
-          total_devolucion = ${totales.total_devolucion},
-          updated_at = NOW()
-      WHERE id = ${planillaId}
-    `
+      <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-5xl">
+        <div className="space-y-4 md:space-y-6">
+          <Card className="p-4 md:p-6">
+            <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 flex items-center gap-2">
+              <Upload className="h-4 w-4 md:h-5 md:w-5" />
+              Carga de Archivos Diarios
+            </h2>
 
-    revalidatePath("/")
-    return { success: true }
-    
-  } catch (error) {
-    console.error("[updatePlanillaTotales] ❌ ERROR:", error)
-    throw error
-  }
-}
+            <div className="space-y-3 md:space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">NURTURING - Ventas del Día Anterior (CSV)</label>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleNurturingUpload}
+                  className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                />
+                {nurturingFile && <p className="text-sm text-muted-foreground mt-1">✓ {nurturingFile.name}</p>}
+              </div>
 
-export async function completarPlanilla(planillaId: string) {
-  const sql = getDB()
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  INVENTARIO GENERAL - Catálogo de Productos (CSV)
+                </label>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handlePlanillaUpload}
+                  className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                />
+                {planillaFile && <p className="text-sm text-muted-foreground mt-1">✓ {planillaFile.name}</p>}
+              </div>
 
-  try {
-    await sql`
-      UPDATE planillas 
-      SET estado = 'completado', updated_at = NOW()
-      WHERE id = ${planillaId}
-    `
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-    revalidatePath("/")
-    return { success: true }
-    
-  } catch (error) {
-    console.error("[completarPlanilla] ❌ ERROR:", error)
-    throw error
-  }
+              <Button
+                onClick={handleGeneratePlanillas}
+                disabled={!nurturingFile || !planillaFile || isProcessing}
+                className="w-full"
+                size="lg"
+              >
+                <FileSpreadsheet className="h-4 w-4 md:h-5 md:w-5 mr-2" />
+                {isProcessing ? "Procesando..." : "Generar Planillas por Ruta"}
+              </Button>
+            </div>
+          </Card>
+
+          {routeSheets.length > 0 && (
+            <Card className="p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <h2 className="text-base md:text-lg font-semibold flex items-center gap-2">
+                  <Truck className="h-4 w-4 md:h-5 md:w-5" />
+                  Asignación de Entregadores
+                </h2>
+                {allRoutesAssigned && (
+                  <span className="text-xs md:text-sm px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium w-fit">
+                    ✓ Todas las rutas asignadas
+                  </span>
+                )}
+              </div>
+
+              {!allRoutesAssigned && (
+                <Alert className="mb-4 bg-amber-50 border-amber-200">
+                  <AlertDescription className="text-sm text-amber-800">
+                    Asigne un entregador a cada ruta antes de que el alistador pueda comenzar la preparación
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-3">
+                {routeSheets.map((sheet) => (
+                  <div
+                    key={sheet.id}
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 md:p-4 border rounded-lg bg-muted/50"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
+                      <p className="text-xs md:text-sm text-muted-foreground">
+                        {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <Select
+                        value={sheet.entregador || ""}
+                        onValueChange={(value) => handleAssignEntregador(sheet.id, value as Entregador)}
+                      >
+                        <SelectTrigger className="w-full sm:w-[180px]">
+                          <SelectValue placeholder="Seleccionar entregador" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ENTREGADORES.map((entregador) => (
+                            <SelectItem key={entregador} value={entregador}>
+                              {entregador}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${
+                          sheet.entregador ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {sheet.entregador ? "Asignado" : "Sin asignar"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {routeSheets.length > 0 && (
+            <Card className="p-4 md:p-6">
+              <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4">Planillas Generadas</h2>
+              <div className="space-y-3">
+                {routeSheets.map((sheet) => (
+                  <div
+                    key={sheet.id}
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 md:p-4 border rounded-lg bg-muted/50"
+                  >
+                    <div>
+                      <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
+                      <p className="text-xs md:text-sm text-muted-foreground">
+                        {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full ${
+                          sheet.estado === "pendiente"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : sheet.estado === "alistando"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-green-100 text-green-700"
+                        }`}
+                      >
+                        {sheet.estado}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+      </main>
+    </>
+  )
 }
