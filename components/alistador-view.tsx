@@ -7,7 +7,7 @@ import type { RouteSheet } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getPlanillas, updatePlanillaEstado } from "@/lib/actions/planillas"
+import { updatePlanillaEstado } from "@/lib/actions/planillas"
 
 interface AlistadorViewProps {
   onLogout: () => void
@@ -34,7 +34,51 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
   async function loadData() {
     try {
-      const planillas = await getPlanillas()
+      const response = await fetch('/api/planillas', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (!response.ok) throw new Error('Error al cargar planillas')
+      
+      const data = await response.json()
+      
+      // Transformar datos del API al formato RouteSheet
+      const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
+        id: p.id,
+        ruta: p.tipo_ruta,
+        fecha: p.fecha,
+        entregador: p.entregador,
+        estado: p.estado,
+        totalOrders: p.pedidos?.length || 0,
+        totalAmount: Number(p.total_cargue) || 0,
+        montoCargue: Number(p.total_cargue) || 0,
+        montoEntregado: Number(p.total_entregado) || 0,
+        montoFiado: Number(p.total_fiado) || 0,
+        montoDevoluciones: Number(p.total_devolucion) || 0,
+        montoRepasos: Number(p.total_repaso) || 0,
+        orders: (p.pedidos || []).map((ped: any) => ({
+          id: ped.id,
+          cliente: ped.cliente,
+          ruta: p.tipo_ruta,
+          fecha: p.fecha,
+          estado: ped.estado,
+          total: Number(ped.total) || 0,
+          montoPagado: 0,
+          saldoPendiente: Number(ped.total) || 0,
+          comentarios: ped.observaciones,
+          items: (ped.productos || []).map((prod: any) => ({
+            codigo: prod.codigo,
+            descripcion: prod.nombre,
+            categoria: '',
+            cantidad: Number(prod.cantidad) || 0,
+            valorUnidad: Number(prod.precio_unitario) || 0,
+            subtotal: Number(prod.total) || 0,
+          })),
+        })),
+        cuentasPorCobrar: [],
+      }))
+      
       setRouteSheets(planillas)
     } catch (err) {
       console.error("[v0] Error loading planillas:", err)
