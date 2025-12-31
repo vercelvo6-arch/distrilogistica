@@ -32,55 +32,74 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   }, [])
 
   async function loadPlanillas() {
+    console.log("[COORD-LOAD] Iniciando carga de planillas...")
     try {
       const response = await fetch('/api/planillas', {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       })
       
-      if (!response.ok) throw new Error('Error al cargar planillas')
+      console.log("[COORD-LOAD] Response status:", response.status)
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error("[COORD-LOAD] Error response:", errorData)
+        throw new Error('Error al cargar planillas')
+      }
       
       const data = await response.json()
+      console.log("[COORD-LOAD] Data recibida:", data)
+      console.log("[COORD-LOAD] Número de planillas:", data.planillas?.length || 0)
+      
+      if (data.planillas && data.planillas.length > 0) {
+        console.log("[COORD-LOAD] Primera planilla:", data.planillas[0])
+      }
       
       // Transformar datos del API al formato RouteSheet
-      const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
-        id: p.id,
-        ruta: p.tipo_ruta,
-        fecha: p.fecha,
-        entregador: p.entregador,
-        estado: p.estado,
-        totalOrders: p.pedidos?.length || 0,
-        totalAmount: Number(p.total_cargue) || 0,
-        montoCargue: Number(p.total_cargue) || 0,
-        montoEntregado: Number(p.total_entregado) || 0,
-        montoFiado: Number(p.total_fiado) || 0,
-        montoDevoluciones: Number(p.total_devolucion) || 0,
-        montoRepasos: Number(p.total_repaso) || 0,
-        orders: (p.pedidos || []).map((ped: any) => ({
-          id: ped.id,
-          cliente: ped.cliente,
+      const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => {
+        const sheet = {
+          id: p.id,
           ruta: p.tipo_ruta,
           fecha: p.fecha,
-          estado: ped.estado,
-          total: Number(ped.total) || 0,
-          montoPagado: 0,
-          saldoPendiente: Number(ped.total) || 0,
-          comentarios: ped.observaciones,
-          items: (ped.productos || []).map((prod: any) => ({
-            codigo: prod.codigo,
-            descripcion: prod.nombre,
-            categoria: '',
-            cantidad: Number(prod.cantidad) || 0,
-            valorUnidad: Number(prod.precio_unitario) || 0,
-            subtotal: Number(prod.total) || 0,
+          entregador: p.entregador,
+          estado: p.estado,
+          totalOrders: p.pedidos?.length || 0,
+          totalAmount: Number(p.total_cargue) || 0,
+          montoCargue: Number(p.total_cargue) || 0,
+          montoEntregado: Number(p.total_entregado) || 0,
+          montoFiado: Number(p.total_fiado) || 0,
+          montoDevoluciones: Number(p.total_devolucion) || 0,
+          montoRepasos: Number(p.total_repaso) || 0,
+          orders: (p.pedidos || []).map((ped: any) => ({
+            id: ped.id,
+            cliente: ped.cliente,
+            ruta: p.tipo_ruta,
+            fecha: p.fecha,
+            estado: ped.estado,
+            total: Number(ped.total) || 0,
+            montoPagado: 0,
+            saldoPendiente: Number(ped.total) || 0,
+            comentarios: ped.observaciones,
+            items: (ped.productos || []).map((prod: any) => ({
+              codigo: prod.codigo,
+              descripcion: prod.nombre,
+              categoria: '',
+              cantidad: Number(prod.cantidad) || 0,
+              valorUnidad: Number(prod.precio_unitario) || 0,
+              subtotal: Number(prod.total) || 0,
+            })),
           })),
-        })),
-        cuentasPorCobrar: [],
-      }))
+          cuentasPorCobrar: [],
+        }
+        console.log("[COORD-LOAD] Planilla transformada:", sheet.id, "Ruta:", sheet.ruta, "Pedidos:", sheet.totalOrders)
+        return sheet
+      })
       
+      console.log("[COORD-LOAD] ✓ Total planillas transformadas:", planillas.length)
       setRouteSheets(planillas)
     } catch (err) {
-      console.error("[COORD] Error loading planillas:", err)
+      console.error("[COORD-LOAD] ❌ Error loading planillas:", err)
+      setError("Error al cargar planillas: " + (err as Error).message)
     } finally {
       setLoading(false)
     }
@@ -147,21 +166,31 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         body: JSON.stringify({ routeSheets: sheets })
       })
 
+      console.log("[COORD] 7.1. Response status:", response.status)
+      
       const result = await response.json()
-      console.log("[COORD] 8. Resultado:", result)
+      console.log("[COORD] 8. Resultado completo:", JSON.stringify(result, null, 2))
 
       if (!response.ok) {
+        console.error("[COORD] 8.1. Response not OK:", result)
         throw new Error(result.error || 'Error al crear planillas')
       }
 
-      console.log("[COORD] 9. Recargando planillas...")
+      if (result.errors && result.errors.length > 0) {
+        console.warn("[COORD] 8.2. Hubo errores durante la inserción:", result.errors)
+      }
+
+      console.log("[COORD] 9. Esperando 2 segundos antes de recargar...")
+      await new Promise(resolve => setTimeout(resolve, 2000))
+
+      console.log("[COORD] 10. Recargando planillas...")
       await loadPlanillas()
 
-      console.log("[COORD] 10. ✓ TODO COMPLETADO")
+      console.log("[COORD] 11. ✓ TODO COMPLETADO")
       setIsProcessing(false)
       
     } catch (err) {
-      console.error("[COORD] ❌ ERROR en paso:", err)
+      console.error("[COORD] ❌ ERROR en proceso:", err)
       console.error("[COORD] Stack trace:", err instanceof Error ? err.stack : 'No stack')
       console.error("[COORD] Error message:", err instanceof Error ? err.message : String(err))
       setError("Error al procesar los archivos: " + (err as Error).message)
@@ -279,7 +308,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <h2 className="text-base md:text-lg font-semibold flex items-center gap-2">
                   <Truck className="h-4 w-4 md:h-5 md:w-5" />
-                  Asignación de Entregadores
+                  Asignación de Entregadores ({routeSheets.length} rutas)
                 </h2>
                 {allRoutesAssigned && (
                   <span className="text-xs md:text-sm px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium w-fit">
@@ -338,37 +367,13 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
             </Card>
           )}
 
-          {routeSheets.length > 0 && (
-            <Card className="p-4 md:p-6">
-              <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4">Planillas Generadas</h2>
-              <div className="space-y-3">
-                {routeSheets.map((sheet) => (
-                  <div
-                    key={sheet.id}
-                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 md:p-4 border rounded-lg bg-muted/50"
-                  >
-                    <div>
-                      <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
-                      <p className="text-xs md:text-sm text-muted-foreground">
-                        {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full ${
-                          sheet.estado === "pendiente"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : sheet.estado === "alistando"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-green-100 text-green-700"
-                        }`}
-                      >
-                        {sheet.estado}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {routeSheets.length === 0 && !loading && (
+            <Card className="p-8 text-center">
+              <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No hay planillas generadas</h3>
+              <p className="text-sm text-muted-foreground">
+                Cargue los archivos CSV y genere las planillas para comenzar
+              </p>
             </Card>
           )}
         </div>
