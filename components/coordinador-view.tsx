@@ -1,7 +1,7 @@
 // components/coordinador-view.tsx
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -9,10 +9,12 @@ import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateR
 import type { RouteSheet, Entregador } from '@/lib/types'
 import { formatCOP } from '@/lib/format-utils'
 import { Badge } from '@/components/ui/badge'
+import { useRouter } from 'next/navigation'
 
 const ENTREGADORES: Entregador[] = ["Alfonso", "Miguel", "Carlos", "Mateo"]
 
 export function CoordinadorView() {
+  const router = useRouter()
   const [planillas, setPlanillas] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -20,6 +22,11 @@ export function CoordinadorView() {
   
   const nurturingFileRef = useRef<HTMLInputElement>(null)
   const planillaFileRef = useRef<HTMLInputElement>(null)
+
+  // Cargar planillas al montar el componente
+  useEffect(() => {
+    loadPlanillas()
+  }, [])
 
   // Cargar planillas existentes
   const loadPlanillas = async () => {
@@ -49,7 +56,6 @@ export function CoordinadorView() {
       setError(null)
       setSuccess(null)
 
-      // Validar archivos seleccionados
       const nurturingFile = nurturingFileRef.current?.files?.[0]
       const planillaFile = planillaFileRef.current?.files?.[0]
 
@@ -58,11 +64,9 @@ export function CoordinadorView() {
         return
       }
 
-      // Leer archivos
       const nurturingText = await nurturingFile.text()
       const planillaText = await planillaFile.text()
 
-      // Parsear CSVs
       const sales = parseNurturingCSV(nurturingText)
       const products = parsePlanillaCSV(planillaText)
 
@@ -76,7 +80,6 @@ export function CoordinadorView() {
         return
       }
 
-      // Generar pedidos y planillas
       const orders = generateOrdersFromSales(sales, products, new Date().toISOString().split('T')[0])
       const routeSheets = generateRouteSheets(orders)
 
@@ -85,7 +88,6 @@ export function CoordinadorView() {
         return
       }
 
-      // Enviar a la API para guardar en BD
       const response = await fetch('/api/planillas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -100,10 +102,8 @@ export function CoordinadorView() {
 
       setSuccess(`✅ ${result.count} planillas generadas exitosamente`)
       
-      // Recargar planillas
       await loadPlanillas()
 
-      // Limpiar inputs
       if (nurturingFileRef.current) nurturingFileRef.current.value = ''
       if (planillaFileRef.current) planillaFileRef.current.value = ''
 
@@ -115,15 +115,14 @@ export function CoordinadorView() {
     }
   }
 
-  // Asignar entregador (NUEVA IMPLEMENTACIÓN CON API)
+  // Asignar entregador
   const handleAssignEntregador = async (sheetId: string, entregador: Entregador) => {
     try {
       setLoading(true)
       setError(null)
       setSuccess(null)
 
-      // Llamar al nuevo endpoint API
-      const response = await fetch('/api/planillas/assign-entregador', {
+      const response = await fetch('/api/assign-entregador', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -140,7 +139,6 @@ export function CoordinadorView() {
 
       setSuccess(`✅ ${entregador} asignado correctamente a la ruta ${result.planilla.tipo_ruta}`)
 
-      // Actualizar estado local
       setPlanillas(prev => prev.map(p => 
         p.id === sheetId 
           ? { ...p, entregador: entregador }
@@ -155,7 +153,16 @@ export function CoordinadorView() {
     }
   }
 
-  // Función para obtener color del badge según estado
+  // Logout
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST' })
+      router.push('/auth/login')
+    } catch (err) {
+      console.error('Error al cerrar sesión:', err)
+    }
+  }
+
   const getEstadoBadge = (estado: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
       'pendiente': 'secondary',
@@ -174,12 +181,16 @@ export function CoordinadorView() {
           <h1 className="text-3xl font-bold">Coordinador</h1>
           <p className="text-muted-foreground">Gestión de planillas y asignación de rutas</p>
         </div>
-        <Button onClick={loadPlanillas} disabled={loading}>
-          {loading ? 'Cargando...' : 'Actualizar'}
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={loadPlanillas} disabled={loading} variant="outline">
+            {loading ? 'Cargando...' : 'Actualizar'}
+          </Button>
+          <Button onClick={handleLogout} variant="destructive">
+            Cerrar Sesión
+          </Button>
+        </div>
       </div>
 
-      {/* Mensajes de estado */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded">
           ❌ {error}
@@ -192,7 +203,6 @@ export function CoordinadorView() {
         </div>
       )}
 
-      {/* Sección de carga de CSVs */}
       <Card>
         <CardHeader>
           <CardTitle>Generar Planillas desde CSV</CardTitle>
@@ -237,7 +247,6 @@ export function CoordinadorView() {
         </CardContent>
       </Card>
 
-      {/* Lista de planillas */}
       <Card>
         <CardHeader>
           <CardTitle>Planillas Generadas ({planillas.length})</CardTitle>
@@ -269,7 +278,10 @@ export function CoordinadorView() {
                         Fecha: {new Date(sheet.fecha).toLocaleDateString('es-CO')}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {sheet.totalOrders} pedidos • Total: {formatCOP(sheet.totalAmount)}
+                        {sheet.totalOrders} pedidos
+                      </p>
+                      <p className="text-sm font-semibold text-blue-700">
+                        Cargue Total: {formatCOP(sheet.totalAmount)}
                       </p>
                     </div>
                     <div className="text-right space-y-2">
