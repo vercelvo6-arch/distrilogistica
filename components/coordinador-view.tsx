@@ -10,11 +10,6 @@ import type { Entregador } from '@/lib/types'
 import { formatCOP } from '@/lib/format-utils'
 import { Badge } from '@/components/ui/badge'
 import { useRouter } from 'next/navigation'
-import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { CalendarIcon } from 'lucide-react'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 
 const ENTREGADORES: Entregador[] = ["Alfonso", "Miguel", "Carlos", "Mateo"]
 
@@ -35,7 +30,7 @@ interface PlanillaDB {
   observaciones: string | null
   created_at: string
   updated_at: string
-  pedidos?: any[]
+  pedidos: any[]
 }
 
 export function CoordinadorView() {
@@ -44,8 +39,8 @@ export function CoordinadorView() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
-  const [showAllDates, setShowAllDates] = useState(false)
+  const [filterDate, setFilterDate] = useState<string>('')
+  const [showAllDates, setShowAllDates] = useState(true)
   
   const nurturingFileRef = useRef<HTMLInputElement>(null)
   const planillaFileRef = useRef<HTMLInputElement>(null)
@@ -55,14 +50,15 @@ export function CoordinadorView() {
     loadPlanillas()
   }, [])
 
-  // Filtrar planillas por fecha seleccionada
+  // Obtener fechas únicas de las planillas
+  const uniqueDates = Array.from(
+    new Set(planillas.map(p => p.fecha))
+  ).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+
+  // Filtrar planillas
   const filteredPlanillas = showAllDates 
     ? planillas 
-    : planillas.filter(p => {
-        if (!selectedDate) return true
-        const planillaDate = new Date(p.fecha)
-        return planillaDate.toDateString() === selectedDate.toDateString()
-      })
+    : planillas.filter(p => p.fecha === filterDate)
 
   // Cargar planillas existentes
   const loadPlanillas = async () => {
@@ -76,10 +72,16 @@ export function CoordinadorView() {
       }
       
       const data = await response.json()
-      console.log('Planillas cargadas desde API:', data.planillas)
+      console.log('📦 Planillas cargadas:', data.planillas)
+      
+      // Log de la primera planilla para debugging
+      if (data.planillas && data.planillas.length > 0) {
+        console.log('📋 Ejemplo de planilla:', data.planillas[0])
+      }
+      
       setPlanillas(data.planillas || [])
     } catch (err) {
-      console.error('Error cargando planillas:', err)
+      console.error('❌ Error cargando planillas:', err)
       setError(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
       setLoading(false)
@@ -145,7 +147,7 @@ export function CoordinadorView() {
       if (planillaFileRef.current) planillaFileRef.current.value = ''
 
     } catch (err) {
-      console.error('Error generando planillas:', err)
+      console.error('❌ Error generando planillas:', err)
       setError(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
       setLoading(false)
@@ -183,7 +185,7 @@ export function CoordinadorView() {
       ))
 
     } catch (err) {
-      console.error('Error al asignar entregador:', err)
+      console.error('❌ Error al asignar entregador:', err)
       setError(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
       setLoading(false)
@@ -294,25 +296,31 @@ export function CoordinadorView() {
               </CardDescription>
             </div>
             <div className="flex gap-2 items-center">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[240px] justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate ? format(selectedDate, "PPP", { locale: es }) : "Seleccionar fecha"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={setSelectedDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              {!showAllDates && (
+                <select
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  className="border rounded px-3 py-2 text-sm"
+                >
+                  <option value="">Seleccionar fecha</option>
+                  {uniqueDates.map(date => (
+                    <option key={date} value={date}>
+                      {new Date(date).toLocaleDateString('es-CO', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}
+                    </option>
+                  ))}
+                </select>
+              )}
               <Button 
                 variant={showAllDates ? "default" : "outline"}
-                onClick={() => setShowAllDates(!showAllDates)}
+                onClick={() => {
+                  setShowAllDates(!showAllDates)
+                  if (!showAllDates) setFilterDate('')
+                }}
               >
                 {showAllDates ? "Filtrar por fecha" : "Ver todas"}
               </Button>
@@ -328,57 +336,65 @@ export function CoordinadorView() {
             </p>
           ) : (
             <div className="space-y-4">
-              {filteredPlanillas.map((planilla) => (
-                <div
-                  key={planilla.id}
-                  className="border rounded-lg p-4 space-y-3"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-lg">Ruta {planilla.tipo_ruta}</h3>
-                        <Badge variant={getEstadoBadge(planilla.estado)}>
-                          {planilla.estado}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Fecha: {new Date(planilla.fecha).toLocaleDateString('es-CO')}
-                      </p>
-                      <p className="text-sm font-semibold text-blue-700">
-                        Cargue Total: {formatCOP(planilla.total_cargue)}
-                      </p>
-                      {planilla.pedidos && (
+              {filteredPlanillas.map((planilla) => {
+                const numPedidos = planilla.pedidos?.length || 0
+                const montoCargue = Number(planilla.total_cargue) || 0
+                
+                return (
+                  <div
+                    key={planilla.id}
+                    className="border rounded-lg p-4 space-y-3"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-xl">Ruta {planilla.tipo_ruta}</h3>
+                          <Badge variant={getEstadoBadge(planilla.estado)}>
+                            {planilla.estado}
+                          </Badge>
+                        </div>
                         <p className="text-sm text-muted-foreground">
-                          {planilla.pedidos.length} pedidos
+                          📅 Fecha: {new Date(planilla.fecha).toLocaleDateString('es-CO', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
                         </p>
-                      )}
-                    </div>
-                    <div className="text-right space-y-2">
-                      <Select
-                        value={planilla.entregador || ''}
-                        onValueChange={(value) => handleAssignEntregador(planilla.id, value as Entregador)}
-                        disabled={loading}
-                      >
-                        <SelectTrigger className="w-40">
-                          <SelectValue placeholder="Asignar entregador" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ENTREGADORES.map((e) => (
-                            <SelectItem key={e} value={e}>
-                              {e}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {planilla.entregador && (
-                        <p className="text-sm font-medium text-green-700">
-                          ✓ Asignado a {planilla.entregador}
+                        <p className="text-sm text-muted-foreground">
+                          📦 {numPedidos} pedidos
                         </p>
-                      )}
+                        <p className="text-lg font-bold text-blue-700">
+                          💰 Cargue Total: {formatCOP(montoCargue)}
+                        </p>
+                      </div>
+                      <div className="text-right space-y-2">
+                        <Select
+                          value={planilla.entregador || ''}
+                          onValueChange={(value) => handleAssignEntregador(planilla.id, value as Entregador)}
+                          disabled={loading}
+                        >
+                          <SelectTrigger className="w-40">
+                            <SelectValue placeholder="Asignar entregador" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ENTREGADORES.map((e) => (
+                              <SelectItem key={e} value={e}>
+                                {e}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {planilla.entregador && (
+                          <p className="text-sm font-medium text-green-700">
+                            ✓ Asignado a {planilla.entregador}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
