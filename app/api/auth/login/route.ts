@@ -5,60 +5,112 @@ import bcrypt from "bcryptjs"
 
 export async function POST(request: Request) {
   try {
-    console.log("[v0] Login request received")
-    const { email, password } = await request.json()
+    console.log("[API register] Registration request received")
+    
+    const body = await request.json()
+    const { nombre, email, password, rol } = body
 
-    console.log("[v0] Login attempt for email:", email)
+    // Validaciones
+    if (!nombre || !email || !password) {
+      return NextResponse.json(
+        { error: "Faltan campos requeridos: nombre, email, password" },
+        { status: 400 }
+      )
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: "La contraseña debe tener al menos 6 caracteres" },
+        { status: 400 }
+      )
+    }
+
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: "Email inválido" },
+        { status: 400 }
+      )
+    }
 
     const sql = getDB()
 
-    const users = await sql`
-      SELECT * FROM usuarios WHERE email = ${email}
+    // Verificar si el email ya existe
+    const existing = await sql`
+      SELECT id FROM usuarios WHERE email = ${email}
     `
 
-    console.log("[v0] User query result:", users.length > 0 ? "found" : "not found")
-
-    if (users.length === 0) {
-      return NextResponse.json({ error: "Correo o contraseña incorrectos" }, { status: 401 })
+    if (existing.length > 0) {
+      return NextResponse.json(
+        { error: "El email ya está registrado" },
+        { status: 400 }
+      )
     }
 
-    const user = users[0]
-    console.log("[v0] User found:", user.email, "rol:", user.rol, "estado:", user.estado)
+    // Generar ID único tipo TEXT
+    const timestamp = Date.now()
+    const random = Math.floor(Math.random() * 1000)
+    const userId = `USR${timestamp}${random}`
 
-    if (!user.password_hash) {
-      console.log("[v0] User has no password hash")
-      return NextResponse.json({ error: "Cuenta inválida" }, { status: 401 })
-    }
+    // Hash de la contraseña
+    const passwordHash = await bcrypt.hash(password, 10)
 
-    const isValidPassword = await bcrypt.compare(password, user.password_hash)
-    console.log("[v0] Password valid:", isValidPassword)
+    // Rol por defecto si no se especifica (por seguridad, solo permitir ciertos roles)
+    const allowedRoles = ['coordinador', 'alistador', 'entregador', 'caja']
+    const userRole = rol && allowedRoles.includes(rol) ? rol : 'coordinador'
 
-    if (!isValidPassword) {
-      return NextResponse.json({ error: "Correo o contraseña incorrectos" }, { status: 401 })
-    }
+    console.log("[API register] Creating user:", { userId, nombre, email, rol: userRole })
 
-    if (user.estado !== "activo") {
-      console.log("[v0] User is not active, estado:", user.estado)
-      return NextResponse.json({ error: "Cuenta no activa" }, { status: 403 })
-    }
+    // Crear usuario
+    const result = await sql`
+      INSERT INTO usuarios (
+        id,
+        nombre,
+        email,
+        password_hash,
+        rol,
+        estado,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${userId},
+        ${nombre},
+        ${email},
+        ${passwordHash},
+        ${userRole},
+        'activo',
+        NOW(),
+        NOW()
+      )
+      RETURNING id, nombre, email, rol, estado
+    `
 
-    console.log("[v0] Creating session for user:", user.id)
-    await createSession(user.id)
+    const newUser = result[0]
 
-    console.log("[v0] Login successful, returning response")
+    console.log("[API register] User created successfully:", newUser.id)
+
+    // Crear sesión automáticamente
+    await createSession(newUser.id)
+
+    console.log("[API register] Session created, returning response")
 
     return NextResponse.json({
       success: true,
       user: {
-        id: user.id,
-        email: user.email,
-        nombre: user.nombre,
-        rol: user.rol,
-        estado: user.estado,
+        id: newUser.id,
+        nombre: newUser.nombre,
+        email: newUser.email,
+        rol: newUser.rol,
+        estado: newUser.estado,
       },
     })
-  } catch (error) {
-    console.error("[v0] Error in login route:", error)
-    return NextResponse.json({ error: "Error al iniciar sesión" }, { status: 500 })
+  } catch (error: any) {
+    console.error("[API register] Error:", error)
+    return NextResponse.json(
+      { error: "Error al registrar usuario: " + error.message },
+      { status: 500 }
+    )
   }
 }
