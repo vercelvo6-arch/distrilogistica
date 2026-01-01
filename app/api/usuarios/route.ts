@@ -163,23 +163,49 @@ export async function PATCH(request: Request) {
       delete updates.password
     }
 
-    // Agregar updated_at
-    updates.updated_at = new Date().toISOString()
-
-    // Construir query dinámicamente
-    const setClauses = Object.keys(updates)
-      .map((key) => `${key} = $${key}`)
-      .join(', ')
-
     console.log("[API usuarios] Updating user:", userId, updates)
 
-    // Actualizar usuario (ID es TEXT, no UUID)
-    const result = await sql`
-      UPDATE usuarios 
-      SET ${sql(updates)}
-      WHERE id = ${userId}
-      RETURNING id, nombre, email, rol, estado
-    `
+    // Actualizar solo los campos específicos que vienen en updates
+    let result;
+    
+    if (updates.estado) {
+      // Actualización de estado (activar/desactivar)
+      result = await sql`
+        UPDATE usuarios 
+        SET estado = ${updates.estado}, updated_at = NOW()
+        WHERE id = ${userId}
+        RETURNING id, nombre, email, rol, estado
+      `
+    } else if (updates.rol) {
+      // Actualización de rol
+      result = await sql`
+        UPDATE usuarios 
+        SET rol = ${updates.rol}, updated_at = NOW()
+        WHERE id = ${userId}
+        RETURNING id, nombre, email, rol, estado
+      `
+    } else if (updates.password_hash) {
+      // Actualización de contraseña
+      result = await sql`
+        UPDATE usuarios 
+        SET password_hash = ${updates.password_hash}, updated_at = NOW()
+        WHERE id = ${userId}
+        RETURNING id, nombre, email, rol, estado
+      `
+    } else {
+      // Actualización completa
+      result = await sql`
+        UPDATE usuarios 
+        SET 
+          nombre = COALESCE(${updates.nombre}, nombre),
+          email = COALESCE(${updates.email}, email),
+          rol = COALESCE(${updates.rol}, rol),
+          estado = COALESCE(${updates.estado}, estado),
+          updated_at = NOW()
+        WHERE id = ${userId}
+        RETURNING id, nombre, email, rol, estado
+      `
+    }
 
     if (result.length === 0) {
       return NextResponse.json(
