@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react"
-import { User } from "lucide-react" // Import User icon
+import { User } from "lucide-react"
 import type { RouteSheet, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -28,6 +28,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null)
 
+  // CRÍTICO: Usar el nombre del usuario para filtrar
   const deliveryPerson = user.nombre
 
   useEffect(() => {
@@ -82,22 +83,34 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         cuentasPorCobrar: [],
       }))
       
+      console.log('📦 [ENTREGADOR] Planillas totales:', planillas.length)
+      console.log('👤 [ENTREGADOR] Mi nombre:', deliveryPerson)
+      
+      // Filtrar SOLO las rutas de ESTE entregador
+      const misRutas = planillas.filter(p => p.entregador === deliveryPerson)
+      console.log('🚚 [ENTREGADOR] Mis rutas:', misRutas.length)
+      
       setRouteSheets(planillas)
     } catch (err) {
-      console.error("[v0] Error loading planillas:", err)
+      console.error("[ENTREGADOR] Error loading planillas:", err)
     } finally {
       setLoading(false)
     }
   }
 
-  const myRoutes = routeSheets.filter((s) => s.entregador === deliveryPerson && s.estado === "alistado")
+  // FILTRO CRÍTICO: Solo mostrar rutas de ESTE entregador que estén alistadas
+  const myRoutes = routeSheets.filter((s) => 
+    s.entregador === deliveryPerson && s.estado === "alistado"
+  )
+
+  console.log('🔍 [ENTREGADOR] Rutas filtradas para mí:', myRoutes.length)
 
   const handleItemReturn = async (sheetId: string, orderId: string, codigo: string, currentDevuelto: boolean) => {
     try {
       await updateProductoDevuelto(orderId, codigo, !currentDevuelto)
       await loadData()
     } catch (err) {
-      console.error("[v0] Error updating product return:", err)
+      console.error("[ENTREGADOR] Error updating product return:", err)
       toast({
         title: "Error",
         description: "No se pudo actualizar el producto",
@@ -111,7 +124,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       await updatePedidoEstado(orderId, newStatus)
       await loadData()
 
-      // Recalculate totals
+      // Recalcular totales
       const updatedSheet = routeSheets.find((s) => s.id === sheetId)
       if (updatedSheet) {
         const totals = calculateRouteTotals(updatedSheet)
@@ -124,7 +137,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         description: `Pedido marcado como ${newStatus}`,
       })
     } catch (err) {
-      console.error("[v0] Error updating order status:", err)
+      console.error("[ENTREGADOR] Error updating order status:", err)
       toast({
         title: "Error",
         description: "No se pudo actualizar el pedido",
@@ -144,7 +157,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         description: "La ruta ha sido marcada como completada y la comisión ha sido calculada",
       })
     } catch (err) {
-      console.error("[v0] Error completing route:", err)
+      console.error("[ENTREGADOR] Error completing route:", err)
       toast({
         title: "Error",
         description: "No se pudo completar la ruta",
@@ -204,11 +217,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const totalRoutes = myRoutes.length
   const totalOrders = myRoutes.reduce((sum, sheet) => sum + sheet.totalOrders, 0)
   const totalAmount = myRoutes.reduce((sum, sheet) => sum + (sheet.montoCargue || 0), 0)
-  const consolidatedProducts = Array.from(
-    new Set(myRoutes.flatMap((sheet) => sheet.orders.flatMap((order) => order.items.map((item) => item.codigo)))),
-  )
-  const allPending = myRoutes.every((sheet) => sheet.estado === "pendiente")
-  const allReady = myRoutes.every((sheet) => sheet.estado === "ready")
 
   if (loading) {
     return (
@@ -224,32 +232,15 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         <div className="container mx-auto px-3 md:px-4 py-3 md:py-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 md:gap-3">
-              <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-purple-600">
+              <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
                 <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
               </div>
               <div>
                 <h2 className="font-bold text-lg md:text-xl">{deliveryPerson}</h2>
                 <p className="text-xs md:text-sm text-muted-foreground">
-                  {totalRoutes} ruta{totalRoutes > 1 ? "s" : ""} · {totalOrders} pedidos · Total:{" "}
-                  {formatCOP(totalAmount)}
+                  {totalRoutes} ruta{totalRoutes !== 1 ? "s" : ""} · {totalOrders} pedidos · Total: {formatCOP(totalAmount)}
                 </p>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 mt-3">
-              <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-purple-700 rounded-full font-medium">
-                {consolidatedProducts.length} productos diferentes
-              </span>
-              <span
-                className={`text-xs px-2 py-1 rounded-full shrink-0 ${
-                  allPending
-                    ? "bg-yellow-100 text-yellow-700"
-                    : allReady
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-orange-100 text-orange-700"
-                }`}
-              >
-                {allPending ? "Por alistar" : allReady ? "Listo para completar" : "En proceso"}
-              </span>
             </div>
             <Button variant="outline" size="sm" onClick={onLogout}>
               <LogOut className="h-4 w-4 md:mr-2" />
@@ -285,8 +276,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             {allOrdersProcessed && (
               <Card className="p-4 bg-green-50 border-green-200">
                 <p className="text-sm text-green-700 font-medium">
-                  Todos los pedidos han sido procesados. Haz clic en "Completar Ruta" para finalizar y calcular tu
-                  comisión.
+                  Todos los pedidos han sido procesados. Haz clic en "Completar Ruta" para finalizar y calcular tu comisión.
                 </p>
               </Card>
             )}
@@ -452,7 +442,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           </div>
         ) : (
           <div className="space-y-6">
-            {myRoutes.length > 0 && (
+            {myRoutes.length > 0 ? (
               <div>
                 <h2 className="text-lg md:text-xl font-bold mb-4">Mis Rutas Alistadas</h2>
                 <div className="space-y-3">
@@ -477,14 +467,12 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   ))}
                 </div>
               </div>
-            )}
-
-            {myRoutes.length === 0 && (
+            ) : (
               <Card className="p-8 md:p-12 text-center">
                 <Truck className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas listas para entrega</h3>
                 <p className="text-sm md:text-base text-muted-foreground">
-                  Tus rutas asignadas deben ser alistadas antes de poder realizar entregas
+                  Espera a que el alistador prepare tus rutas asignadas
                 </p>
               </Card>
             )}
