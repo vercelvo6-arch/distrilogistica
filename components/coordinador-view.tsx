@@ -6,19 +6,46 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateRouteSheets } from '@/lib/csv-parser'
-import type { RouteSheet, Entregador } from '@/lib/types'
+import type { Entregador } from '@/lib/types'
 import { formatCOP } from '@/lib/format-utils'
 import { Badge } from '@/components/ui/badge'
 import { useRouter } from 'next/navigation'
+import { Calendar } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { CalendarIcon } from 'lucide-react'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 const ENTREGADORES: Entregador[] = ["Alfonso", "Miguel", "Carlos", "Mateo"]
 
+// Tipo para planillas desde la BD
+interface PlanillaDB {
+  id: string
+  fecha: string
+  tipo_ruta: string
+  entregador: string | null
+  total_cargue: number
+  total_entregado: number
+  total_fiado: number
+  total_repaso: number
+  total_devolucion: number
+  estado: string
+  alistado_por: string | null
+  alistado_en: string | null
+  observaciones: string | null
+  created_at: string
+  updated_at: string
+  pedidos?: any[]
+}
+
 export function CoordinadorView() {
   const router = useRouter()
-  const [planillas, setPlanillas] = useState<RouteSheet[]>([])
+  const [planillas, setPlanillas] = useState<PlanillaDB[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
+  const [showAllDates, setShowAllDates] = useState(false)
   
   const nurturingFileRef = useRef<HTMLInputElement>(null)
   const planillaFileRef = useRef<HTMLInputElement>(null)
@@ -27,6 +54,15 @@ export function CoordinadorView() {
   useEffect(() => {
     loadPlanillas()
   }, [])
+
+  // Filtrar planillas por fecha seleccionada
+  const filteredPlanillas = showAllDates 
+    ? planillas 
+    : planillas.filter(p => {
+        if (!selectedDate) return true
+        const planillaDate = new Date(p.fecha)
+        return planillaDate.toDateString() === selectedDate.toDateString()
+      })
 
   // Cargar planillas existentes
   const loadPlanillas = async () => {
@@ -40,6 +76,7 @@ export function CoordinadorView() {
       }
       
       const data = await response.json()
+      console.log('Planillas cargadas desde API:', data.planillas)
       setPlanillas(data.planillas || [])
     } catch (err) {
       console.error('Error cargando planillas:', err)
@@ -116,7 +153,7 @@ export function CoordinadorView() {
   }
 
   // Asignar entregador
-  const handleAssignEntregador = async (sheetId: string, entregador: Entregador) => {
+  const handleAssignEntregador = async (planillaId: string, entregador: Entregador) => {
     try {
       setLoading(true)
       setError(null)
@@ -126,7 +163,7 @@ export function CoordinadorView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          planillaId: sheetId,
+          planillaId: planillaId,
           entregador: entregador
         })
       })
@@ -140,7 +177,7 @@ export function CoordinadorView() {
       setSuccess(`✅ ${entregador} asignado correctamente a la ruta ${result.planilla.tipo_ruta}`)
 
       setPlanillas(prev => prev.map(p => 
-        p.id === sheetId 
+        p.id === planillaId 
           ? { ...p, entregador: entregador }
           : p
       ))
@@ -178,7 +215,7 @@ export function CoordinadorView() {
     <div className="space-y-6 p-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Coordinador</h1>
+          <h1 className="text-3xl font-bold">Coordinador Logístico</h1>
           <p className="text-muted-foreground">Gestión de planillas y asignación de rutas</p>
         </div>
         <div className="flex gap-2">
@@ -249,45 +286,77 @@ export function CoordinadorView() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Planillas Generadas ({planillas.length})</CardTitle>
-          <CardDescription>
-            Asigna entregadores a cada ruta
-          </CardDescription>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle>Planillas Generadas ({filteredPlanillas.length})</CardTitle>
+              <CardDescription>
+                Asigna entregadores a cada ruta
+              </CardDescription>
+            </div>
+            <div className="flex gap-2 items-center">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-[240px] justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {selectedDate ? format(selectedDate, "PPP", { locale: es }) : "Seleccionar fecha"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={setSelectedDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <Button 
+                variant={showAllDates ? "default" : "outline"}
+                onClick={() => setShowAllDates(!showAllDates)}
+              >
+                {showAllDates ? "Filtrar por fecha" : "Ver todas"}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {planillas.length === 0 ? (
+          {filteredPlanillas.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
-              No hay planillas. Genera planillas cargando los archivos CSV.
+              {showAllDates 
+                ? "No hay planillas. Genera planillas cargando los archivos CSV."
+                : "No hay planillas para la fecha seleccionada."}
             </p>
           ) : (
             <div className="space-y-4">
-              {planillas.map((sheet) => (
+              {filteredPlanillas.map((planilla) => (
                 <div
-                  key={sheet.id}
+                  key={planilla.id}
                   className="border rounded-lg p-4 space-y-3"
                 >
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-lg">Ruta {sheet.ruta}</h3>
-                        <Badge variant={getEstadoBadge(sheet.estado)}>
-                          {sheet.estado}
+                        <h3 className="font-bold text-lg">Ruta {planilla.tipo_ruta}</h3>
+                        <Badge variant={getEstadoBadge(planilla.estado)}>
+                          {planilla.estado}
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Fecha: {new Date(sheet.fecha).toLocaleDateString('es-CO')}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {sheet.totalOrders} pedidos
+                        Fecha: {new Date(planilla.fecha).toLocaleDateString('es-CO')}
                       </p>
                       <p className="text-sm font-semibold text-blue-700">
-                        Cargue Total: {formatCOP(sheet.totalAmount)}
+                        Cargue Total: {formatCOP(planilla.total_cargue)}
                       </p>
+                      {planilla.pedidos && (
+                        <p className="text-sm text-muted-foreground">
+                          {planilla.pedidos.length} pedidos
+                        </p>
+                      )}
                     </div>
                     <div className="text-right space-y-2">
                       <Select
-                        value={sheet.entregador || ''}
-                        onValueChange={(value) => handleAssignEntregador(sheet.id, value as Entregador)}
+                        value={planilla.entregador || ''}
+                        onValueChange={(value) => handleAssignEntregador(planilla.id, value as Entregador)}
                         disabled={loading}
                       >
                         <SelectTrigger className="w-40">
@@ -301,9 +370,9 @@ export function CoordinadorView() {
                           ))}
                         </SelectContent>
                       </Select>
-                      {sheet.entregador && (
+                      {planilla.entregador && (
                         <p className="text-sm font-medium text-green-700">
-                          ✓ Asignado a {sheet.entregador}
+                          ✓ Asignado a {planilla.entregador}
                         </p>
                       )}
                     </div>
