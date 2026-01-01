@@ -1,4 +1,4 @@
-// app/api/planillas/assign-entregador/route.ts
+// app/api/assign-entregador/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
@@ -25,6 +25,8 @@ export async function POST(request: NextRequest) {
     // 2. Obtener datos del body
     const body = await request.json()
     const { planillaId, entregador } = body
+
+    console.log('Datos recibidos:', { planillaId, entregador })
 
     // Validar datos
     if (!planillaId || typeof planillaId !== 'string') {
@@ -55,8 +57,10 @@ export async function POST(request: NextRequest) {
 
     // 4. Verificar que la planilla existe
     const planillaExists = await sql`
-      SELECT id, estado FROM planillas WHERE id = ${planillaId}
+      SELECT id, estado, tipo_ruta FROM planillas WHERE id = ${planillaId}
     `
+
+    console.log('Planilla encontrada:', planillaExists)
 
     if (planillaExists.length === 0) {
       return NextResponse.json(
@@ -75,6 +79,8 @@ export async function POST(request: NextRequest) {
       RETURNING id, entregador, tipo_ruta, fecha, estado
     `
 
+    console.log('Resultado de actualización:', result)
+
     if (result.length === 0) {
       return NextResponse.json(
         { error: 'Error al actualizar la planilla' },
@@ -82,12 +88,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 6. Retornar éxito
-    return NextResponse.json({
+    // 6. Retornar éxito con estructura completa
+    const response = {
       success: true,
       message: `Entregador ${entregador} asignado correctamente`,
-      planilla: result[0]
-    })
+      planilla: {
+        id: result[0].id,
+        entregador: result[0].entregador,
+        tipo_ruta: result[0].tipo_ruta,
+        fecha: result[0].fecha,
+        estado: result[0].estado
+      }
+    }
+
+    console.log('Respuesta enviada:', response)
+
+    return NextResponse.json(response, { status: 200 })
 
   } catch (error) {
     console.error('Error en assign-entregador API:', error)
