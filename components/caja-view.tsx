@@ -72,15 +72,21 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         cuentasPorCobrar: [],
       }))
       
+      console.log('📦 [CAJA] Planillas cargadas:', planillas.length)
       setRouteSheets(planillas)
     } catch (err) {
-      console.error("[v0] Error loading planillas:", err)
+      console.error("[CAJA] Error loading planillas:", err)
     } finally {
       setLoading(false)
     }
   }
 
-  const completedRoutes = routeSheets.filter((s) => s.estado === "en-entrega" || s.estado === "completado")
+  // CORRECCIÓN: Estados correctos según la BD
+  const completedRoutes = routeSheets.filter((s) => 
+    s.estado === "en_ruta" || s.estado === "completado"
+  )
+
+  console.log('✅ [CAJA] Rutas completadas:', completedRoutes.length)
 
   const entregadores = Array.from(new Set(completedRoutes.map((r) => r.entregador).filter(Boolean))) as string[]
   const rutas = Array.from(new Set(completedRoutes.map((r) => r.ruta)))
@@ -98,7 +104,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     let repasos = 0
 
     route.orders.forEach((order) => {
-      // Calculate order total excluding returned items
       const orderTotal = order.items.reduce((sum, item) => {
         if (item.devuelto) {
           devoluciones += item.subtotal
@@ -242,7 +247,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               <Card className="p-6">
                 <h2 className="text-lg font-semibold mb-4">Detalle por Entregador y Ruta</h2>
                 {filteredRoutes.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">No hay entregas registradas</p>
+                  <p className="text-center text-muted-foreground py-8">
+                    No hay entregas completadas para mostrar
+                  </p>
                 ) : (
                   <div className="space-y-4">
                     {filteredRoutes.map((route) => {
@@ -256,7 +263,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                 {route.entregador} - Ruta {route.ruta}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                {route.totalOrders} pedidos · Fecha: {route.fecha}
+                                {route.totalOrders} pedidos · Fecha: {new Date(route.fecha).toLocaleDateString('es-CO')}
                               </p>
                             </div>
                             <span className="text-sm px-3 py-1 rounded-full bg-blue-100 text-blue-700">
