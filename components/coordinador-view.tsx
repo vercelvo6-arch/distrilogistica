@@ -54,21 +54,19 @@ export function CoordinadorView() {
   // Cargar entregadores desde la BD
   const loadEntregadores = async () => {
     try {
-      const response = await fetch('/api/usuarios')
-      if (!response.ok) throw new Error('Error al cargar usuarios')
+      const response = await fetch('/api/entregadores')
+      if (!response.ok) throw new Error('Error al cargar entregadores')
       
       const data = await response.json()
       
-      // Filtrar solo usuarios con rol "entregador" y estado "activo"
-      const entregadoresActivos = data.usuarios
-        .filter((u: any) => u.rol === 'entregador' && u.estado === 'activo')
-        .map((u: any) => u.nombre)
-        .sort()
+      // Mapear a array de nombres
+      const nombresEntregadores = data.entregadores.map((e: any) => e.nombre)
       
-      setEntregadores(entregadoresActivos)
-      console.log('📦 Entregadores cargados:', entregadoresActivos)
+      setEntregadores(nombresEntregadores)
+      console.log('📦 Entregadores cargados:', nombresEntregadores)
     } catch (err) {
-      console.error('Error cargando entregadores:', err)
+      console.error('❌ Error cargando entregadores:', err)
+      setError('No se pudieron cargar los entregadores')
     }
   }
 
