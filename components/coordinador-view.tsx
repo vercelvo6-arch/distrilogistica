@@ -48,7 +48,29 @@ export function CoordinadorView() {
   // Cargar planillas al montar el componente
   useEffect(() => {
     loadPlanillas()
+    loadEntregadores()
   }, [])
+
+  // Cargar entregadores desde la BD
+  const loadEntregadores = async () => {
+    try {
+      const response = await fetch('/api/usuarios')
+      if (!response.ok) throw new Error('Error al cargar usuarios')
+      
+      const data = await response.json()
+      
+      // Filtrar solo usuarios con rol "entregador" y estado "activo"
+      const entregadoresActivos = data.usuarios
+        .filter((u: any) => u.rol === 'entregador' && u.estado === 'activo')
+        .map((u: any) => u.nombre)
+        .sort()
+      
+      setEntregadores(entregadoresActivos)
+      console.log('📦 Entregadores cargados:', entregadoresActivos)
+    } catch (err) {
+      console.error('Error cargando entregadores:', err)
+    }
+  }
 
   // Obtener fechas únicas de las planillas
   const uniqueDates = Array.from(
@@ -155,7 +177,7 @@ export function CoordinadorView() {
   }
 
   // Asignar entregador
-  const handleAssignEntregador = async (planillaId: string, entregador: Entregador) => {
+  const handleAssignEntregador = async (planillaId: string, entregador: string) => {
     try {
       setLoading(true)
       setError(null)
