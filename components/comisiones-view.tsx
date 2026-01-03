@@ -34,6 +34,9 @@ export function ComisionesView({ onLogout, userRole, userId }: ComisionesViewPro
   const [comisiones, setComisiones] = useState<Comision[]>([])
   const [selectedComisiones, setSelectedComisiones] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
+  
+  // ✅ NUEVO: Estado para entregadores dinámicos
+  const [entregadores, setEntregadores] = useState<string[]>([])
 
   // Filtros
   const [entregadorFilter, setEntregadorFilter] = useState("all")
@@ -47,11 +50,33 @@ export function ComisionesView({ onLogout, userRole, userId }: ComisionesViewPro
   useEffect(() => {
     loadConfigs()
     loadReportes()
+    loadEntregadores() // ✅ NUEVO: Cargar entregadores al inicio
   }, [])
 
   useEffect(() => {
     loadReportes()
   }, [fechaInicio, fechaFin, entregadorFilter])
+
+  // ✅ NUEVO: Función para cargar entregadores desde BD
+  const loadEntregadores = async () => {
+    try {
+      const response = await fetch('/api/entregadores')
+      if (!response.ok) throw new Error('Error al cargar entregadores')
+      
+      const data = await response.json()
+      const nombresEntregadores = data.entregadores.map((e: any) => e.nombre)
+      
+      setEntregadores(nombresEntregadores)
+      console.log('📦 [COMISIONES] Entregadores cargados:', nombresEntregadores)
+    } catch (error) {
+      console.error('❌ [COMISIONES] Error cargando entregadores:', error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los entregadores",
+        variant: "destructive",
+      })
+    }
+  }
 
   const loadConfigs = async () => {
     try {
@@ -169,7 +194,9 @@ export function ComisionesView({ onLogout, userRole, userId }: ComisionesViewPro
     })
   }
 
-  const entregadores = ["Alfonso", "Miguel", "Carlos", "Mateo"]
+  // ✅ ELIMINADA la línea hardcodeada:
+  // const entregadores = ["Alfonso", "Miguel", "Carlos", "Mateo"]
+  
   const totalGeneral = reportes.reduce((sum, r) => sum + r.monto_comision, 0)
 
   return (
