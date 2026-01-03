@@ -42,10 +42,12 @@ export async function getSession() {
     }
     
     const sql = getDB()
+    
+    // CORRECCIÓN: Ahora user_id y usuarios.id son TEXT, no UUID
     const sessions = await sql`
       SELECT s.id, s.user_id, s.expires_at, u.id as uid, u.email, u.nombre, u.rol, u.estado
       FROM sessions s
-      JOIN usuarios u ON s.user_id::uuid = u.id
+      JOIN usuarios u ON s.user_id = u.id
       WHERE s.id = ${sessionToken}
         AND s.expires_at > NOW()
     `
