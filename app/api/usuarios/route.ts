@@ -32,7 +32,7 @@ export async function GET() {
     
     return NextResponse.json({ usuarios })
   } catch (error: any) {
-    console.error("Error getting users:", error)
+    console.error("[API usuarios] Error getting users:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -52,6 +52,8 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const { nombre, email, password, rol, estado } = body
+
+    console.log("[API usuarios] Request body:", { nombre, email, rol, estado })
 
     // Validaciones
     if (!nombre || !email || !password || !rol) {
@@ -82,17 +84,19 @@ export async function POST(request: Request) {
       )
     }
 
-    // Generar ID único tipo TEXT
+    // Generar ID único tipo TEXT (ahora la columna es TEXT)
     const timestamp = Date.now()
-    const random = Math.floor(Math.random() * 1000)
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
     const userId = `USR${timestamp}${random}`
+
+    console.log("[API usuarios] Generated userId:", userId)
 
     // Hash de la contraseña con bcrypt
     const passwordHash = await bcrypt.hash(password, 10)
 
     console.log("[API usuarios] Creating user:", { userId, nombre, email, rol })
 
-    // Insertar usuario
+    // Insertar usuario (id ahora es TEXT, no UUID)
     const result = await sql`
       INSERT INTO usuarios (
         id,
@@ -163,49 +167,30 @@ export async function PATCH(request: Request) {
       delete updates.password
     }
 
+    // Agregar updated_at
+    updates.updated_at = new Date().toISOString()
+
     console.log("[API usuarios] Updating user:", userId, updates)
 
-    // Actualizar solo los campos específicos que vienen en updates
-    let result;
-    
-    if (updates.estado) {
-      // Actualización de estado (activar/desactivar)
-      result = await sql`
-        UPDATE usuarios 
-        SET estado = ${updates.estado}, updated_at = NOW()
-        WHERE id = ${userId}
-        RETURNING id, nombre, email, rol, estado
-      `
-    } else if (updates.rol) {
-      // Actualización de rol
-      result = await sql`
-        UPDATE usuarios 
-        SET rol = ${updates.rol}, updated_at = NOW()
-        WHERE id = ${userId}
-        RETURNING id, nombre, email, rol, estado
-      `
-    } else if (updates.password_hash) {
-      // Actualización de contraseña
-      result = await sql`
-        UPDATE usuarios 
-        SET password_hash = ${updates.password_hash}, updated_at = NOW()
-        WHERE id = ${userId}
-        RETURNING id, nombre, email, rol, estado
-      `
-    } else {
-      // Actualización completa
-      result = await sql`
-        UPDATE usuarios 
-        SET 
-          nombre = COALESCE(${updates.nombre}, nombre),
-          email = COALESCE(${updates.email}, email),
-          rol = COALESCE(${updates.rol}, rol),
-          estado = COALESCE(${updates.estado}, estado),
-          updated_at = NOW()
-        WHERE id = ${userId}
-        RETURNING id, nombre, email, rol, estado
-      `
+    // Construir query dinámicamente para los campos que vienen
+    const setFields = Object.keys(updates)
+      .filter(key => updates[key] !== undefined)
+      .map(key => `${key} = $${key}`)
+
+    if (setFields.length === 0) {
+      return NextResponse.json(
+        { error: "No hay campos para actualizar" }, 
+        { status: 400 }
+      )
     }
+
+    // Actualizar usando sql template (id es TEXT)
+    const result = await sql`
+      UPDATE usuarios 
+      SET ${sql(updates)}
+      WHERE id = ${userId}
+      RETURNING id, nombre, email, rol, estado
+    `
 
     if (result.length === 0) {
       return NextResponse.json(
@@ -255,7 +240,7 @@ export async function DELETE(request: Request) {
 
     console.log("[API usuarios] Deleting user:", userId)
 
-    // Eliminar usuario (ID es TEXT, no UUID)
+    // Eliminar usuario (id es TEXT)
     const result = await sql`
       DELETE FROM usuarios 
       WHERE id = ${userId}
