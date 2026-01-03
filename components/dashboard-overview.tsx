@@ -15,7 +15,7 @@ type FiltroFecha = "hoy" | "ayer" | "ultimos7" | "ultimos30" | "todas" | "person
 export function DashboardOverview() {
   const [planillas, setPlanillas] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
-  const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>("hoy")
+  const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>("todas")
   const [fechaDesde, setFechaDesde] = useState("")
   const [fechaHasta, setFechaHasta] = useState("")
 
@@ -84,36 +84,51 @@ export function DashboardOverview() {
     hoy.setHours(0, 0, 0, 0)
     
     return planillas.filter((p) => {
-      const fechaPlanilla = new Date(p.fecha + 'T00:00:00')
+      if (!p.fecha) return false // Ignorar planillas sin fecha
       
-      switch (filtroFecha) {
-        case "hoy":
-          return fechaPlanilla.toISOString().split('T')[0] === hoy.toISOString().split('T')[0]
+      try {
+        // Asegurar formato de fecha correcto
+        const fechaStr = typeof p.fecha === 'string' ? p.fecha : p.fecha.toString()
+        const fechaPlanilla = new Date(fechaStr.includes('T') ? fechaStr : fechaStr + 'T00:00:00')
         
-        case "ayer":
-          const ayer = new Date(hoy)
-          ayer.setDate(ayer.getDate() - 1)
-          return fechaPlanilla.toISOString().split('T')[0] === ayer.toISOString().split('T')[0]
+        // Validar que la fecha sea válida
+        if (isNaN(fechaPlanilla.getTime())) return false
         
-        case "ultimos7":
-          const hace7dias = new Date(hoy)
-          hace7dias.setDate(hace7dias.getDate() - 7)
-          return fechaPlanilla >= hace7dias && fechaPlanilla <= hoy
+        const fechaPlanillaStr = fechaPlanilla.toISOString().split('T')[0]
+        const hoyStr = hoy.toISOString().split('T')[0]
         
-        case "ultimos30":
-          const hace30dias = new Date(hoy)
-          hace30dias.setDate(hace30dias.getDate() - 30)
-          return fechaPlanilla >= hace30dias && fechaPlanilla <= hoy
-        
-        case "personalizado":
-          if (!fechaDesde || !fechaHasta) return true
-          const desde = new Date(fechaDesde + 'T00:00:00')
-          const hasta = new Date(fechaHasta + 'T23:59:59')
-          return fechaPlanilla >= desde && fechaPlanilla <= hasta
-        
-        case "todas":
-        default:
-          return true
+        switch (filtroFecha) {
+          case "hoy":
+            return fechaPlanillaStr === hoyStr
+          
+          case "ayer":
+            const ayer = new Date(hoy)
+            ayer.setDate(ayer.getDate() - 1)
+            return fechaPlanillaStr === ayer.toISOString().split('T')[0]
+          
+          case "ultimos7":
+            const hace7dias = new Date(hoy)
+            hace7dias.setDate(hace7dias.getDate() - 7)
+            return fechaPlanilla >= hace7dias && fechaPlanilla <= hoy
+          
+          case "ultimos30":
+            const hace30dias = new Date(hoy)
+            hace30dias.setDate(hace30dias.getDate() - 30)
+            return fechaPlanilla >= hace30dias && fechaPlanilla <= hoy
+          
+          case "personalizado":
+            if (!fechaDesde || !fechaHasta) return true
+            const desde = new Date(fechaDesde + 'T00:00:00')
+            const hasta = new Date(fechaHasta + 'T23:59:59')
+            return fechaPlanilla >= desde && fechaPlanilla <= hasta
+          
+          case "todas":
+          default:
+            return true
+        }
+      } catch (error) {
+        console.error('Error procesando fecha:', p.fecha, error)
+        return false
       }
     })
   }
@@ -177,7 +192,7 @@ export function DashboardOverview() {
       case "ultimos30": return "Últimos 30 días"
       case "personalizado": return "Rango personalizado"
       case "todas": return "Todas"
-      default: return "Hoy"
+      default: return "Todas"
     }
   }
 
@@ -211,11 +226,11 @@ export function DashboardOverview() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="todas">Todas las fechas</SelectItem>
               <SelectItem value="hoy">Hoy</SelectItem>
               <SelectItem value="ayer">Ayer</SelectItem>
               <SelectItem value="ultimos7">Últimos 7 días</SelectItem>
               <SelectItem value="ultimos30">Últimos 30 días</SelectItem>
-              <SelectItem value="todas">Todas las fechas</SelectItem>
               <SelectItem value="personalizado">Rango personalizado</SelectItem>
             </SelectContent>
           </Select>
