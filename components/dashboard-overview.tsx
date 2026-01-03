@@ -3,13 +3,21 @@
 import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Truck, Package, CheckCircle2, Clock, AlertCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Truck, Package, CheckCircle2, Clock, AlertCircle, Calendar } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import type { RouteSheet } from "@/lib/types"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+
+type FiltroFecha = "hoy" | "ayer" | "ultimos7" | "ultimos30" | "todas" | "personalizado"
 
 export function DashboardOverview() {
   const [planillas, setPlanillas] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
+  const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>("hoy")
+  const [fechaDesde, setFechaDesde] = useState("")
+  const [fechaHasta, setFechaHasta] = useState("")
 
   useEffect(() => {
     loadData()
@@ -27,7 +35,6 @@ export function DashboardOverview() {
       
       const data = await response.json()
       
-      // Transformar datos del API al formato RouteSheet
       const planillasData: RouteSheet[] = (data.planillas || []).map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
@@ -71,24 +78,63 @@ export function DashboardOverview() {
     }
   }
 
-  // Obtener estadísticas del día actual
-  const hoy = new Date().toISOString().split("T")[0]
-  const planillasHoy = planillas.filter((p) => p.fecha === hoy)
+  // Función para filtrar planillas según el rango de fechas
+  const getPlanillasFiltradas = () => {
+    const hoy = new Date()
+    hoy.setHours(0, 0, 0, 0)
+    
+    return planillas.filter((p) => {
+      const fechaPlanilla = new Date(p.fecha + 'T00:00:00')
+      
+      switch (filtroFecha) {
+        case "hoy":
+          return fechaPlanilla.toISOString().split('T')[0] === hoy.toISOString().split('T')[0]
+        
+        case "ayer":
+          const ayer = new Date(hoy)
+          ayer.setDate(ayer.getDate() - 1)
+          return fechaPlanilla.toISOString().split('T')[0] === ayer.toISOString().split('T')[0]
+        
+        case "ultimos7":
+          const hace7dias = new Date(hoy)
+          hace7dias.setDate(hace7dias.getDate() - 7)
+          return fechaPlanilla >= hace7dias && fechaPlanilla <= hoy
+        
+        case "ultimos30":
+          const hace30dias = new Date(hoy)
+          hace30dias.setDate(hace30dias.getDate() - 30)
+          return fechaPlanilla >= hace30dias && fechaPlanilla <= hoy
+        
+        case "personalizado":
+          if (!fechaDesde || !fechaHasta) return true
+          const desde = new Date(fechaDesde + 'T00:00:00')
+          const hasta = new Date(fechaHasta + 'T23:59:59')
+          return fechaPlanilla >= desde && fechaPlanilla <= hasta
+        
+        case "todas":
+        default:
+          return true
+      }
+    })
+  }
+
+  const planillasFiltradas = getPlanillasFiltradas()
 
   const estadisticas = {
-    totalRutas: planillasHoy.length,
-    rutasPendientes: planillasHoy.filter((p) => p.estado === "pendiente").length,
-    rutasAlistando: planillasHoy.filter((p) => p.estado === "alistando").length,
-    rutasAlistadas: planillasHoy.filter((p) => p.estado === "alistado").length,
-    rutasEnReparto: planillasHoy.filter((p) => p.estado === "en_reparto").length,
-    rutasCompletadas: planillasHoy.filter((p) => p.estado === "completado").length,
-    totalPedidos: planillasHoy.reduce((sum, p) => sum + p.totalOrders, 0),
-    totalCargue: planillasHoy.reduce((sum, p) => sum + p.totalAmount, 0),
+    totalRutas: planillasFiltradas.length,
+    rutasPendientes: planillasFiltradas.filter((p) => p.estado === "pendiente").length,
+    rutasAlistando: planillasFiltradas.filter((p) => p.estado === "alistando").length,
+    rutasAlistadas: planillasFiltradas.filter((p) => p.estado === "alistado").length,
+    rutasEnReparto: planillasFiltradas.filter((p) => p.estado === "en_reparto").length,
+    rutasCompletadas: planillasFiltradas.filter((p) => p.estado === "completado").length,
+    totalPedidos: planillasFiltradas.reduce((sum, p) => sum + p.totalOrders, 0),
+    totalCargue: planillasFiltradas.reduce((sum, p) => sum + p.totalAmount, 0),
   }
 
   // Agrupar por entregador
-  const porEntregador = planillasHoy.reduce(
+  const porEntregador = planillasFiltradas.reduce(
     (acc, p) => {
+      if (!p.entregador) return acc
       if (!acc[p.entregador]) {
         acc[p.entregador] = {
           rutas: 0,
@@ -123,6 +169,18 @@ export function DashboardOverview() {
     )
   }
 
+  const getFiltroLabel = () => {
+    switch (filtroFecha) {
+      case "hoy": return "Hoy"
+      case "ayer": return "Ayer"
+      case "ultimos7": return "Últimos 7 días"
+      case "ultimos30": return "Últimos 30 días"
+      case "personalizado": return "Rango personalizado"
+      case "todas": return "Todas"
+      default: return "Hoy"
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -140,9 +198,51 @@ export function DashboardOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Resumen del día */}
+      {/* Filtros de fecha */}
+      <Card className="p-4">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-muted-foreground" />
+            <span className="font-medium">Filtrar por fecha:</span>
+          </div>
+          
+          <Select value={filtroFecha} onValueChange={(v: FiltroFecha) => setFiltroFecha(v)}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hoy">Hoy</SelectItem>
+              <SelectItem value="ayer">Ayer</SelectItem>
+              <SelectItem value="ultimos7">Últimos 7 días</SelectItem>
+              <SelectItem value="ultimos30">Últimos 30 días</SelectItem>
+              <SelectItem value="todas">Todas las fechas</SelectItem>
+              <SelectItem value="personalizado">Rango personalizado</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {filtroFecha === "personalizado" && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={fechaDesde}
+                onChange={(e) => setFechaDesde(e.target.value)}
+                className="w-[150px]"
+              />
+              <span>hasta</span>
+              <Input
+                type="date"
+                value={fechaHasta}
+                onChange={(e) => setFechaHasta(e.target.value)}
+                className="w-[150px]"
+              />
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Resumen */}
       <div>
-        <h2 className="text-lg font-semibold mb-3">Resumen del Día - {hoy}</h2>
+        <h2 className="text-lg font-semibold mb-3">Resumen - {getFiltroLabel()}</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <Card className="p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -179,13 +279,13 @@ export function DashboardOverview() {
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
             <Package className="h-4 w-4 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Total Pedidos Hoy</p>
+            <p className="text-sm text-muted-foreground">Total Pedidos</p>
           </div>
           <p className="text-3xl font-bold">{estadisticas.totalPedidos}</p>
         </Card>
 
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground mb-1">Total Cargue Hoy</p>
+          <p className="text-sm text-muted-foreground mb-1">Total Cargue</p>
           <p className="text-3xl font-bold text-teal-600">{formatCOP(estadisticas.totalCargue)}</p>
         </Card>
       </div>
@@ -221,18 +321,19 @@ export function DashboardOverview() {
         </div>
       )}
 
-      {/* Rutas del día con detalles */}
-      {planillasHoy.length > 0 && (
+      {/* Rutas detalladas */}
+      {planillasFiltradas.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold mb-3">Detalle de Rutas Hoy</h2>
+          <h2 className="text-lg font-semibold mb-3">Detalle de Rutas ({planillasFiltradas.length})</h2>
           <Card className="p-4">
             <div className="space-y-3">
-              {planillasHoy.map((planilla) => (
+              {planillasFiltradas.map((planilla) => (
                 <div key={planilla.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
                       <p className="font-semibold">Ruta {planilla.ruta}</p>
-                      <p className="text-sm text-muted-foreground">{planilla.entregador}</p>
+                      <p className="text-sm text-muted-foreground">{planilla.entregador || "Sin asignar"}</p>
+                      <p className="text-xs text-muted-foreground">({planilla.fecha})</p>
                     </div>
                     {getEstadoBadge(planilla.estado)}
                   </div>
@@ -257,12 +358,12 @@ export function DashboardOverview() {
         </div>
       )}
 
-      {planillasHoy.length === 0 && (
+      {planillasFiltradas.length === 0 && (
         <Card className="p-8">
           <div className="text-center">
             <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-lg font-semibold mb-1">No hay rutas programadas para hoy</p>
-            <p className="text-sm text-muted-foreground">El coordinador debe crear las planillas del día</p>
+            <p className="text-lg font-semibold mb-1">No hay rutas en el rango seleccionado</p>
+            <p className="text-sm text-muted-foreground">Intenta cambiar el filtro de fecha</p>
           </div>
         </Card>
       )}
