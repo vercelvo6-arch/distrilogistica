@@ -1,7 +1,5 @@
-// types.ts - Asegúrate que estos tipos estén así
-
-export type Entregador = "Alfonso" | "Miguel" | "Carlos" | "Mateo"
-export const ENTREGADORES: Entregador[] = ["Alfonso", "Miguel", "Carlos", "Mateo"]
+// types.ts - Sistema dinámico de entregadores desde BD
+export type Entregador = string // Ya no limitado a nombres específicos
 
 export interface OrderItem {
   codigo: string
@@ -24,7 +22,7 @@ export interface Order {
   comentarios?: string
   montoPagado: number
   saldoPendiente: number
-  entregador?: Entregador | null
+  entregador?: string | null
 }
 
 export interface RouteSheet {
@@ -40,11 +38,11 @@ export interface RouteSheet {
   montoFiado: number
   montoDevoluciones: number
   montoRepasos: number
-  entregador?: Entregador | null
-  cuentasPorCobrar: any[] // Define mejor si es necesario
+  entregador?: string | null
+  tipoRuta?: string
+  cuentasPorCobrar: any[]
 }
 
-// Los demás tipos (SalesRecord, Product, etc.) mantenlos como están
 export interface SalesRecord {
   numeroArticulo: string
   nombreProducto: string
@@ -62,4 +60,16 @@ export interface Product {
   codigo: string
   descripcion: string
   categoria: string
+}
+
+export type UserRole = "coordinador" | "alistador" | "entregador" | "caja" | "administrador"
+
+export interface User {
+  id: string
+  nombre: string
+  email: string
+  rol: UserRole
+  estado: "activo" | "inactivo"
+  created_at?: string | Date
+  updated_at?: string | Date
 }
