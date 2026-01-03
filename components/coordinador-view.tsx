@@ -6,12 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateRouteSheets } from '@/lib/csv-parser'
-import type { Entregador } from '@/lib/types'
 import { formatCOP } from '@/lib/format-utils'
 import { Badge } from '@/components/ui/badge'
 import { useRouter } from 'next/navigation'
-
-const ENTREGADORES: Entregador[] = ["Alfonso", "Miguel", "Carlos", "Mateo"]
 
 // Tipo para planillas desde la BD
 interface PlanillaDB {
@@ -36,6 +33,7 @@ interface PlanillaDB {
 export function CoordinadorView() {
   const router = useRouter()
   const [planillas, setPlanillas] = useState<PlanillaDB[]>([])
+  const [entregadores, setEntregadores] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -59,7 +57,6 @@ export function CoordinadorView() {
       
       const data = await response.json()
       
-      // Mapear a array de nombres
       const nombresEntregadores = data.entregadores.map((e: any) => e.nombre)
       
       setEntregadores(nombresEntregadores)
@@ -70,7 +67,7 @@ export function CoordinadorView() {
     }
   }
 
-  // Obtener fechas únicas de las planillas
+  // Obtener fechas únicas
   const uniqueDates = Array.from(
     new Set(planillas.map(p => p.fecha))
   ).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
@@ -87,18 +84,9 @@ export function CoordinadorView() {
       setError(null)
       
       const response = await fetch('/api/planillas')
-      if (!response.ok) {
-        throw new Error('Error al cargar planillas')
-      }
+      if (!response.ok) throw new Error('Error al cargar planillas')
       
       const data = await response.json()
-      console.log('📦 Planillas cargadas:', data.planillas)
-      
-      // Log de la primera planilla para debugging
-      if (data.planillas && data.planillas.length > 0) {
-        console.log('📋 Ejemplo de planilla:', data.planillas[0])
-      }
-      
       setPlanillas(data.planillas || [])
     } catch (err) {
       console.error('❌ Error cargando planillas:', err)
@@ -391,14 +379,14 @@ export function CoordinadorView() {
                       <div className="text-right space-y-2">
                         <Select
                           value={planilla.entregador || ''}
-                          onValueChange={(value) => handleAssignEntregador(planilla.id, value as Entregador)}
-                          disabled={loading}
+                          onValueChange={(value) => handleAssignEntregador(planilla.id, value)}
+                          disabled={loading || entregadores.length === 0}
                         >
                           <SelectTrigger className="w-40">
-                            <SelectValue placeholder="Asignar entregador" />
+                            <SelectValue placeholder={entregadores.length === 0 ? "Cargando..." : "Asignar entregador"} />
                           </SelectTrigger>
                           <SelectContent>
-                            {ENTREGADORES.map((e) => (
+                            {entregadores.map((e) => (
                               <SelectItem key={e} value={e}>
                                 {e}
                               </SelectItem>
