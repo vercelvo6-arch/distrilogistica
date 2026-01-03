@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -30,6 +29,24 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     loadPlanillas()
     loadEntregadores()
   }, [])
+
+  // FUNCIÓN PARA CARGAR ENTREGADORES DESDE LA BD
+  async function loadEntregadores() {
+    try {
+      const response = await fetch('/api/entregadores')
+      if (!response.ok) throw new Error('Error al cargar entregadores')
+      
+      const data = await response.json()
+      
+      const nombresEntregadores = data.entregadores.map((e: any) => e.nombre)
+      
+      setEntregadores(nombresEntregadores)
+      console.log('📦 [COORD] Entregadores cargados:', nombresEntregadores)
+    } catch (err) {
+      console.error('❌ [COORD] Error cargando entregadores:', err)
+      setError('No se pudieron cargar los entregadores')
+    }
+  }
 
   async function loadPlanillas() {
     console.log("[COORD-LOAD] Iniciando carga de planillas...")
@@ -200,10 +217,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
 
   const handleAssignEntregador = async (sheetId: string, entregador: string) => {
     try {
-      const response = await fetch(`/api/planillas/${sheetId}/assign`, {
-        method: 'PATCH',
+      const response = await fetch('/api/assign-entregador', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entregador })
+        body: JSON.stringify({ planillaId: sheetId, entregador })
       })
 
       if (!response.ok) {
@@ -350,9 +367,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                       <Select
                         value={sheet.entregador || ""}
                         onValueChange={(value) => handleAssignEntregador(sheet.id, value)}
+                        disabled={entregadores.length === 0}
                       >
                         <SelectTrigger className="w-full sm:w-[180px]">
-                          <SelectValue placeholder="Seleccionar entregador" />
+                          <SelectValue placeholder={entregadores.length === 0 ? "Sin entregadores" : "Seleccionar"} />
                         </SelectTrigger>
                         <SelectContent>
                           {entregadores.map((entregador) => (
