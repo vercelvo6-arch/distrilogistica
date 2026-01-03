@@ -26,8 +26,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { planillaId, entregador } = body
 
-    console.log('Datos recibidos:', { planillaId, entregador })
-
     // Validar datos
     if (!planillaId || typeof planillaId !== 'string') {
       return NextResponse.json(
@@ -43,24 +41,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validar que el entregador sea válido
-    const ENTREGADORES_VALIDOS = ['Alfonso', 'Miguel', 'Carlos', 'Mateo']
-    if (!ENTREGADORES_VALIDOS.includes(entregador)) {
+    // 3. Conectar a la base de datos
+    const sql = getDB()
+
+    // 4. ✅ VALIDACIÓN DINÁMICA: Verificar que el entregador EXISTE en la BD
+    console.log('[API assign] Verificando entregador:', entregador)
+    
+    const entregadorExists = await sql`
+      SELECT id, nombre, rol, estado 
+      FROM usuarios 
+      WHERE nombre = ${entregador} 
+        AND rol = 'entregador' 
+        AND estado = 'activo'
+    `
+
+    if (entregadorExists.length === 0) {
+      console.error('[API assign] Entregador no encontrado:', entregador)
       return NextResponse.json(
-        { error: `Entregador debe ser uno de: ${ENTREGADORES_VALIDOS.join(', ')}` },
+        { error: `El entregador "${entregador}" no existe o no está activo` },
         { status: 400 }
       )
     }
 
-    // 3. Conectar a la base de datos
-    const sql = getDB()
+    console.log('[API assign] ✓ Entregador válido:', entregadorExists[0])
 
-    // 4. Verificar que la planilla existe
+    // 5. Verificar que la planilla existe
     const planillaExists = await sql`
-      SELECT id, estado, tipo_ruta FROM planillas WHERE id = ${planillaId}
+      SELECT id, estado FROM planillas WHERE id = ${planillaId}
     `
-
-    console.log('Planilla encontrada:', planillaExists)
 
     if (planillaExists.length === 0) {
       return NextResponse.json(
@@ -69,7 +77,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 5. Actualizar la planilla con el entregador asignado
+    // 6. Actualizar la planilla con el entregador asignado
     const result = await sql`
       UPDATE planillas 
       SET 
@@ -79,8 +87,6 @@ export async function POST(request: NextRequest) {
       RETURNING id, entregador, tipo_ruta, fecha, estado
     `
 
-    console.log('Resultado de actualización:', result)
-
     if (result.length === 0) {
       return NextResponse.json(
         { error: 'Error al actualizar la planilla' },
@@ -88,25 +94,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 6. Retornar éxito con estructura completa
-    const response = {
+    console.log('[API assign] ✓ Planilla actualizada:', result[0])
+
+    // 7. Retornar éxito
+    return NextResponse.json({
       success: true,
       message: `Entregador ${entregador} asignado correctamente`,
-      planilla: {
-        id: result[0].id,
-        entregador: result[0].entregador,
-        tipo_ruta: result[0].tipo_ruta,
-        fecha: result[0].fecha,
-        estado: result[0].estado
-      }
-    }
-
-    console.log('Respuesta enviada:', response)
-
-    return NextResponse.json(response, { status: 200 })
+      planilla: result[0]
+    }, { status: 200 })
 
   } catch (error) {
-    console.error('Error en assign-entregador API:', error)
+    console.error('[API assign] Error:', error)
     return NextResponse.json(
       { 
         error: 'Error interno del servidor',
