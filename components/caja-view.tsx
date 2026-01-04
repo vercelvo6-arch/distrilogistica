@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { DollarSign, LogOut, Filter, Wallet, CheckCircle2, AlertTriangle, History } from "lucide-react"
+import { DollarSign, LogOut, Filter, Wallet, CheckCircle2, AlertTriangle, History, Calendar } from "lucide-react"
 import type { RouteSheet, User, RecepcionCaja } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -25,12 +25,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const { toast } = useToast()
   const [filterEntregador, setFilterEntregador] = useState<string>("all")
   const [filterRuta, setFilterRuta] = useState<string>("all")
+  const [filterFecha, setFilterFecha] = useState<string>(new Date().toISOString().split('T')[0])
   const [selectedView, setSelectedView] = useState<"caja" | "historial" | "comisiones">("caja")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [recepciones, setRecepciones] = useState<RecepcionCaja[]>([])
   const [loading, setLoading] = useState(true)
   
-  // Modal state
   const [showModal, setShowModal] = useState(false)
   const [selectedPlanilla, setSelectedPlanilla] = useState<RouteSheet | null>(null)
   const [formData, setFormData] = useState({
@@ -43,6 +43,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     observaciones: ''
   })
   const [submitting, setSubmitting] = useState(false)
+  const [validatingConsignacion, setValidatingConsignacion] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -137,6 +138,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const filteredRoutes = completedRoutes.filter((route) => {
     if (filterEntregador !== "all" && route.entregador !== filterEntregador) return false
     if (filterRuta !== "all" && route.ruta !== filterRuta) return false
+    if (filterFecha) {
+      const routeDate = new Date(route.fecha).toISOString().split('T')[0]
+      if (routeDate !== filterFecha) return false
+    }
     return true
   })
 
@@ -166,7 +171,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
     })
 
-    return { entregado, fiado, devoluciones, repasos }
+    return { 
+      entregado: Math.round(entregado * 100) / 100,
+      fiado: Math.round(fiado * 100) / 100,
+      devoluciones: Math.round(devoluciones * 100) / 100,
+      repasos: Math.round(repasos * 100) / 100
+    }
   }
 
   const handleOpenModal = (planilla: RouteSheet) => {
@@ -199,6 +209,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const validateConsignacion = async (numero: string): Promise<boolean> => {
+    if (!numero.trim()) return false
+    
+    setValidatingConsignacion(true)
     try {
       const response = await fetch('/api/caja/validar-consignacion', {
         method: 'POST',
@@ -207,17 +220,33 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       })
       
       const data = await response.json()
+      
+      if (data.existe) {
+        toast({
+          title: "⚠️ Consignación Duplicada",
+          description: "Este número de consignación ya fue registrado anteriormente",
+          variant: "destructive"
+        })
+      }
+      
       return data.existe
     } catch (error) {
       console.error('Error validando consignación:', error)
       return false
+    } finally {
+      setValidatingConsignacion(false)
+    }
+  }
+
+  const handleConsignacionBlur = async () => {
+    if (formData.tieneConsignacion && formData.numeroConsignacion) {
+      await validateConsignacion(formData.numeroConsignacion)
     }
   }
 
   const handleSubmit = async () => {
     if (!selectedPlanilla) return
 
-    // Validaciones
     if (!formData.efectivoRecibido || Number(formData.efectivoRecibido) < 0) {
       toast({
         title: "Error",
@@ -237,14 +266,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         return
       }
 
-      // Validar que la consignación no exista
       const existe = await validateConsignacion(formData.numeroConsignacion)
       if (existe) {
-        toast({
-          title: "Error",
-          description: "⚠️ Este número de consignación ya fue registrado",
-          variant: "destructive"
-        })
         return
       }
     }
@@ -312,7 +335,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
 
   const diferencia = selectedPlanilla 
-    ? Number(formData.efectivoRecibido || 0) - calculateRouteTotals(selectedPlanilla).entregado 
+    ? Math.round((Number(formData.efectivoRecibido || 0) - calculateRouteTotals(selectedPlanilla).entregado) * 100) / 100
     : 0
 
   return (
@@ -391,7 +414,83 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                         </Badge>
                       </div>
                       
-                      <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="monto">Monto *</Label>
+                        <Input
+                          id="monto"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.montoConsignacion}
+                          onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+                          disabled={submitting}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="fecha">Fecha *</Label>
+                        <Input
+                          id="fecha"
+                          type="date"
+                          value={formData.fechaConsignacion}
+                          onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="obs">📝 Observaciones (opcional)</Label>
+                  <Textarea
+                    id="obs"
+                    placeholder="Notas adicionales..."
+                    value={formData.observaciones}
+                    onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                    disabled={submitting}
+                    rows={2}
+                  />
+                </div>
+
+                {formData.efectivoRecibido && (
+                  <div className={`p-3 rounded-lg ${
+                    diferencia === 0 
+                      ? 'bg-green-50 border border-green-200' 
+                      : 'bg-amber-50 border border-amber-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-sm font-medium">Diferencia:</p>
+                      <p className={`text-xl font-bold ${
+                        diferencia === 0 ? 'text-green-600' : 'text-amber-600'
+                      }`}>
+                        {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
+                      </p>
+                    </div>
+                    {diferencia !== 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {diferencia > 0 ? 'Sobrante (se registra para auditoría)' : 'Faltante (se registra para auditoría)'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseModal} disabled={submitting}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmit} disabled={submitting || validatingConsignacion}>
+              {submitting ? 'Registrando...' : 'Confirmar Recepción'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}3 gap-3 text-sm">
                         <div>
                           <p className="text-muted-foreground">Esperado</p>
                           <p className="font-semibold">{formatCOP(Number(rec.efectivo_esperado))}</p>
@@ -442,8 +541,19 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           ) : (
             <>
               <Card className="p-4">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <Filter className="h-5 w-5 text-muted-foreground" />
+                  
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="date"
+                      value={filterFecha}
+                      onChange={(e) => setFilterFecha(e.target.value)}
+                      className="w-[180px]"
+                    />
+                  </div>
+
                   <Select value={filterEntregador} onValueChange={setFilterEntregador}>
                     <SelectTrigger className="w-[200px]">
                       <SelectValue placeholder="Todos los entregadores" />
@@ -501,7 +611,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                 <h2 className="text-lg font-semibold mb-4">Entregas Pendientes de Cuadrar</h2>
                 {filteredRoutes.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
-                    ✅ No hay entregas pendientes de cuadrar
+                    ✅ No hay entregas pendientes de cuadrar para la fecha seleccionada
                   </p>
                 ) : (
                   <div className="space-y-4">
@@ -565,7 +675,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         </div>
       </main>
 
-      {/* Modal de Recepción */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -590,6 +699,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                   <Input
                     id="efectivo"
                     type="number"
+                    step="0.01"
                     placeholder="0.00"
                     value={formData.efectivoRecibido}
                     onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
@@ -620,8 +730,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                         placeholder="Ej: 123456789"
                         value={formData.numeroConsignacion}
                         onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
-                        disabled={submitting}
+                        onBlur={handleConsignacionBlur}
+                        disabled={submitting || validatingConsignacion}
                       />
+                      {validatingConsignacion && (
+                        <p className="text-xs text-blue-600">Validando...</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -646,79 +760,4 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="monto">Monto *</Label>
-                        <Input
-                          id="monto"
-                          type="number"
-                          placeholder="0.00"
-                          value={formData.montoConsignacion}
-                          onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                          disabled={submitting}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="fecha">Fecha *</Label>
-                        <Input
-                          id="fecha"
-                          type="date"
-                          value={formData.fechaConsignacion}
-                          onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
-                          disabled={submitting}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="obs">📝 Observaciones (opcional)</Label>
-                  <Textarea
-                    id="obs"
-                    placeholder="Notas adicionales..."
-                    value={formData.observaciones}
-                    onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                    disabled={submitting}
-                    rows={2}
-                  />
-                </div>
-
-                {formData.efectivoRecibido && (
-                  <div className={`p-3 rounded-lg ${
-                    diferencia === 0 
-                      ? 'bg-green-50 border border-green-200' 
-                      : 'bg-amber-50 border border-amber-200'
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-medium">Diferencia:</p>
-                      <p className={`text-xl font-bold ${
-                        diferencia === 0 ? 'text-green-600' : 'text-amber-600'
-                      }`}>
-                        {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
-                      </p>
-                    </div>
-                    {diferencia !== 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {diferencia > 0 ? 'Sobrante (se registra para auditoría)' : 'Faltante (se registra para auditoría)'}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseModal} disabled={submitting}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Registrando...' : 'Confirmar Recepción'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  )
-}
+                    <div className="grid grid-cols-
