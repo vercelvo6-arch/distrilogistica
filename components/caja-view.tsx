@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { DollarSign, LogOut, Filter, Wallet, CheckCircle2, AlertTriangle, History, Calendar } from "lucide-react"
+import { DollarSign, LogOut, Filter, Wallet, History, Calendar } from "lucide-react"
 import type { RouteSheet, User, RecepcionCaja } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -414,83 +414,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                         </Badge>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="monto">Monto *</Label>
-                        <Input
-                          id="monto"
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={formData.montoConsignacion}
-                          onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                          disabled={submitting}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="fecha">Fecha *</Label>
-                        <Input
-                          id="fecha"
-                          type="date"
-                          value={formData.fechaConsignacion}
-                          onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
-                          disabled={submitting}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="obs">📝 Observaciones (opcional)</Label>
-                  <Textarea
-                    id="obs"
-                    placeholder="Notas adicionales..."
-                    value={formData.observaciones}
-                    onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                    disabled={submitting}
-                    rows={2}
-                  />
-                </div>
-
-                {formData.efectivoRecibido && (
-                  <div className={`p-3 rounded-lg ${
-                    diferencia === 0 
-                      ? 'bg-green-50 border border-green-200' 
-                      : 'bg-amber-50 border border-amber-200'
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-medium">Diferencia:</p>
-                      <p className={`text-xl font-bold ${
-                        diferencia === 0 ? 'text-green-600' : 'text-amber-600'
-                      }`}>
-                        {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
-                      </p>
-                    </div>
-                    {diferencia !== 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {diferencia > 0 ? 'Sobrante (se registra para auditoría)' : 'Faltante (se registra para auditoría)'}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseModal} disabled={submitting}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting || validatingConsignacion}>
-              {submitting ? 'Registrando...' : 'Confirmar Recepción'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  )
-}3 gap-3 text-sm">
+                      <div className="grid grid-cols-3 gap-3 text-sm">
                         <div>
                           <p className="text-muted-foreground">Esperado</p>
                           <p className="font-semibold">{formatCOP(Number(rec.efectivo_esperado))}</p>
@@ -760,4 +684,80 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="monto">Monto *</Label>
+                        <Input
+                          id="monto"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.montoConsignacion}
+                          onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+                          disabled={submitting}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="fecha">Fecha *</Label>
+                        <Input
+                          id="fecha"
+                          type="date"
+                          value={formData.fechaConsignacion}
+                          onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="obs">📝 Observaciones (opcional)</Label>
+                  <Textarea
+                    id="obs"
+                    placeholder="Notas adicionales..."
+                    value={formData.observaciones}
+                    onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                    disabled={submitting}
+                    rows={2}
+                  />
+                </div>
+
+                {formData.efectivoRecibido && (
+                  <div className={`p-3 rounded-lg ${
+                    diferencia === 0 
+                      ? 'bg-green-50 border border-green-200' 
+                      : 'bg-amber-50 border border-amber-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-sm font-medium">Diferencia:</p>
+                      <p className={`text-xl font-bold ${
+                        diferencia === 0 ? 'text-green-600' : 'text-amber-600'
+                      }`}>
+                        {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
+                      </p>
+                    </div>
+                    {diferencia !== 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {diferencia > 0 ? 'Sobrante (se registra para auditoría)' : 'Faltante (se registra para auditoría)'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseModal} disabled={submitting}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmit} disabled={submitting || validatingConsignacion}>
+              {submitting ? 'Registrando...' : 'Confirmar Recepción'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
