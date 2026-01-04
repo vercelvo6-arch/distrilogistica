@@ -55,8 +55,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-```
-
-### **5. Commit:**
-```
-fix: limpiar código validar-consignacion
