@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { BarChart3, LogOut, Filter, Download, Users, LayoutDashboard } from "lucide-react"
+import { BarChart3, LogOut, Filter, Download, Users, LayoutDashboard, CreditCard } from "lucide-react"
 import type { RouteSheet, User } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { UserManagement } from "@/components/user-management"
 import { ComisionesView } from "@/components/comisiones-view"
 import { DashboardOverview } from "@/components/dashboard-overview"
+import { FiadosView } from "@/components/fiados-view"
 
 interface AdministradorViewProps {
   onLogout: () => void
@@ -162,11 +163,12 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
 
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-6">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button
               variant={selectedView === "dashboard" ? "default" : "outline"}
               onClick={() => setSelectedView("dashboard")}
             >
+              <LayoutDashboard className="h-4 w-4 mr-2" />
               Dashboard
             </Button>
             <Button
@@ -182,12 +184,22 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
             >
               Comisiones
             </Button>
+            <Button
+              variant={selectedView === "fiados" ? "default" : "outline"}
+              onClick={() => setSelectedView("fiados")}
+            >
+              <CreditCard className="h-4 w-4 mr-2" />
+              Fiados
+            </Button>
           </div>
 
           {selectedView === "dashboard" && <DashboardOverview />}
           {selectedView === "usuarios" && <UserManagement />}
           {selectedView === "comisiones" && (
             <ComisionesView onLogout={onLogout} userRole="administrador" userId={user.id} />
+          )}
+          {selectedView === "fiados" && (
+            <FiadosView onLogout={onLogout} userRole="administrador" />
           )}
         </div>
       </main>
