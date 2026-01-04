@@ -194,9 +194,3 @@ export async function GET(request: NextRequest) {
     )
   }
 }
-```
-
-### **5. Scroll abajo**
-Commit message:
-```
-feat: crear endpoint recibir-efectivo
