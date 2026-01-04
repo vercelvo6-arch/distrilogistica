@@ -9,7 +9,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    // Solo caja y admin pueden validar
     if (!['caja', 'administrador'].includes(session.user.rol)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
@@ -26,7 +25,6 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // Buscar si existe el número de consignación
     const existe = await sql`
       SELECT id, numero_consignacion, fecha_recepcion, recibido_por
       FROM recepciones_caja 
@@ -59,7 +57,6 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-### **2.4 - Commit**
+### **5. Commit:**
 ```
-Commit message: feat: agregar validación de consignaciones únicas
-Clic en "Commit changes"
+fix: limpiar código validar-consignacion
