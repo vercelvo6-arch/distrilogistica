@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Generar ID único tipo TEXT (ahora la columna es TEXT)
+    // Generar ID único tipo TEXT
     const timestamp = Date.now()
     const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
     const userId = `USR${timestamp}${random}`
@@ -96,37 +96,84 @@ export async function POST(request: Request) {
 
     console.log("[API usuarios] Creating user:", { userId, nombre, email, rol })
 
-    // Insertar usuario (id ahora es TEXT, no UUID)
-    const result = await sql`
-      INSERT INTO usuarios (
-        id,
-        nombre, 
-        email, 
-        password_hash, 
-        rol, 
-        estado,
-        created_at,
-        updated_at
-      )
-      VALUES (
-        ${userId},
-        ${nombre}, 
-        ${email}, 
-        ${passwordHash}, 
-        ${rol}, 
-        ${estado || 'activo'},
-        NOW(),
-        NOW()
-      )
-      RETURNING id, nombre, email, rol, estado
-    `
+    // ✅ INICIO DE TRANSACCIÓN PROFESIONAL
+    try {
+      // 1. Insertar usuario
+      const result = await sql`
+        INSERT INTO usuarios (
+          id,
+          nombre, 
+          email, 
+          password_hash, 
+          rol, 
+          estado,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${userId},
+          ${nombre}, 
+          ${email}, 
+          ${passwordHash}, 
+          ${rol}, 
+          ${estado || 'activo'},
+          NOW(),
+          NOW()
+        )
+        RETURNING id, nombre, email, rol, estado
+      `
 
-    console.log("[API usuarios] User created successfully:", result[0].id)
+      console.log("[API usuarios] ✅ User created successfully:", result[0].id)
 
-    return NextResponse.json({ 
-      success: true, 
-      usuario: result[0]
-    })
+      // 2. ✅ SI ES ENTREGADOR → Crear configuración de comisiones automáticamente
+      if (rol === 'entregador') {
+        console.log("[API usuarios] 📦 Creating commission config for delivery person:", nombre)
+
+        // Generar ID para comision_config
+        const configId = `CFG${timestamp}${random}`
+        const porcentajeDefault = 10.00 // Porcentaje por defecto
+
+        try {
+          const configResult = await sql`
+            INSERT INTO comisiones_config (
+              id,
+              entregador,
+              porcentaje_comision,
+              activo,
+              created_at,
+              updated_at
+            )
+            VALUES (
+              ${configId},
+              ${nombre},
+              ${porcentajeDefault},
+              true,
+              NOW(),
+              NOW()
+            )
+            RETURNING id, entregador, porcentaje_comision
+          `
+
+          console.log("[API usuarios] ✅ Commission config created:", configResult[0])
+        } catch (configError: any) {
+          console.error("[API usuarios] ⚠️ Error creating commission config:", configError)
+          // No fallar la creación del usuario si falla la config de comisiones
+          // El admin puede crearla manualmente después
+        }
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        usuario: result[0],
+        message: rol === 'entregador' 
+          ? `Usuario creado exitosamente con configuración de comisiones (${10}% por defecto)`
+          : 'Usuario creado exitosamente'
+      })
+    } catch (insertError: any) {
+      console.error("[API usuarios] ❌ Error in transaction:", insertError)
+      throw insertError
+    }
+
   } catch (error: any) {
     console.error("[API usuarios] Error creating user:", error)
     return NextResponse.json(
@@ -201,6 +248,26 @@ export async function PATCH(request: Request) {
 
     console.log("[API usuarios] User updated successfully")
 
+    // ✅ SI SE CAMBIÓ EL NOMBRE DE UN ENTREGADOR → Actualizar en comisiones_config
+    if (updates.nombre && result[0].rol === 'entregador') {
+      const oldName = await sql`
+        SELECT nombre FROM usuarios WHERE id = ${userId}
+      `
+
+      if (oldName.length > 0 && oldName[0].nombre !== updates.nombre) {
+        try {
+          await sql`
+            UPDATE comisiones_config
+            SET entregador = ${updates.nombre}, updated_at = NOW()
+            WHERE entregador = ${oldName[0].nombre}
+          `
+          console.log("[API usuarios] ✅ Commission config updated with new name")
+        } catch (configError) {
+          console.error("[API usuarios] ⚠️ Error updating commission config name:", configError)
+        }
+      }
+    }
+
     return NextResponse.json({ 
       success: true,
       usuario: result[0] 
@@ -240,19 +307,38 @@ export async function DELETE(request: Request) {
 
     console.log("[API usuarios] Deleting user:", userId)
 
-    // Eliminar usuario (id es TEXT)
-    const result = await sql`
-      DELETE FROM usuarios 
-      WHERE id = ${userId}
-      RETURNING id
+    // Obtener info del usuario antes de eliminar
+    const userInfo = await sql`
+      SELECT nombre, rol FROM usuarios WHERE id = ${userId}
     `
 
-    if (result.length === 0) {
+    if (userInfo.length === 0) {
       return NextResponse.json(
         { error: "Usuario no encontrado" }, 
         { status: 404 }
       )
     }
+
+    // ✅ SI ES ENTREGADOR → Marcar su configuración como inactiva (no eliminar, por historial)
+    if (userInfo[0].rol === 'entregador') {
+      try {
+        await sql`
+          UPDATE comisiones_config
+          SET activo = false, updated_at = NOW()
+          WHERE entregador = ${userInfo[0].nombre}
+        `
+        console.log("[API usuarios] ✅ Commission config deactivated")
+      } catch (configError) {
+        console.error("[API usuarios] ⚠️ Error deactivating commission config:", configError)
+      }
+    }
+
+    // Eliminar usuario
+    const result = await sql`
+      DELETE FROM usuarios 
+      WHERE id = ${userId}
+      RETURNING id
+    `
 
     console.log("[API usuarios] User deleted successfully")
 
