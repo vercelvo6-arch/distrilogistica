@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const sql = getDB()
 
     const planilla = await sql`
-      SELECT id, estado, entregador, tipo_ruta
+      SELECT id, estado, entregador, tipo_ruta, fecha, total_devolucion
       FROM planillas 
       WHERE id = ${planillaId}
     `
@@ -135,6 +135,67 @@ export async function POST(request: NextRequest) {
         updated_at = NOW()
       WHERE id = ${planillaId}
     `
+
+    console.log('[API recibir-efectivo] ✓ Planilla actualizada como cuadrada')
+
+    const configComision = await sql`
+      SELECT porcentaje_comision 
+      FROM comisiones_config 
+      WHERE entregador = ${planilla[0].entregador} 
+        AND activo = true
+    `
+
+    if (configComision.length > 0) {
+      const porcentaje = Number(configComision[0].porcentaje_comision)
+      const totalDevoluciones = Number(planilla[0].total_devolucion) || 0
+      const baseComisionable = Math.round((Number(efectivoRecibido) - totalDevoluciones) * 100) / 100
+      const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
+
+      const comisionId = `COM${timestamp}${random}`
+
+      const yaExisteComision = await sql`
+        SELECT id FROM comisiones WHERE planilla_id = ${planillaId}
+      `
+
+      if (yaExisteComision.length === 0) {
+        await sql`
+          INSERT INTO comisiones (
+            id,
+            entregador,
+            fecha,
+            planilla_id,
+            total_entregas_efectivas,
+            total_devoluciones,
+            base_comisionable,
+            porcentaje_aplicado,
+            monto_comision,
+            estado
+          ) VALUES (
+            ${comisionId},
+            ${planilla[0].entregador},
+            ${planilla[0].fecha},
+            ${planillaId},
+            ${efectivoRecibido},
+            ${totalDevoluciones},
+            ${baseComisionable},
+            ${porcentaje},
+            ${montoComision},
+            'pendiente'
+          )
+        `
+
+        console.log('[API recibir-efectivo] ✓ Comisión calculada y registrada:', {
+          entregador: planilla[0].entregador,
+          base: baseComisionable,
+          porcentaje: porcentaje,
+          comision: montoComision
+        })
+      } else {
+        console.log('[API recibir-efectivo] ℹ Comisión ya existe para esta planilla')
+      }
+    } else {
+      console.log('[API recibir-efectivo] ⚠ No hay configuración de comisión para:', planilla[0].entregador)
+    }
 
     return NextResponse.json({
       success: true,
