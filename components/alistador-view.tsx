@@ -70,7 +70,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           items: (ped.productos || []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
-            categoria: '',
+            categoria: prod.categoria || '',
             cantidad: Number(prod.cantidad) || 0,
             valorUnidad: Number(prod.precio_unitario) || 0,
             subtotal: Number(prod.total) || 0,
@@ -127,8 +127,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       })
     })
 
-    return Array.from(productMap.values()).sort((a, b) => a.descripcion.localeCompare(b.descripcion))
-  }
+    return Array.from(productMap.values()).sort((a, b) => {
+  const cat = a.categoria.localeCompare(b.categoria)
+  return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
+})
 
   const handleStartPreparation = async (entregador: string) => {
     try {
