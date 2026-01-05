@@ -151,8 +151,6 @@ export async function POST(request: NextRequest) {
       const baseComisionable = Math.round((Number(efectivoRecibido) - totalDevoluciones) * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
-      const comisionId = `COM${timestamp}${random}`
-
       const yaExisteComision = await sql`
         SELECT id FROM comisiones WHERE planilla_id = ${planillaId}
       `
@@ -160,7 +158,6 @@ export async function POST(request: NextRequest) {
       if (yaExisteComision.length === 0) {
         await sql`
           INSERT INTO comisiones (
-            id,
             entregador,
             fecha,
             planilla_id,
@@ -171,7 +168,6 @@ export async function POST(request: NextRequest) {
             monto_comision,
             estado
           ) VALUES (
-            ${comisionId},
             ${planilla[0].entregador},
             ${planilla[0].fecha},
             ${planillaId},
