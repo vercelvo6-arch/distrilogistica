@@ -128,9 +128,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     })
 
     return Array.from(productMap.values()).sort((a, b) => {
-  const cat = a.categoria.localeCompare(b.categoria)
-  return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
-})
+      const cat = a.categoria.localeCompare(b.categoria)
+      return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
+    })
+  }
 
   const handleStartPreparation = async (entregador: string) => {
     try {
