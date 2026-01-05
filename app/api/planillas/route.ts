@@ -148,7 +148,8 @@ export async function POST(request: NextRequest) {
                     INSERT INTO pedido_productos (
                       pedido_id, 
                       codigo, 
-                      nombre, 
+                      nombre,
+                      categoria,
                       cantidad, 
                       precio_unitario, 
                       total, 
@@ -156,7 +157,8 @@ export async function POST(request: NextRequest) {
                     ) VALUES (
                       ${pedidoId}, 
                       ${item.codigo || ''}, 
-                      ${item.descripcion || item.nombre || 'Sin nombre'}, 
+                      ${item.descripcion || item.nombre || 'Sin nombre'},
+                      ${item.categoria || ''},
                       ${Number(item.cantidad) || 0},
                       ${Number(item.valorUnidad || item.precio_unitario) || 0}, 
                       ${Number(item.subtotal || item.total) || 0}, 
@@ -282,6 +284,7 @@ export async function GET(request: NextRequest) {
                   json_build_object(
                     'codigo', pp.codigo,
                     'nombre', pp.nombre,
+                    'categoria', pp.categoria,
                     'cantidad', pp.cantidad,
                     'precio_unitario', pp.precio_unitario,
                     'total', pp.total,
