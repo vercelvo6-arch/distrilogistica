@@ -31,6 +31,7 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
       vendidoA: values[13] || "",
       fecha: values[9] || new Date().toISOString().split("T")[0],
       comentarios: values[15] || "",
+      idVenta: values[7] || "", // ← NUEVO: Columna H (índice 7)
     }
 
     if (record.numeroArticulo && record.cantidadComprada > 0) {
@@ -75,23 +76,26 @@ export function parsePlanillaCSV(csvText: string): Product[] {
 
 export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Product[], fecha: string): Order[] {
   const productMap = new Map(productCatalog.map((p) => [p.codigo, p]))
-  const ordersByClienteRuta = new Map<string, SalesRecord[]>()
+  
+  // ✅ CAMBIO: Agrupar por RUTA + CLIENTE + ID_VENTA
+  const ordersByFactura = new Map<string, SalesRecord[]>()
 
   sales.forEach((sale) => {
-    const key = `${sale.ruta}-${sale.vendidoA}`
-    if (!ordersByClienteRuta.has(key)) {
-      ordersByClienteRuta.set(key, [])
+    // Cada factura es un pedido separado
+    const key = `${sale.ruta}-${sale.vendidoA}-${sale.idVenta}`
+    if (!ordersByFactura.has(key)) {
+      ordersByFactura.set(key, [])
     }
-    ordersByClienteRuta.get(key)!.push(sale)
+    ordersByFactura.get(key)!.push(sale)
   })
 
   const orders: Order[] = []
   let orderCounter = 0
 
-  ordersByClienteRuta.forEach((clienteSales, key) => {
+  ordersByFactura.forEach((facturaSales, key) => {
     orderCounter++
     
-    const items: OrderItem[] = clienteSales.map((sale) => {
+    const items: OrderItem[] = facturaSales.map((sale) => {
       const product = productMap.get(sale.numeroArticulo)
 
       return {
@@ -111,13 +115,13 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
     
     orders.push({
       id: uniqueId,
-      cliente: clienteSales[0].vendidoA,
-      ruta: clienteSales[0].ruta,
+      cliente: facturaSales[0].vendidoA,
+      ruta: facturaSales[0].ruta,
       fecha,
       items,
       total,
       estado: "pendiente",
-      comentarios: clienteSales[0].comentarios,
+      comentarios: facturaSales[0].comentarios,
       montoPagado: 0,
       saldoPendiente: total,
     })
