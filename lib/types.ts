@@ -9,6 +9,9 @@ export interface OrderItem {
   valorUnidad: number
   subtotal: number
   devuelto?: boolean
+  // ✅ NUEVOS campos para faltantes parciales
+  cantidadDisponible?: number | null
+  cantidadFaltante?: number
 }
 
 export interface Order {
