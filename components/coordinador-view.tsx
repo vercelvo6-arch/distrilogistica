@@ -29,8 +29,8 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   
   // Filtros para historial
   const [filterDate, setFilterDate] = useState("")
-  const [filterEntregador, setFilterEntregador] = useState("")
-  const [filterEstado, setFilterEstado] = useState("")
+  const [filterEntregador, setFilterEntregador] = useState<string>("todos")
+  const [filterEstado, setFilterEstado] = useState<string>("todos")
 
   useEffect(() => {
     loadPlanillas()
@@ -254,8 +254,8 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   // Aplicar filtros al historial
   const filteredHistorial = assignedSheets.filter(s => {
     if (filterDate && s.fecha !== filterDate) return false
-    if (filterEntregador && s.entregador !== filterEntregador) return false
-    if (filterEstado && s.estado !== filterEstado) return false
+    if (filterEntregador && filterEntregador !== "todos" && s.entregador !== filterEntregador) return false
+    if (filterEstado && filterEstado !== "todos" && s.estado !== filterEstado) return false
     return true
   })
 
@@ -471,7 +471,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Todos</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
                       {entregadores.map((e) => (
                         <SelectItem key={e} value={e}>{e}</SelectItem>
                       ))}
@@ -486,7 +486,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Todos</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
                       <SelectItem value="pendiente">Pendiente</SelectItem>
                       <SelectItem value="alistando">Alistando</SelectItem>
                       <SelectItem value="alistado">Alistado</SelectItem>
