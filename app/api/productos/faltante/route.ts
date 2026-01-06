@@ -3,6 +3,8 @@ import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 
 export async function POST(request: NextRequest) {
+  console.log('🔵 [FALTANTE API] Endpoint alcanzado!')
+  
   try {
     const session = await getSession()
     if (!session?.user) {
