@@ -254,23 +254,20 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   
   // Aplicar filtros al historial
   const filteredHistorial = hasActiveFilter ? assignedSheets.filter(s => {
-    // Filtro "Hoy"
-    if (filterDate && filterDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    // Filtro por fecha (Hoy o fecha del calendario)
+    if (filterDate && filterDate.includes('-')) {
+      // Es una fecha válida YYYY-MM-DD
       if (s.fecha !== filterDate) return false
-    }
-    
-    // Filtro "Últimos 7 días"
-    if (filterDate === "last7days") {
+    } else if (filterDate === "last7days") {
+      // Filtro "Últimos 7 días"
       const sheetDate = new Date(s.fecha)
       const today = new Date()
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(today.getDate() - 7)
       
       if (sheetDate < sevenDaysAgo || sheetDate > today) return false
-    }
-    
-    // Filtro "Mes actual"
-    if (filterDate === "currentMonth") {
+    } else if (filterDate === "currentMonth") {
+      // Filtro "Mes actual"
       const sheetDate = new Date(s.fecha)
       const today = new Date()
       
