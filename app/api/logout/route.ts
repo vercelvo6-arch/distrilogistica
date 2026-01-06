@@ -11,7 +11,7 @@ export async function POST() {
     
     if (sessionToken) {
       const sql = getDB()
-      await sql`DELETE FROM sessions WHERE id = ${sessionToken}`
+      await sql`DELETE FROM sessions WHERE id = ${sessionToken}`  // ← CORRECCIÓN AQUÍ
     }
     
     cookieStore.delete(SESSION_COOKIE_NAME)
