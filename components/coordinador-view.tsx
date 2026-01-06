@@ -31,6 +31,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [filterDate, setFilterDate] = useState("")
   const [filterEntregador, setFilterEntregador] = useState<string>("todos")
   const [filterEstado, setFilterEstado] = useState<string>("todos")
+  const [hasActiveFilter, setHasActiveFilter] = useState(false)
 
   useEffect(() => {
     loadPlanillas()
@@ -252,12 +253,36 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const assignedSheets = routeSheets.filter(s => s.entregador || s.estado !== 'pendiente')
   
   // Aplicar filtros al historial
-  const filteredHistorial = assignedSheets.filter(s => {
+  const filteredHistorial = hasActiveFilter ? assignedSheets.filter(s => {
     if (filterDate && s.fecha !== filterDate) return false
     if (filterEntregador && filterEntregador !== "todos" && s.entregador !== filterEntregador) return false
     if (filterEstado && filterEstado !== "todos" && s.estado !== filterEstado) return false
     return true
-  })
+  }) : []
+
+  // Funciones de filtros rápidos
+  const applyTodayFilter = () => {
+    const today = new Date().toISOString().split('T')[0]
+    setFilterDate(today)
+    setHasActiveFilter(true)
+  }
+
+  const applyLast7DaysFilter = () => {
+    setFilterDate("")
+    setHasActiveFilter(true)
+  }
+
+  const applyCurrentMonthFilter = () => {
+    setFilterDate("")
+    setHasActiveFilter(true)
+  }
+
+  const clearFilters = () => {
+    setFilterDate("")
+    setFilterEntregador("todos")
+    setFilterEstado("todos")
+    setHasActiveFilter(false)
+  }
 
   if (loading) {
     return (
@@ -448,9 +473,41 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           {/* PESTAÑA 3: HISTORIAL */}
           <TabsContent value="historial" className="space-y-4">
             <Card className="p-4 md:p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Filter className="h-5 w-5" />
-                <h3 className="font-semibold">Filtros</h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-5 w-5" />
+                  <h3 className="font-semibold">Filtros</h3>
+                </div>
+                {hasActiveFilter && (
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
+                    Limpiar filtros
+                  </Button>
+                )}
+              </div>
+
+              {/* Filtros rápidos */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <Button
+                  variant={filterDate === new Date().toISOString().split('T')[0] ? "default" : "outline"}
+                  size="sm"
+                  onClick={applyTodayFilter}
+                >
+                  Hoy
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={applyLast7DaysFilter}
+                >
+                  Últimos 7 días
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={applyCurrentMonthFilter}
+                >
+                  Mes actual
+                </Button>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -459,14 +516,23 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                   <input
                     type="date"
                     value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
+                    onChange={(e) => {
+                      setFilterDate(e.target.value)
+                      setHasActiveFilter(true)
+                    }}
                     className="w-full px-3 py-2 border rounded-md"
                   />
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium mb-2">Entregador</label>
-                  <Select value={filterEntregador} onValueChange={setFilterEntregador}>
+                  <Select 
+                    value={filterEntregador} 
+                    onValueChange={(val) => {
+                      setFilterEntregador(val)
+                      setHasActiveFilter(true)
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
@@ -481,7 +547,13 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                 
                 <div>
                   <label className="block text-sm font-medium mb-2">Estado</label>
-                  <Select value={filterEstado} onValueChange={setFilterEstado}>
+                  <Select 
+                    value={filterEstado} 
+                    onValueChange={(val) => {
+                      setFilterEstado(val)
+                      setHasActiveFilter(true)
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
@@ -498,7 +570,13 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                 </div>
               </div>
 
-              {filteredHistorial.length === 0 ? (
+              {!hasActiveFilter ? (
+                <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
+                  <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-medium">Seleccione un filtro para ver el historial</p>
+                  <p className="text-sm mt-1">Use los botones rápidos o configure filtros personalizados arriba</p>
+                </div>
+              ) : filteredHistorial.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   No se encontraron planillas con los filtros aplicados
                 </div>
