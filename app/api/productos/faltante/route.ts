@@ -41,9 +41,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No hay planillas activas para este entregador' }, { status: 404 });
     }
 
+    // Extraer IDs como array simple
     const planillaIds = planillas.map(p => p.id);
 
-    // Actualizar todos los productos con este código en las planillas del entregador
+    // Actualizar productos - usando ANY en vez de IN para arrays
     const result = await sql`
       UPDATE pedido_productos
       SET 
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
       WHERE codigo = ${codigo}
       AND pedido_id IN (
         SELECT id FROM pedidos 
-        WHERE planilla_id IN ${sql(planillaIds)}
+        WHERE planilla_id = ANY(${planillaIds})
       )
     `;
 
