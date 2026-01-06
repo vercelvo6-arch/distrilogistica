@@ -4,12 +4,13 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { User, Upload, FileSpreadsheet, LogOut, Truck } from "lucide-react"
+import { User, Upload, FileSpreadsheet, LogOut, Truck, Trash2, Clock, Calendar, Filter } from "lucide-react"
 import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateRouteSheets } from "@/lib/csv-parser"
 import type { RouteSheet, User as UserType } from "@/lib/types"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface CoordinadorViewProps {
   onLogout: () => void
@@ -24,20 +25,24 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [entregadores, setEntregadores] = useState<string[]>([])
+  const [activeTab, setActiveTab] = useState("generar")
+  
+  // Filtros para historial
+  const [filterDate, setFilterDate] = useState("")
+  const [filterEntregador, setFilterEntregador] = useState("")
+  const [filterEstado, setFilterEstado] = useState("")
 
   useEffect(() => {
     loadPlanillas()
     loadEntregadores()
   }, [])
 
-  // FUNCIÓN PARA CARGAR ENTREGADORES DESDE LA BD
   async function loadEntregadores() {
     try {
       const response = await fetch('/api/entregadores')
       if (!response.ok) throw new Error('Error al cargar entregadores')
       
       const data = await response.json()
-      
       const nombresEntregadores = data.entregadores.map((e: any) => e.nombre)
       
       setEntregadores(nombresEntregadores)
@@ -56,8 +61,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         headers: { 'Content-Type': 'application/json' }
       })
       
-      console.log("[COORD-LOAD] Response status:", response.status)
-      
       if (!response.ok) {
         const errorData = await response.json()
         console.error("[COORD-LOAD] Error response:", errorData)
@@ -65,52 +68,41 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       }
       
       const data = await response.json()
-      console.log("[COORD-LOAD] Data recibida:", data)
-      console.log("[COORD-LOAD] Número de planillas:", data.planillas?.length || 0)
       
-      if (data.planillas && data.planillas.length > 0) {
-        console.log("[COORD-LOAD] Primera planilla:", data.planillas[0])
-      }
-      
-      // Transformar datos del API al formato RouteSheet
-      const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => {
-        const sheet = {
-          id: p.id,
+      const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
+        id: p.id,
+        ruta: p.tipo_ruta,
+        fecha: p.fecha,
+        entregador: p.entregador,
+        estado: p.estado,
+        totalOrders: p.pedidos?.length || 0,
+        totalAmount: Number(p.total_cargue) || 0,
+        montoCargue: Number(p.total_cargue) || 0,
+        montoEntregado: Number(p.total_entregado) || 0,
+        montoFiado: Number(p.total_fiado) || 0,
+        montoDevoluciones: Number(p.total_devolucion) || 0,
+        montoRepasos: Number(p.total_repaso) || 0,
+        orders: (p.pedidos || []).map((ped: any) => ({
+          id: ped.id,
+          cliente: ped.cliente,
           ruta: p.tipo_ruta,
           fecha: p.fecha,
-          entregador: p.entregador,
-          estado: p.estado,
-          totalOrders: p.pedidos?.length || 0,
-          totalAmount: Number(p.total_cargue) || 0,
-          montoCargue: Number(p.total_cargue) || 0,
-          montoEntregado: Number(p.total_entregado) || 0,
-          montoFiado: Number(p.total_fiado) || 0,
-          montoDevoluciones: Number(p.total_devolucion) || 0,
-          montoRepasos: Number(p.total_repaso) || 0,
-          orders: (p.pedidos || []).map((ped: any) => ({
-            id: ped.id,
-            cliente: ped.cliente,
-            ruta: p.tipo_ruta,
-            fecha: p.fecha,
-            estado: ped.estado,
-            total: Number(ped.total) || 0,
-            montoPagado: 0,
-            saldoPendiente: Number(ped.total) || 0,
-            comentarios: ped.observaciones,
-            items: (ped.productos || []).map((prod: any) => ({
-              codigo: prod.codigo,
-              descripcion: prod.nombre,
-              categoria: '',
-              cantidad: Number(prod.cantidad) || 0,
-              valorUnidad: Number(prod.precio_unitario) || 0,
-              subtotal: Number(prod.total) || 0,
-            })),
+          estado: ped.estado,
+          total: Number(ped.total) || 0,
+          montoPagado: 0,
+          saldoPendiente: Number(ped.total) || 0,
+          comentarios: ped.observaciones,
+          items: (ped.productos || []).map((prod: any) => ({
+            codigo: prod.codigo,
+            descripcion: prod.nombre,
+            categoria: prod.categoria || '',
+            cantidad: Number(prod.cantidad) || 0,
+            valorUnidad: Number(prod.precio_unitario) || 0,
+            subtotal: Number(prod.total) || 0,
           })),
-          cuentasPorCobrar: [],
-        }
-        console.log("[COORD-LOAD] Planilla transformada:", sheet.id, "Ruta:", sheet.ruta, "Pedidos:", sheet.totalOrders)
-        return sheet
-      })
+        })),
+        cuentasPorCobrar: [],
+      }))
       
       console.log("[COORD-LOAD] ✓ Total planillas transformadas:", planillas.length)
       setRouteSheets(planillas)
@@ -146,11 +138,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     setError(null)
 
     try {
-      console.log("[COORD] 1. Leyendo archivos...")
       const nurturingText = await nurturingFile.text()
       const planillaText = await planillaFile.text()
 
-      console.log("[COORD] 2. Parseando CSVs...")
       const sales = parseNurturingCSV(nurturingText)
       const products = parsePlanillaCSV(planillaText)
 
@@ -166,50 +156,32 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         return
       }
 
-      console.log("[COORD] 3. Generando órdenes...")
       const fecha = new Date().toISOString().split("T")[0]
       const orders = generateOrdersFromSales(sales, products, fecha)
-      
-      console.log("[COORD] 4. Generando planillas...")
       const sheets = generateRouteSheets(orders)
-      
-      console.log("[COORD] 5. Planillas generadas:", sheets.length)
-      console.log("[COORD] 6. Primera planilla:", sheets[0])
 
-      console.log("[COORD] 7. Llamando a API /planillas...")
       const response = await fetch('/api/planillas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ routeSheets: sheets })
       })
 
-      console.log("[COORD] 7.1. Response status:", response.status)
-      
       const result = await response.json()
-      console.log("[COORD] 8. Resultado completo:", JSON.stringify(result, null, 2))
 
       if (!response.ok) {
-        console.error("[COORD] 8.1. Response not OK:", result)
         throw new Error(result.error || 'Error al crear planillas')
       }
 
-      if (result.errors && result.errors.length > 0) {
-        console.warn("[COORD] 8.2. Hubo errores durante la inserción:", result.errors)
-      }
-
-      console.log("[COORD] 9. Esperando 2 segundos antes de recargar...")
       await new Promise(resolve => setTimeout(resolve, 2000))
-
-      console.log("[COORD] 10. Recargando planillas...")
       await loadPlanillas()
-
-      console.log("[COORD] 11. ✓ TODO COMPLETADO")
+      
+      // Cambiar a pestaña "Asignar" después de generar
+      setActiveTab("asignar")
+      
       setIsProcessing(false)
       
     } catch (err) {
       console.error("[COORD] ❌ ERROR en proceso:", err)
-      console.error("[COORD] Stack trace:", err instanceof Error ? err.stack : 'No stack')
-      console.error("[COORD] Error message:", err instanceof Error ? err.message : String(err))
       setError("Error al procesar los archivos: " + (err as Error).message)
       setIsProcessing(false)
     }
@@ -228,23 +200,64 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         throw new Error(errorData.error || 'Error al asignar entregador')
       }
 
-      const updated = routeSheets.map((s) =>
-        s.id === sheetId
-          ? {
-              ...s,
-              entregador,
-              orders: s.orders.map((order) => ({ ...order, entregador })),
-            }
-          : s,
-      )
-      setRouteSheets(updated)
+      await loadPlanillas()
     } catch (err) {
       console.error("[COORD] Error asignando entregador:", err)
       setError("Error al asignar entregador: " + (err as Error).message)
     }
   }
 
-  const allRoutesAssigned = routeSheets.length > 0 && routeSheets.every((s) => s.entregador)
+  const handleDeletePlanilla = async (sheetId: string) => {
+    if (!confirm('¿Está seguro de eliminar esta planilla? Esta acción no se puede deshacer.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/planillas/${sheetId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Error al eliminar planilla')
+      }
+
+      await loadPlanillas()
+    } catch (err) {
+      console.error("[COORD] Error eliminando planilla:", err)
+      setError("Error al eliminar planilla: " + (err as Error).message)
+    }
+  }
+
+  const handlePostponePlanilla = async (sheetId: string) => {
+    try {
+      const response = await fetch('/api/planillas/postpone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planillaId: sheetId })
+      })
+
+      if (!response.ok) {
+        throw new Error('Error al posponer planilla')
+      }
+
+      await loadPlanillas()
+    } catch (err) {
+      console.error("[COORD] Error posponiendo planilla:", err)
+      setError("Error al posponer planilla: " + (err as Error).message)
+    }
+  }
+
+  // Filtrar planillas para cada pestaña
+  const unassignedSheets = routeSheets.filter(s => !s.entregador && s.estado === 'pendiente')
+  const assignedSheets = routeSheets.filter(s => s.entregador || s.estado !== 'pendiente')
+  
+  // Aplicar filtros al historial
+  const filteredHistorial = assignedSheets.filter(s => {
+    if (filterDate && s.fecha !== filterDate) return false
+    if (filterEntregador && s.entregador !== filterEntregador) return false
+    if (filterEstado && s.estado !== filterEstado) return false
+    return true
+  })
 
   if (loading) {
     return (
@@ -279,131 +292,247 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       </header>
 
       <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-5xl">
-        <div className="space-y-4 md:space-y-6">
-          <Card className="p-4 md:p-6">
-            <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 flex items-center gap-2">
-              <Upload className="h-4 w-4 md:h-5 md:w-5" />
-              Carga de Archivos Diarios
-            </h2>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-3 mb-6">
+            <TabsTrigger value="generar">
+              <Upload className="h-4 w-4 mr-2" />
+              Generar Hoy
+            </TabsTrigger>
+            <TabsTrigger value="asignar">
+              <Truck className="h-4 w-4 mr-2" />
+              Asignar ({unassignedSheets.length})
+            </TabsTrigger>
+            <TabsTrigger value="historial">
+              <Calendar className="h-4 w-4 mr-2" />
+              Historial
+            </TabsTrigger>
+          </TabsList>
 
-            <div className="space-y-3 md:space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">NURTURING - Ventas del Día Anterior (CSV)</label>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleNurturingUpload}
-                  className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-                />
-                {nurturingFile && <p className="text-sm text-muted-foreground mt-1">✓ {nurturingFile.name}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  INVENTARIO GENERAL - Catálogo de Productos (CSV)
-                </label>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handlePlanillaUpload}
-                  className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-                />
-                {planillaFile && <p className="text-sm text-muted-foreground mt-1">✓ {planillaFile.name}</p>}
-              </div>
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <Button
-                onClick={handleGeneratePlanillas}
-                disabled={!nurturingFile || !planillaFile || isProcessing}
-                className="w-full"
-                size="lg"
-              >
-                <FileSpreadsheet className="h-4 w-4 md:h-5 md:w-5 mr-2" />
-                {isProcessing ? "Procesando..." : "Generar Planillas por Ruta"}
-              </Button>
-            </div>
-          </Card>
-
-          {routeSheets.length > 0 && (
+          {/* PESTAÑA 1: GENERAR HOY */}
+          <TabsContent value="generar" className="space-y-4">
             <Card className="p-4 md:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <h2 className="text-base md:text-lg font-semibold flex items-center gap-2">
-                  <Truck className="h-4 w-4 md:h-5 md:w-5" />
-                  Asignación de Entregadores ({routeSheets.length} rutas)
-                </h2>
-                {allRoutesAssigned && (
-                  <span className="text-xs md:text-sm px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium w-fit">
-                    ✓ Todas las rutas asignadas
-                  </span>
-                )}
-              </div>
+              <h2 className="text-base md:text-lg font-semibold mb-3 md:mb-4 flex items-center gap-2">
+                <Upload className="h-4 w-4 md:h-5 md:w-5" />
+                Carga de Archivos Diarios
+              </h2>
 
-              {!allRoutesAssigned && (
+              <div className="space-y-3 md:space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">NURTURING - Ventas del Día Anterior (CSV)</label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleNurturingUpload}
+                    className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                  />
+                  {nurturingFile && <p className="text-sm text-muted-foreground mt-1">✓ {nurturingFile.name}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    INVENTARIO GENERAL - Catálogo de Productos (CSV)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handlePlanillaUpload}
+                    className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                  />
+                  {planillaFile && <p className="text-sm text-muted-foreground mt-1">✓ {planillaFile.name}</p>}
+                </div>
+
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <Button
+                  onClick={handleGeneratePlanillas}
+                  disabled={!nurturingFile || !planillaFile || isProcessing}
+                  className="w-full"
+                  size="lg"
+                >
+                  <FileSpreadsheet className="h-4 w-4 md:h-5 md:w-5 mr-2" />
+                  {isProcessing ? "Procesando..." : "Generar Planillas por Ruta"}
+                </Button>
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* PESTAÑA 2: ASIGNAR */}
+          <TabsContent value="asignar" className="space-y-4">
+            {unassignedSheets.length === 0 ? (
+              <Card className="p-8 text-center">
+                <Truck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No hay planillas pendientes</h3>
+                <p className="text-sm text-muted-foreground">
+                  Todas las planillas han sido asignadas
+                </p>
+              </Card>
+            ) : (
+              <Card className="p-4 md:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                  <h2 className="text-base md:text-lg font-semibold flex items-center gap-2">
+                    <Truck className="h-4 w-4 md:h-5 md:w-5" />
+                    Asignación de Entregadores ({unassignedSheets.length} rutas)
+                  </h2>
+                </div>
+
                 <Alert className="mb-4 bg-amber-50 border-amber-200">
                   <AlertDescription className="text-sm text-amber-800">
                     Asigne un entregador a cada ruta antes de que el alistador pueda comenzar la preparación
                   </AlertDescription>
                 </Alert>
-              )}
 
-              <div className="space-y-3">
-                {routeSheets.map((sheet) => (
-                  <div
-                    key={sheet.id}
-                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 md:p-4 border rounded-lg bg-muted/50"
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
-                      <p className="text-xs md:text-sm text-muted-foreground">
-                        {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
-                      </p>
+                <div className="space-y-3">
+                  {unassignedSheets.map((sheet) => (
+                    <div
+                      key={sheet.id}
+                      className="flex flex-col gap-3 p-3 md:p-4 border rounded-lg bg-muted/50"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex-1">
+                          <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
+                          <p className="text-xs md:text-sm text-muted-foreground">
+                            {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={sheet.entregador || ""}
+                            onValueChange={(value) => handleAssignEntregador(sheet.id, value)}
+                            disabled={entregadores.length === 0}
+                          >
+                            <SelectTrigger className="w-full sm:w-[180px]">
+                              <SelectValue placeholder={entregadores.length === 0 ? "Sin entregadores" : "Seleccionar"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {entregadores.map((entregador) => (
+                                <SelectItem key={entregador} value={entregador}>
+                                  {entregador}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2 justify-end border-t pt-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePostponePlanilla(sheet.id)}
+                          className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                        >
+                          <Clock className="h-4 w-4 mr-1" />
+                          Posponer
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeletePlanilla(sheet.id)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Eliminar
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 md:gap-3">
-                      <Select
-                        value={sheet.entregador || ""}
-                        onValueChange={(value) => handleAssignEntregador(sheet.id, value)}
-                        disabled={entregadores.length === 0}
-                      >
-                        <SelectTrigger className="w-full sm:w-[180px]">
-                          <SelectValue placeholder={entregadores.length === 0 ? "Sin entregadores" : "Seleccionar"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {entregadores.map((entregador) => (
-                            <SelectItem key={entregador} value={entregador}>
-                              {entregador}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* PESTAÑA 3: HISTORIAL */}
+          <TabsContent value="historial" className="space-y-4">
+            <Card className="p-4 md:p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Filter className="h-5 w-5" />
+                <h3 className="font-semibold">Filtros</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Fecha</label>
+                  <input
+                    type="date"
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-md"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Entregador</label>
+                  <Select value={filterEntregador} onValueChange={setFilterEntregador}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Todos</SelectItem>
+                      {entregadores.map((e) => (
+                        <SelectItem key={e} value={e}>{e}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Estado</label>
+                  <Select value={filterEstado} onValueChange={setFilterEstado}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Todos</SelectItem>
+                      <SelectItem value="pendiente">Pendiente</SelectItem>
+                      <SelectItem value="alistando">Alistando</SelectItem>
+                      <SelectItem value="alistado">Alistado</SelectItem>
+                      <SelectItem value="en_ruta">En Ruta</SelectItem>
+                      <SelectItem value="completado">Completado</SelectItem>
+                      <SelectItem value="pospuesto">Pospuesto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {filteredHistorial.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No se encontraron planillas con los filtros aplicados
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredHistorial.map((sheet) => (
+                    <div
+                      key={sheet.id}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 md:p-4 border rounded-lg"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
+                        <p className="text-xs md:text-sm text-muted-foreground">
+                          {sheet.fecha} · {sheet.entregador || 'Sin asignar'} · {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
+                        </p>
+                      </div>
                       <span
-                        className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${
-                          sheet.entregador ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                        className={`text-xs px-3 py-1 rounded-full whitespace-nowrap ${
+                          sheet.estado === 'completado' ? 'bg-green-100 text-green-700' :
+                          sheet.estado === 'alistado' ? 'bg-blue-100 text-blue-700' :
+                          sheet.estado === 'alistando' ? 'bg-yellow-100 text-yellow-700' :
+                          sheet.estado === 'pospuesto' ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-600'
                         }`}
                       >
-                        {sheet.entregador ? "Asignado" : "Sin asignar"}
+                        {sheet.estado}
                       </span>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </Card>
-          )}
-
-          {routeSheets.length === 0 && !loading && (
-            <Card className="p-8 text-center">
-              <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No hay planillas generadas</h3>
-              <p className="text-sm text-muted-foreground">
-                Cargue los archivos CSV y genere las planillas para comenzar
-              </p>
-            </Card>
-          )}
-        </div>
+          </TabsContent>
+        </Tabs>
       </main>
     </>
   )
