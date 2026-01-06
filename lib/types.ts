@@ -55,6 +55,7 @@ export interface SalesRecord {
   vendidoA: string
   fecha: string
   comentarios?: string
+  idVenta: string // ← NUEVO: ID de factura/venta (columna H)
 }
 
 export interface Product {
