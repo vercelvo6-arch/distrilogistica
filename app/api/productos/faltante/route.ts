@@ -23,9 +23,18 @@ export async function POST(request: NextRequest) {
       usuarioId 
     } = body
 
+    // Validaciones
     if (!codigo || !entregador || cantidadDisponible === undefined) {
       console.error('[API FALTANTE] Datos incompletos:', { codigo, entregador, cantidadDisponible })
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
+    }
+
+    // Validación: si es incompleta debe tener observaciones
+    if (unidadIncompleta && !observaciones) {
+      return NextResponse.json(
+        { error: 'Las unidades incompletas requieren observaciones' },
+        { status: 400 }
+      )
     }
 
     const sql = getDB()
@@ -40,33 +49,51 @@ export async function POST(request: NextRequest) {
     console.log('[API FALTANTE] Planillas encontradas:', planillas.length)
 
     if (planillas.length === 0) {
-      return NextResponse.json({ error: 'No hay planillas activas para este entregador' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'No hay planillas activas para este entregador' },
+        { status: 404 }
+      )
     }
 
-    const planillaIds = planillas.map(p => p.id)
+    // Actualizar productos iterando sobre cada planilla
+    let totalUpdated = 0
 
-    // Actualizar productos en la tabla correcta: "productos"
-    const result = await sql`
-      UPDATE productos
-      SET 
-        cantidad_disponible = ${cantidadDisponible},
-        cantidad_faltante = ${cantidadFaltante || 0},
-        unidad_incompleta = ${unidadIncompleta || false},
-        observaciones_faltante = ${observaciones || null},
-        updated_at = NOW()
-      WHERE codigo = ${codigo}
-      AND pedido_id IN (
-        SELECT id FROM pedidos 
-        WHERE planilla_id = ANY(${planillaIds})
-      )
-    `
+    for (const planilla of planillas) {
+      try {
+        const updated = await sql`
+          UPDATE productos
+          SET 
+            cantidad_disponible = ${cantidadDisponible},
+            cantidad_faltante = ${cantidadFaltante || 0},
+            unidad_incompleta = ${unidadIncompleta || false},
+            observaciones_faltante = ${observaciones || null},
+            updated_at = NOW()
+          WHERE codigo = ${codigo}
+          AND pedido_id IN (
+            SELECT id FROM pedidos 
+            WHERE planilla_id = ${planilla.id}
+          )
+        `
+        
+        totalUpdated += updated.count || 0
+      } catch (error) {
+        console.error(`[API FALTANTE] Error actualizando planilla ${planilla.id}:`, error)
+      }
+    }
 
     console.log(`[API FALTANTE] ✓ Producto ${codigo}:`)
     console.log(`  - Disponible: ${cantidadDisponible}/${cantidadSolicitada}`)
     console.log(`  - Faltante: ${cantidadFaltante || 0}`)
     console.log(`  - Incompleta: ${unidadIncompleta || false}`)
     console.log(`  - Observaciones: ${observaciones || 'N/A'}`)
-    console.log(`  - Registros actualizados: ${result.count}`)
+    console.log(`  - Registros actualizados: ${totalUpdated}`)
+
+    if (totalUpdated === 0) {
+      return NextResponse.json(
+        { error: 'No se encontraron productos para actualizar' },
+        { status: 404 }
+      )
+    }
 
     return NextResponse.json({ 
       success: true,
@@ -75,7 +102,7 @@ export async function POST(request: NextRequest) {
         : (cantidadFaltante || 0) > 0 
           ? `Faltante: ${cantidadFaltante} unidades` 
           : 'Cantidad completa registrada',
-      updated: result.count,
+      updated: totalUpdated,
       data: {
         cantidadDisponible,
         cantidadFaltante: cantidadFaltante || 0,
@@ -88,7 +115,10 @@ export async function POST(request: NextRequest) {
     console.error('[API FALTANTE] Error completo:', error)
     console.error('[API FALTANTE] Stack:', error instanceof Error ? error.stack : 'No stack')
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error al registrar cantidad' },
+      { 
+        error: 'Error al registrar cantidad disponible',
+        details: error instanceof Error ? error.message : 'Error desconocido'
+      },
       { status: 500 }
     )
   }
