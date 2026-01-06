@@ -4,7 +4,7 @@ import { getSession } from '@/lib/session';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getSession();
@@ -12,12 +12,15 @@ export async function DELETE(
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
-    const planillaId = params.id;
+    // ✅ CORRECCIÓN 1: await params (Next.js 15)
+    const { id } = await params;
+    const planillaId = id;
     
     if (!planillaId) {
       return NextResponse.json({ error: 'ID de planilla requerido' }, { status: 400 });
     }
 
+    // ✅ CORRECCIÓN 2: console.log con paréntesis
     console.log(`[API DELETE] Intentando eliminar planilla: ${planillaId}`);
 
     const sql = getDB();
