@@ -2,12 +2,14 @@
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User } from "lucide-react"
+import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, AlertTriangle, Edit } from "lucide-react"
 import type { RouteSheet } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { updatePlanillaEstado } from "@/lib/actions/planillas"
+import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 
 interface AlistadorViewProps {
   onLogout: () => void
@@ -20,13 +22,16 @@ interface ConsolidatedProduct {
   categoria: string
   cantidadTotal: number
   valorUnidad: number
+  cantidadDisponible: number | null
+  cantidadFaltante: number
 }
 
 export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedDeliveryPersons, setExpandedDeliveryPersons] = useState<Set<string>>(new Set())
-  const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set())
+  const [editingProduct, setEditingProduct] = useState<{ entregador: string; product: ConsolidatedProduct } | null>(null)
+  const [disponibleInput, setDisponibleInput] = useState("")
 
   useEffect(() => {
     loadData()
@@ -43,7 +48,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       
       const data = await response.json()
       
-      // Transformar datos del API al formato RouteSheet
       const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
@@ -74,14 +78,17 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
             cantidad: Number(prod.cantidad) || 0,
             valorUnidad: Number(prod.precio_unitario) || 0,
             subtotal: Number(prod.total) || 0,
+            cantidadDisponible: prod.cantidad_disponible,
+            cantidadFaltante: prod.cantidad_faltante || 0,
           })),
         })),
         cuentasPorCobrar: [],
       }))
       
       setRouteSheets(planillas)
+      
     } catch (err) {
-      console.error("[v0] Error loading planillas:", err)
+      console.error("[ALISTADOR] Error loading planillas:", err)
     } finally {
       setLoading(false)
     }
@@ -114,6 +121,9 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           const existing = productMap.get(item.codigo)
           if (existing) {
             existing.cantidadTotal += item.cantidad
+            if (item.cantidadFaltante) {
+              existing.cantidadFaltante += item.cantidadFaltante
+            }
           } else {
             productMap.set(item.codigo, {
               codigo: item.codigo,
@@ -121,6 +131,8 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               categoria: item.categoria,
               cantidadTotal: item.cantidad,
               valorUnidad: item.valorUnidad,
+              cantidadDisponible: item.cantidadDisponible,
+              cantidadFaltante: item.cantidadFaltante || 0,
             })
           }
         })
@@ -133,6 +145,43 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     })
   }
 
+  const handleOpenEditDialog = (entregador: string, product: ConsolidatedProduct) => {
+    setEditingProduct({ entregador, product })
+    setDisponibleInput(product.cantidadDisponible?.toString() || "")
+  }
+
+  const handleSaveCantidadDisponible = async () => {
+    if (!editingProduct) return
+
+    const disponible = Number(disponibleInput) || 0
+    const faltante = Math.max(0, editingProduct.product.cantidadTotal - disponible)
+
+    try {
+      const response = await fetch('/api/productos/faltante', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          codigo: editingProduct.product.codigo,
+          entregador: editingProduct.entregador,
+          cantidadSolicitada: editingProduct.product.cantidadTotal,
+          cantidadDisponible: disponible,
+          cantidadFaltante: faltante,
+          usuarioId: user.id,
+        }),
+      })
+
+      if (!response.ok) throw new Error('Error al guardar cantidad')
+
+      setEditingProduct(null)
+      setDisponibleInput("")
+      await loadData()
+
+    } catch (err) {
+      console.error("[ALISTADOR] Error saving cantidad:", err)
+      alert('Error al guardar cantidad disponible')
+    }
+  }
+
   const handleStartPreparation = async (entregador: string) => {
     try {
       const sheetsToUpdate = routeSheets.filter((s) => s.entregador === entregador && s.estado === "pendiente")
@@ -143,7 +192,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
       await loadData()
     } catch (err) {
-      console.error("[v0] Error starting preparation:", err)
+      console.error("[ALISTADOR] Error starting preparation:", err)
     }
   }
 
@@ -157,7 +206,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
       await loadData()
     } catch (err) {
-      console.error("[v0] Error completing preparation:", err)
+      console.error("[ALISTADOR] Error completing preparation:", err)
     }
   }
 
@@ -171,14 +220,14 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     setExpandedDeliveryPersons(newExpanded)
   }
 
-  const toggleRoute = (routeId: string) => {
-    const newExpanded = new Set(expandedRoutes)
-    if (newExpanded.has(routeId)) {
-      newExpanded.delete(routeId)
-    } else {
-      newExpanded.add(routeId)
+  const getEstadoProducto = (product: ConsolidatedProduct) => {
+    if (product.cantidadDisponible === null) {
+      return { estado: 'pendiente', color: 'bg-gray-100 text-gray-700' }
     }
-    setExpandedRoutes(newExpanded)
+    if (product.cantidadFaltante > 0) {
+      return { estado: 'parcial', color: 'bg-orange-100 text-orange-700' }
+    }
+    return { estado: 'completo', color: 'bg-green-100 text-green-700' }
   }
 
   if (loading) {
@@ -238,6 +287,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
               const allPending = sheets.every((s) => s.estado === "pendiente")
               const allReady = sheets.every((s) => s.estado === "alistando")
+              const totalFaltantes = consolidatedProducts.filter(p => p.cantidadFaltante > 0).length
 
               return (
                 <Card key={entregador} className="overflow-hidden border-2">
@@ -260,6 +310,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                           <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-purple-700 rounded-full font-medium">
                             {consolidatedProducts.length} productos diferentes
                           </span>
+                          {totalFaltantes > 0 && (
+                            <span className="text-xs px-2 md:px-3 py-1 bg-orange-100 text-orange-700 rounded-full font-medium flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              {totalFaltantes} con faltantes
+                            </span>
+                          )}
                           <span
                             className={`text-xs px-2 md:px-3 py-1 rounded-full font-medium ${
                               allPending
@@ -309,7 +365,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                             Lista de Productos Consolidados
                           </h3>
                           <p className="text-xs md:text-sm text-green-700 mb-4">
-                            Recorra la bodega una sola vez recogiendo estos productos
+                            Indique la cantidad disponible de cada producto en bodega
                           </p>
                         </div>
                         <div className="overflow-x-auto border rounded-lg">
@@ -321,30 +377,52 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                                 <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">
                                   Categoría
                                 </th>
-                                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cant.</th>
-                                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold hidden md:table-cell">
-                                  Valor Unit.
-                                </th>
+                                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Solicitado</th>
+                                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Disponible</th>
+                                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Faltante</th>
+                                <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {consolidatedProducts.map((product) => (
-                                <tr key={product.codigo} className="border-b hover:bg-muted/50">
-                                  <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
-                                  <td className="py-2 md:py-3 px-2 md:px-4">{product.descripcion}</td>
-                                  <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
-                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                      {product.categoria}
-                                    </span>
-                                  </td>
-                                  <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base md:text-lg">
-                                    {product.cantidadTotal}
-                                  </td>
-                                  <td className="text-right py-2 md:py-3 px-2 md:px-4 hidden md:table-cell">
-                                    {formatCOP(product.valorUnidad)}
-                                  </td>
-                                </tr>
-                              ))}
+                              {consolidatedProducts.map((product) => {
+                                const estadoInfo = getEstadoProducto(product)
+                                return (
+                                  <tr 
+                                    key={product.codigo} 
+                                    className={`border-b hover:bg-muted/50 ${
+                                      product.cantidadFaltante > 0 ? 'bg-orange-50' : ''
+                                    }`}
+                                  >
+                                    <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
+                                    <td className="py-2 md:py-3 px-2 md:px-4">{product.descripcion}</td>
+                                    <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                        {product.categoria}
+                                      </span>
+                                    </td>
+                                    <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
+                                      {product.cantidadTotal}
+                                    </td>
+                                    <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-green-600">
+                                      {product.cantidadDisponible ?? '-'}
+                                    </td>
+                                    <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-orange-600">
+                                      {product.cantidadFaltante > 0 ? product.cantidadFaltante : '-'}
+                                    </td>
+                                    <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleOpenEditDialog(entregador, product)}
+                                        className="text-xs"
+                                      >
+                                        <Edit className="h-3 w-3 mr-1" />
+                                        {product.cantidadDisponible === null ? 'Registrar' : 'Editar'}
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -357,6 +435,80 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           </div>
         )}
       </main>
+
+      {/* Dialog para editar cantidad disponible */}
+      <Dialog open={!!editingProduct} onOpenChange={() => setEditingProduct(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar Cantidad Disponible</DialogTitle>
+          </DialogHeader>
+          
+          {editingProduct && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium mb-1">Producto:</p>
+                <p className="text-sm text-muted-foreground">{editingProduct.product.descripcion}</p>
+              </div>
+              
+              <div>
+                <p className="text-sm font-medium mb-1">Código:</p>
+                <p className="text-sm font-mono">{editingProduct.product.codigo}</p>
+              </div>
+
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <p className="text-sm font-bold text-blue-900">
+                  Cantidad solicitada: {editingProduct.product.cantidadTotal} unidades
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  ¿Cuántas unidades hay disponibles en bodega?
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  max={editingProduct.product.cantidadTotal}
+                  value={disponibleInput}
+                  onChange={(e) => setDisponibleInput(e.target.value)}
+                  placeholder="Ej: 7"
+                  className="text-lg font-bold"
+                  autoFocus
+                />
+              </div>
+
+              {disponibleInput && (
+                <div className={`p-3 rounded-lg ${
+                  Number(disponibleInput) >= editingProduct.product.cantidadTotal
+                    ? 'bg-green-50'
+                    : 'bg-orange-50'
+                }`}>
+                  <p className={`text-sm font-bold ${
+                    Number(disponibleInput) >= editingProduct.product.cantidadTotal
+                      ? 'text-green-900'
+                      : 'text-orange-900'
+                  }`}>
+                    {Number(disponibleInput) >= editingProduct.product.cantidadTotal ? (
+                      <>✓ Cantidad completa</>
+                    ) : (
+                      <>⚠️ Faltante: {editingProduct.product.cantidadTotal - Number(disponibleInput)} unidades</>
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingProduct(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveCantidadDisponible} disabled={!disponibleInput}>
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
