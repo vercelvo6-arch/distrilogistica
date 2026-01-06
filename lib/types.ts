@@ -9,9 +9,12 @@ export interface OrderItem {
   valorUnidad: number
   subtotal: number
   devuelto?: boolean
-  // ✅ NUEVOS campos para faltantes parciales
+  // ✅ Campos para faltantes parciales
   cantidadDisponible?: number | null
   cantidadFaltante?: number
+  // ✅ NUEVO: Para unidades incompletas
+  unidadIncompleta?: boolean
+  observacionesFaltante?: string | null
 }
 
 export interface Order {
@@ -44,8 +47,8 @@ export interface RouteSheet {
   entregador?: string | null
   tipoRuta?: string
   cuentasPorCobrar: any[]
-  cuadradoEnCaja?: boolean // ← NUEVO: Para rastrear si ya fue procesado en caja
-  fechaCuadreCaja?: string // ← NUEVO: Cuándo se cuadró
+  cuadradoEnCaja?: boolean
+  fechaCuadreCaja?: string
 }
 
 export interface SalesRecord {
@@ -58,7 +61,7 @@ export interface SalesRecord {
   vendidoA: string
   fecha: string
   comentarios?: string
-  idVenta: string // ← NUEVO: ID de factura/venta (columna H)
+  idVenta: string
 }
 
 export interface Product {
