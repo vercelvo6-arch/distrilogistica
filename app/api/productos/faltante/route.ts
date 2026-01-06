@@ -17,7 +17,9 @@ export async function POST(request: NextRequest) {
       entregador, 
       cantidadSolicitada,
       cantidadDisponible, 
-      cantidadFaltante, 
+      cantidadFaltante,
+      unidadIncompleta,
+      observaciones,
       usuarioId 
     } = body;
 
@@ -41,17 +43,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No hay planillas activas para este entregador' }, { status: 404 });
     }
 
-    // Extraer IDs como array simple
     const planillaIds = planillas.map(p => p.id);
 
-    // Actualizar productos - usando ANY en vez de IN para arrays
+    // Actualizar productos
     const result = await sql`
       UPDATE pedido_productos
       SET 
         cantidad_disponible = ${cantidadDisponible},
         cantidad_faltante = ${cantidadFaltante},
-        marcado_faltante_por = ${cantidadFaltante > 0 ? usuarioId : null},
-        marcado_faltante_fecha = ${cantidadFaltante > 0 ? new Date().toISOString() : null}
+        unidad_incompleta = ${unidadIncompleta || false},
+        observaciones_faltante = ${observaciones || null},
+        marcado_faltante_por = ${(cantidadFaltante > 0 || unidadIncompleta) ? usuarioId : null},
+        marcado_faltante_fecha = ${(cantidadFaltante > 0 || unidadIncompleta) ? new Date().toISOString() : null}
       WHERE codigo = ${codigo}
       AND pedido_id IN (
         SELECT id FROM pedidos 
@@ -59,18 +62,26 @@ export async function POST(request: NextRequest) {
       )
     `;
 
-    console.log(`[API FALTANTE] ✓ Producto ${codigo}: ${cantidadDisponible}/${cantidadSolicitada} (faltante: ${cantidadFaltante})`);
-    console.log(`[API FALTANTE] Registros actualizados: ${result.count}`);
+    console.log(`[API FALTANTE] ✓ Producto ${codigo}:`);
+    console.log(`  - Disponible: ${cantidadDisponible}/${cantidadSolicitada}`);
+    console.log(`  - Faltante: ${cantidadFaltante}`);
+    console.log(`  - Incompleta: ${unidadIncompleta}`);
+    console.log(`  - Observaciones: ${observaciones || 'N/A'}`);
+    console.log(`  - Registros actualizados: ${result.count}`);
 
     return NextResponse.json({ 
       success: true,
-      message: cantidadFaltante > 0 
-        ? `Registrado: ${cantidadDisponible} disponibles, ${cantidadFaltante} faltantes` 
-        : 'Cantidad completa registrada',
+      message: unidadIncompleta 
+        ? `Registrado como incompleto: ${observaciones}`
+        : cantidadFaltante > 0 
+          ? `Faltante: ${cantidadFaltante} unidades` 
+          : 'Cantidad completa registrada',
       updated: result.count,
       data: {
         cantidadDisponible,
-        cantidadFaltante
+        cantidadFaltante,
+        unidadIncompleta,
+        observaciones
       }
     });
 
