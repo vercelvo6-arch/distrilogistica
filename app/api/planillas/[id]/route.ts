@@ -18,29 +18,47 @@ export async function DELETE(
       return NextResponse.json({ error: 'ID de planilla requerido' }, { status: 400 });
     }
 
+    console.log(`[API DELETE] Intentando eliminar planilla: ${planillaId}`);
+
     const sql = getDB();
 
+    // Verificar que la planilla existe
+    const planilla = await sql`
+      SELECT id FROM planillas WHERE id = ${planillaId}
+    `;
+
+    if (planilla.length === 0) {
+      return NextResponse.json({ error: 'Planilla no encontrada' }, { status: 404 });
+    }
+
     // Eliminar en cascada: primero productos, luego pedidos, luego planilla
-    await sql`
+    const deletedProducts = await sql`
       DELETE FROM pedido_productos 
       WHERE pedido_id IN (
         SELECT id FROM pedidos WHERE planilla_id = ${planillaId}
       )
     `;
 
-    await sql`
+    const deletedOrders = await sql`
       DELETE FROM pedidos WHERE planilla_id = ${planillaId}
     `;
 
-    await sql`
+    const deletedSheet = await sql`
       DELETE FROM planillas WHERE id = ${planillaId}
     `;
 
     console.log(`[API DELETE] ✓ Planilla ${planillaId} eliminada`);
+    console.log(`[API DELETE] - Productos eliminados: ${deletedProducts.count}`);
+    console.log(`[API DELETE] - Pedidos eliminados: ${deletedOrders.count}`);
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Planilla eliminada correctamente' 
+      message: 'Planilla eliminada correctamente',
+      deleted: {
+        products: deletedProducts.count,
+        orders: deletedOrders.count,
+        sheet: deletedSheet.count
+      }
     });
 
   } catch (error) {
