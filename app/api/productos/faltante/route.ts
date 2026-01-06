@@ -9,6 +9,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
+    const body = await request.json();
+    console.log('[API FALTANTE] Request body:', body);
+
     const { 
       codigo, 
       entregador, 
@@ -16,9 +19,10 @@ export async function POST(request: NextRequest) {
       cantidadDisponible, 
       cantidadFaltante, 
       usuarioId 
-    } = await request.json();
+    } = body;
 
     if (!codigo || !entregador || cantidadDisponible === undefined) {
+      console.error('[API FALTANTE] Datos incompletos:', { codigo, entregador, cantidadDisponible });
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
     }
 
@@ -30,6 +34,8 @@ export async function POST(request: NextRequest) {
       WHERE entregador = ${entregador} 
       AND estado IN ('pendiente', 'alistando')
     `;
+
+    console.log('[API FALTANTE] Planillas encontradas:', planillas.length);
 
     if (planillas.length === 0) {
       return NextResponse.json({ error: 'No hay planillas activas para este entregador' }, { status: 404 });
@@ -52,7 +58,8 @@ export async function POST(request: NextRequest) {
       )
     `;
 
-    console.log(`[API FALTANTE] Producto ${codigo}: ${cantidadDisponible}/${cantidadSolicitada} (faltante: ${cantidadFaltante})`);
+    console.log(`[API FALTANTE] ✓ Producto ${codigo}: ${cantidadDisponible}/${cantidadSolicitada} (faltante: ${cantidadFaltante})`);
+    console.log(`[API FALTANTE] Registros actualizados: ${result.count}`);
 
     return NextResponse.json({ 
       success: true,
@@ -67,7 +74,8 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[API FALTANTE] Error:', error);
+    console.error('[API FALTANTE] Error completo:', error);
+    console.error('[API FALTANTE] Stack:', error instanceof Error ? error.stack : 'No stack');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Error al registrar cantidad' },
       { status: 500 }
