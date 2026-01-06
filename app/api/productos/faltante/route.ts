@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     for (const planilla of planillas) {
       try {
         const updated = await sql`
-          UPDATE producto
+          UPDATE pedido_productos
           SET 
             cantidad_disponible = ${cantidadDisponible},
             cantidad_faltante = ${cantidadFaltante || 0},
