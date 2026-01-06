@@ -254,9 +254,36 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   
   // Aplicar filtros al historial
   const filteredHistorial = hasActiveFilter ? assignedSheets.filter(s => {
+    const sheetDate = new Date(s.fecha + 'T00:00:00')
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    // Filtro por fecha específica
     if (filterDate && s.fecha !== filterDate) return false
+
+    // Filtro por rango de fechas (últimos 7 días)
+    if (filterDate === "last7days") {
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(today.getDate() - 7)
+      sevenDaysAgo.setHours(0, 0, 0, 0)
+      if (sheetDate < sevenDaysAgo || sheetDate > today) return false
+    }
+
+    // Filtro por mes actual
+    if (filterDate === "currentMonth") {
+      const currentMonth = today.getMonth()
+      const currentYear = today.getFullYear()
+      const sheetMonth = sheetDate.getMonth()
+      const sheetYear = sheetDate.getFullYear()
+      if (sheetMonth !== currentMonth || sheetYear !== currentYear) return false
+    }
+
+    // Filtro por entregador
     if (filterEntregador && filterEntregador !== "todos" && s.entregador !== filterEntregador) return false
+
+    // Filtro por estado
     if (filterEstado && filterEstado !== "todos" && s.estado !== filterEstado) return false
+
     return true
   }) : []
 
@@ -264,16 +291,22 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const applyTodayFilter = () => {
     const today = new Date().toISOString().split('T')[0]
     setFilterDate(today)
+    setFilterEntregador("todos")
+    setFilterEstado("todos")
     setHasActiveFilter(true)
   }
 
   const applyLast7DaysFilter = () => {
-    setFilterDate("")
+    setFilterDate("last7days")
+    setFilterEntregador("todos")
+    setFilterEstado("todos")
     setHasActiveFilter(true)
   }
 
   const applyCurrentMonthFilter = () => {
-    setFilterDate("")
+    setFilterDate("currentMonth")
+    setFilterEntregador("todos")
+    setFilterEstado("todos")
     setHasActiveFilter(true)
   }
 
@@ -495,14 +528,14 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                   Hoy
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={filterDate === "last7days" ? "default" : "outline"}
                   size="sm"
                   onClick={applyLast7DaysFilter}
                 >
                   Últimos 7 días
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={filterDate === "currentMonth" ? "default" : "outline"}
                   size="sm"
                   onClick={applyCurrentMonthFilter}
                 >
@@ -515,7 +548,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                   <label className="block text-sm font-medium mb-2">Fecha</label>
                   <input
                     type="date"
-                    value={filterDate}
+                    value={filterDate.startsWith('20') ? filterDate : ''}
                     onChange={(e) => {
                       setFilterDate(e.target.value)
                       setHasActiveFilter(true)
