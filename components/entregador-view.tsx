@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react"
+import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2, MapPin, Phone } from "lucide-react"
 import { User } from "lucide-react"
 import type { RouteSheet, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
@@ -28,7 +28,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null)
 
-  // CRÍTICO: Usar el nombre del usuario para filtrar
   const deliveryPerson = user.nombre
 
   useEffect(() => {
@@ -46,7 +45,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       
       const data = await response.json()
       
-      // Transformar datos del API al formato RouteSheet
       const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
@@ -63,6 +61,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         orders: (p.pedidos || []).map((ped: any) => ({
           id: ped.id,
           cliente: ped.cliente,
+          direccion: ped.direccion || '',
+          telefono: ped.telefono || '',
+          barrio: ped.barrio || '',
           ruta: p.tipo_ruta,
           fecha: p.fecha,
           estado: ped.estado,
@@ -86,7 +87,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       console.log('📦 [ENTREGADOR] Planillas totales:', planillas.length)
       console.log('👤 [ENTREGADOR] Mi nombre:', deliveryPerson)
       
-      // Filtrar SOLO las rutas de ESTE entregador
       const misRutas = planillas.filter(p => p.entregador === deliveryPerson)
       console.log('🚚 [ENTREGADOR] Mis rutas:', misRutas.length)
       
@@ -98,7 +98,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
   }
 
-  // FILTRO CRÍTICO: Solo mostrar rutas de ESTE entregador que estén alistadas
   const myRoutes = routeSheets.filter((s) => 
     s.entregador === deliveryPerson && s.estado === "alistado"
   )
@@ -124,7 +123,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       await updatePedidoEstado(orderId, newStatus)
       await loadData()
 
-      // Recalcular totales
       const updatedSheet = routeSheets.find((s) => s.id === sheetId)
       if (updatedSheet) {
         const totals = calculateRouteTotals(updatedSheet)
@@ -317,9 +315,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 return (
                   <Card key={order.id} className="overflow-hidden">
                     <div className="p-3 md:p-4 bg-muted/50">
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
                             <h3 className="font-semibold text-sm md:text-base truncate">{order.cliente}</h3>
                             <span
                               className={`text-xs px-2 py-1 rounded-full shrink-0 ${
@@ -337,7 +335,33 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                               {order.estado}
                             </span>
                           </div>
-                          <p className="text-xs md:text-sm text-muted-foreground mt-1">
+                          
+                          {/* INFORMACIÓN DE CONTACTO */}
+                          <div className="space-y-1 mb-2">
+                            {order.direccion && (
+                              <div className="flex items-start gap-2 text-xs md:text-sm text-muted-foreground">
+                                <MapPin className="h-4 w-4 shrink-0 mt-0.5" />
+                                <span className="break-words">
+                                  {order.direccion}
+                                  {order.barrio && ` - ${order.barrio}`}
+                                </span>
+                              </div>
+                            )}
+                            {order.telefono && (
+                              <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
+                                <Phone className="h-4 w-4 shrink-0" />
+                                <a 
+                                  href={`tel:${order.telefono}`}
+                                  className="hover:text-primary hover:underline font-medium"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {order.telefono}
+                                </a>
+                              </div>
+                            )}
+                          </div>
+
+                          <p className="text-xs md:text-sm text-muted-foreground">
                             {order.items.length} productos · {formatCOP(effectiveTotal)}
                             {returnedTotal > 0 && (
                               <span className="text-red-600 ml-2">· Dev: {formatCOP(returnedTotal)}</span>
