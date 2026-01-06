@@ -252,27 +252,17 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const unassignedSheets = routeSheets.filter(s => !s.entregador && s.estado === 'pendiente')
   const assignedSheets = routeSheets.filter(s => s.entregador || s.estado !== 'pendiente')
   
-  // Obtener fecha de hoy en formato YYYY-MM-DD
-  const todayString = new Date().toISOString().split('T')[0]
-  
   // Aplicar filtros al historial
   let filteredHistorial: RouteSheet[] = []
   
   if (hasActiveFilter) {
-    console.log('===== DEBUG FILTROS =====')
-    console.log('filterDate:', filterDate)
-    console.log('todayString:', todayString)
-    console.log('assignedSheets total:', assignedSheets.length)
-    if (assignedSheets.length > 0) {
-      console.log('Primera planilla fecha:', assignedSheets[0].fecha)
-    }
-    
     filteredHistorial = assignedSheets.filter(s => {
+      // Extraer solo la fecha YYYY-MM-DD de la BD (sin el timestamp)
+      const sheetDateOnly = s.fecha.split('T')[0]
+      
       // Si filterDate es una fecha en formato YYYY-MM-DD
       if (filterDate && filterDate.length === 10 && filterDate.includes('-')) {
-        const match = s.fecha === filterDate
-        console.log(`Comparando: ${s.fecha} === ${filterDate} = ${match}`)
-        return match && 
+        return sheetDateOnly === filterDate && 
           (filterEntregador === "todos" || s.entregador === filterEntregador) &&
           (filterEstado === "todos" || s.estado === filterEstado)
       }
@@ -304,9 +294,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       return (filterEntregador === "todos" || s.entregador === filterEntregador) &&
         (filterEstado === "todos" || s.estado === filterEstado)
     })
-    
-    console.log('filteredHistorial:', filteredHistorial.length)
-    console.log('========================')
   }
 
   // Funciones de filtros rápidos
