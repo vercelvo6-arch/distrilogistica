@@ -254,36 +254,37 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   
   // Aplicar filtros al historial
   const filteredHistorial = hasActiveFilter ? assignedSheets.filter(s => {
-    const sheetDate = new Date(s.fecha + 'T00:00:00')
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    // Filtro por fecha específica
-    if (filterDate && s.fecha !== filterDate) return false
-
-    // Filtro por rango de fechas (últimos 7 días)
+    // Filtro "Hoy"
+    if (filterDate && filterDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      if (s.fecha !== filterDate) return false
+    }
+    
+    // Filtro "Últimos 7 días"
     if (filterDate === "last7days") {
+      const sheetDate = new Date(s.fecha)
+      const today = new Date()
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(today.getDate() - 7)
-      sevenDaysAgo.setHours(0, 0, 0, 0)
+      
       if (sheetDate < sevenDaysAgo || sheetDate > today) return false
     }
-
-    // Filtro por mes actual
+    
+    // Filtro "Mes actual"
     if (filterDate === "currentMonth") {
-      const currentMonth = today.getMonth()
-      const currentYear = today.getFullYear()
-      const sheetMonth = sheetDate.getMonth()
-      const sheetYear = sheetDate.getFullYear()
-      if (sheetMonth !== currentMonth || sheetYear !== currentYear) return false
+      const sheetDate = new Date(s.fecha)
+      const today = new Date()
+      
+      if (sheetDate.getMonth() !== today.getMonth() || sheetDate.getFullYear() !== today.getFullYear()) {
+        return false
+      }
     }
-
+    
     // Filtro por entregador
     if (filterEntregador && filterEntregador !== "todos" && s.entregador !== filterEntregador) return false
-
+    
     // Filtro por estado
     if (filterEstado && filterEstado !== "todos" && s.estado !== filterEstado) return false
-
+    
     return true
   }) : []
 
