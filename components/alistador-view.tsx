@@ -530,7 +530,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                     <label className="text-sm font-medium block">
                       Estado de las unidades:
                     </label>
-                    <RadioGroup value={estadoUnidad} onValueChange={(v) => setEstadoUnidad(v as any)}>
+                    <RadioGroup 
+                      value={estadoUnidad} 
+                      onValueChange={(value: string) => setEstadoUnidad(value as "completa" | "incompleta")}
+                    >
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="completa" id="completa" />
                         <Label htmlFor="completa" className="font-normal cursor-pointer">
