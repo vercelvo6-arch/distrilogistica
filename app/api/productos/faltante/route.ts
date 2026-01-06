@@ -57,7 +57,6 @@ export async function POST(request: NextRequest) {
 
     // Actualizar productos iterando sobre cada planilla
     let totalUpdated = 0
-
     for (const planilla of planillas) {
       try {
         const updated = await sql`
@@ -77,7 +76,7 @@ export async function POST(request: NextRequest) {
         
         totalUpdated += updated.count || 0
       } catch (error) {
-        console.error(`[API FALTANTE] Error actualizando planilla ${planilla.id}:`, error)
+        console.error('[API FALTANTE] Error actualizando planilla', planilla.id, ':', error)
       }
     }
 
