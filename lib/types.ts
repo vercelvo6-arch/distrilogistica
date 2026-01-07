@@ -225,3 +225,36 @@ export interface FilterOptions {
   fechaInicio?: string
   fechaFin?: string
 }
+// ==========================================
+// TIPOS PARA MÓDULO DE FALTANTES
+// ==========================================
+
+export type EstadoFaltante = "pendiente" | "resuelto"
+
+export interface Faltante {
+  id: string
+  planilla_id: string
+  entregador: string
+  ruta: string
+  codigo: string
+  descripcion: string
+  categoria: string
+  cantidad_solicitada: number
+  cantidad_disponible: number
+  cantidad_faltante: number
+  unidad_incompleta: boolean
+  observaciones: string | null
+  marcado_por: string
+  fecha_marcado: string
+  
+  // Campos de resolución
+  estado: EstadoFaltante
+  resuelto_por: string | null
+  fecha_resolucion: string | null
+  observaciones_resolucion: string | null
+  
+  // Campos calculados (joins)
+  marcado_por_nombre?: string
+  resuelto_por_nombre?: string
+  planilla_fecha?: string
+}
