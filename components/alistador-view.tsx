@@ -397,12 +397,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                             </span>
                           )}
                           {totalIncompletos > 0 && (
-                            <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full
-                              {totalIncompletos > 0 && (
-                            <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
-                              ⚠️ {totalIncompletos} incompletos
-                            </span>
-                          )}
+  <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
+    ⚠️ {totalIncompletos} incompletos
+  </span>
+)}
                           {totalNoAlistados > 0 && (
                             <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium flex items-center gap-1">
                               ❌ {totalNoAlistados} no alistados
