@@ -2,7 +2,14 @@ import type { SalesRecord, Product, Order, OrderItem, RouteSheet } from "./types
 
 export function parseNurturingCSV(csvText: string): SalesRecord[] {
   const lines = csvText.trim().split("\n")
-  if (lines.length < 2) return []
+  console.log("[DEBUG] Total lines:", lines.length)
+  console.log("[DEBUG] First line (header):", lines[0])
+  console.log("[DEBUG] Second line (data):", lines[1])
+  
+  if (lines.length < 2) {
+    console.error("[ERROR] CSV tiene menos de 2 líneas")
+    return []
+  }
 
   const records: SalesRecord[] = []
 
@@ -11,8 +18,22 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
     if (!line) continue
 
     const values = line.split(";").map((v) => v.trim())
+    
+    // Debug de la primera fila para ver la estructura
+    if (i === 1) {
+      console.log("[DEBUG] Valores de la fila 1:")
+      values.forEach((val, idx) => {
+        console.log(`  [${idx}]: "${val}"`)
+      })
+      console.log("[DEBUG] Total columnas:", values.length)
+    }
 
-    if (values.length < 14) continue
+    if (values.length < 14) {
+      if (i <= 5) {
+        console.warn(`[WARN] Fila ${i} tiene solo ${values.length} columnas, se esperaban al menos 14`)
+      }
+      continue
+    }
 
     const cantidadStr = values[5] || "0"
     const cantidad = Number.parseInt(cantidadStr.replace(/[^\d]/g, "")) || 0
@@ -29,18 +50,34 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
       ruta: values[10] || "",
       vendidoPor: values[12] || "",
       vendidoA: values[13] || "",
-      fecha: values[9] || new Date().toISOString().split("T")[0], // Esta fecha se ignora ahora
+      fecha: values[9] || new Date().toISOString().split("T")[0],
       comentarios: values[15] || "",
       idVenta: values[7] || "",
     }
 
+    // Debug del primer record
+    if (i === 1) {
+      console.log("[DEBUG] Primer record creado:", record)
+      console.log("[DEBUG] numeroArticulo:", record.numeroArticulo)
+      console.log("[DEBUG] cantidadComprada:", record.cantidadComprada)
+    }
+
     if (record.numeroArticulo && record.cantidadComprada > 0) {
       records.push(record)
+    } else {
+      if (i <= 5) {
+        console.warn(`[WARN] Fila ${i} rechazada - numeroArticulo: "${record.numeroArticulo}", cantidad: ${record.cantidadComprada}`)
+      }
     }
   }
 
   console.log("[v0] Parsed NURTURING records:", records.length)
-  console.log("[v0] Sample record:", records[0])
+  if (records.length > 0) {
+    console.log("[v0] Sample record:", records[0])
+  } else {
+    console.error("[ERROR] No se parseó ningún record válido")
+  }
+  
   return records
 }
 
@@ -128,7 +165,7 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
 
   console.log("[v0] Generated orders:", orders.length)
   console.log("[v0] Sample order:", orders[0])
-  return records
+  return orders  // ✅ ERROR CORREGIDO: Era "return records" (que no existe)
 }
 
 export function generateRouteSheets(orders: Order[]): RouteSheet[] {
