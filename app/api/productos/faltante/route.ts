@@ -1,18 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getDB } from '@/lib/db'
-import { getSession } from '@/lib/session'
+import { NextRequest, NextResponse } from 'next/server';
+import { getDB } from '@/lib/db';
+import { getSession } from '@/lib/session';
 
+// POST - Registrar faltante
 export async function POST(request: NextRequest) {
-  console.log('🔵 [FALTANTE API] Endpoint alcanzado!')
-  
   try {
-    const session = await getSession()
+    const session = await getSession();
     if (!session?.user) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
-    const body = await request.json()
-    console.log('[API FALTANTE] Request body:', body)
+    const body = await request.json();
+    console.log('[FALTANTES] Request:', body);
 
     const { 
       codigo, 
@@ -23,138 +22,146 @@ export async function POST(request: NextRequest) {
       unidadIncompleta,
       observaciones,
       usuarioId 
-    } = body
+    } = body;
 
-    // Validaciones
     if (!codigo || !entregador || cantidadDisponible === undefined) {
-      console.error('[API FALTANTE] Datos incompletos:', { codigo, entregador, cantidadDisponible })
-      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
+      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
     }
 
-    // Validación: si es incompleta debe tener observaciones
     if (unidadIncompleta && !observaciones?.trim()) {
-      return NextResponse.json(
-        { error: 'Las unidades incompletas requieren observaciones' },
-        { status: 400 }
-      )
+      return NextResponse.json({ 
+        error: 'Las unidades incompletas requieren observaciones' 
+      }, { status: 400 });
     }
 
-    const sql = getDB()
+    const sql = getDB();
 
-    // Obtener planillas del entregador que están pendientes o en proceso de alistamiento
+    // Obtener info de la planilla y producto
     const planillas = await sql`
-      SELECT id FROM planillas 
-      WHERE entregador = ${entregador} 
-      AND estado IN ('pendiente', 'alistando', 'alistándose')
-    `
-
-    console.log('[API FALTANTE] Planillas encontradas:', planillas.length)
+      SELECT 
+        pl.id as planilla_id,
+        pl.tipo_ruta as ruta,
+        pl.entregador,
+        pp.descripcion,
+        pp.categoria
+      FROM planillas pl
+      JOIN pedidos p ON p.planilla_id = pl.id
+      JOIN pedido_productos pp ON pp.pedido_id = p.id
+      WHERE pl.entregador = ${entregador}
+      AND pl.estado IN ('pendiente', 'alistando')
+      AND pp.codigo = ${codigo}
+      LIMIT 1
+    `;
 
     if (planillas.length === 0) {
-      return NextResponse.json(
-        { error: 'No hay planillas activas para este entregador' },
-        { status: 404 }
+      return NextResponse.json({ 
+        error: 'No se encontró información de la planilla o producto' 
+      }, { status: 404 });
+    }
+
+    const info = planillas[0];
+
+    // Insertar faltante
+    const result = await sql`
+      INSERT INTO faltantes (
+        planilla_id,
+        entregador,
+        ruta,
+        codigo,
+        descripcion,
+        categoria,
+        cantidad_solicitada,
+        cantidad_disponible,
+        cantidad_faltante,
+        unidad_incompleta,
+        observaciones,
+        marcado_por
+      ) VALUES (
+        ${info.planilla_id},
+        ${entregador},
+        ${info.ruta},
+        ${codigo},
+        ${info.descripcion},
+        ${info.categoria || ''},
+        ${cantidadSolicitada},
+        ${cantidadDisponible},
+        ${cantidadFaltante},
+        ${unidadIncompleta || false},
+        ${observaciones || null},
+        ${usuarioId}
       )
-    }
+      RETURNING id
+    `;
 
-    // Calcular valores con defaults seguros
-    const disponible = Number(cantidadDisponible) || 0
-    const faltante = Number(cantidadFaltante) || 0
-    const esIncompleta = Boolean(unidadIncompleta)
-    const obs = esIncompleta && observaciones ? observaciones.trim() : null
-
-    console.log('[API FALTANTE] Valores a actualizar:', {
-      disponible,
-      faltante,
-      esIncompleta,
-      obs
-    })
-
-    // Actualizar productos iterando sobre cada planilla
-    let totalUpdated = 0
-    const planillaIds = planillas.map(p => p.id)
-
-    try {
-      // Hacer una sola actualización para todos los productos del código en todas las planillas
-      const updated = await sql`
-        UPDATE pedido_productos
-        SET 
-          cantidad_disponible = ${disponible},
-          cantidad_faltante = ${faltante},
-          unidad_incompleta = ${esIncompleta},
-          observaciones_faltante = ${obs}
-        WHERE codigo = ${codigo}
-        AND pedido_id IN (
-          SELECT id FROM pedidos 
-          WHERE planilla_id = ANY(${planillaIds})
-        )
-      `
-      
-      totalUpdated = updated.count || 0
-      console.log(`[API FALTANTE] Registros actualizados: ${totalUpdated}`)
-
-    } catch (updateError) {
-      console.error('[API FALTANTE] Error en UPDATE:', updateError)
-      throw updateError
-    }
-
-    if (totalUpdated === 0) {
-      // Verificar si existen los productos
-      const existingProducts = await sql`
-        SELECT pp.* 
-        FROM pedido_productos pp
-        JOIN pedidos p ON pp.pedido_id = p.id
-        WHERE pp.codigo = ${codigo}
-        AND p.planilla_id = ANY(${planillaIds})
-      `
-      
-      console.log('[API FALTANTE] Productos encontrados:', existingProducts.length)
-      
-      return NextResponse.json(
-        { 
-          error: 'No se encontraron productos para actualizar',
-          debug: {
-            codigo,
-            planillas: planillaIds,
-            productosEncontrados: existingProducts.length
-          }
-        },
-        { status: 404 }
-      )
-    }
-
-    console.log(`[API FALTANTE] ✓ Producto ${codigo}:`)
-    console.log(`  - Disponible: ${disponible}/${cantidadSolicitada}`)
-    console.log(`  - Faltante: ${faltante}`)
-    console.log(`  - Incompleta: ${esIncompleta}`)
-    console.log(`  - Observaciones: ${obs || 'N/A'}`)
-    console.log(`  - Registros actualizados: ${totalUpdated}`)
+    console.log('[FALTANTES] ✓ Registrado:', result[0].id);
 
     return NextResponse.json({ 
       success: true,
-      message: esIncompleta 
-        ? `Registrado como incompleto: ${obs}`
-        : faltante > 0 
-          ? `Faltante: ${faltante} unidades` 
+      message: unidadIncompleta 
+        ? 'Registrado como incompleto'
+        : cantidadFaltante > 0 
+          ? `Faltante: ${cantidadFaltante} unidades` 
           : 'Cantidad completa registrada',
-      updated: totalUpdated,
-      data: {
-        cantidadDisponible: disponible,
-        cantidadFaltante: faltante,
-        unidadIncompleta: esIncompleta,
-        observaciones: obs
-      }
-    })
+      id: result[0].id
+    });
 
   } catch (error) {
-    console.error('[API FALTANTE] Error completo:', error)
-    console.error('[API FALTANTE] Stack:', error instanceof Error ? error.stack : 'No stack')
+    console.error('[FALTANTES] Error:', error);
     return NextResponse.json(
-      { 
-        error: 'Error al registrar cantidad disponible',
-        details: error instanceof Error ? error.message : 'Error desconocido'
-      },
+      { error: error instanceof Error ? error.message : 'Error al registrar' },
       { status: 500 }
-    )
+    );
+  }
+}
+
+// GET - Listar faltantes
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const entregador = searchParams.get('entregador');
+    const fecha = searchParams.get('fecha');
+
+    const sql = getDB();
+
+    let query;
+    if (entregador) {
+      query = sql`
+        SELECT * FROM faltantes 
+        WHERE entregador = ${entregador}
+        ORDER BY fecha_marcado DESC
+      `;
+    } else if (fecha) {
+      query = sql`
+        SELECT * FROM faltantes 
+        WHERE DATE(fecha_marcado) = ${fecha}
+        ORDER BY entregador, ruta, codigo
+      `;
+    } else {
+      query = sql`
+        SELECT * FROM faltantes 
+        ORDER BY fecha_marcado DESC
+        LIMIT 100
+      `;
+    }
+
+    const faltantes = await query;
+
+    return NextResponse.json({ 
+      success: true,
+      faltantes,
+      total: faltantes.length
+    });
+
+  } catch (error) {
+    console.error('[FALTANTES] Error:', error);
+    return NextResponse.json(
+      { error: 'Error al obtener faltantes' },
+      { status: 500 }
+    );
   }
 }
