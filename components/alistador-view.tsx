@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, AlertTriangle, Edit } from "lucide-react"
+import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, AlertTriangle, Edit, Loader2 } from "lucide-react"
 import type { RouteSheet } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect } from "react"
@@ -29,12 +29,13 @@ interface ConsolidatedProduct {
   cantidadFaltante: number
   unidadIncompleta: boolean
   observacionesFaltante: string | null
-  estadoAlistamiento: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado' // ✅ NUEVO
+  estadoAlistamiento: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado'
 }
 
 export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [expandedDeliveryPersons, setExpandedDeliveryPersons] = useState<Set<string>>(new Set())
   const [editingProduct, setEditingProduct] = useState<{ entregador: string; product: ConsolidatedProduct } | null>(null)
   const [disponibleInput, setDisponibleInput] = useState("")
@@ -90,7 +91,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
             cantidadFaltante: prod.cantidad_faltante || 0,
             unidadIncompleta: prod.unidad_incompleta || false,
             observacionesFaltante: prod.observaciones_faltante,
-            estadoAlistamiento: prod.estado_alistamiento || 'pendiente', // ✅ NUEVO
+            estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
           })),
         })),
         cuentasPorCobrar: [],
@@ -138,7 +139,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
             if (item.unidadIncompleta) {
               existing.unidadIncompleta = true
             }
-            // Tomar el estado más crítico
             if (item.estadoAlistamiento && item.estadoAlistamiento !== 'pendiente') {
               existing.estadoAlistamiento = item.estadoAlistamiento
             }
@@ -153,7 +153,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               cantidadFaltante: item.cantidadFaltante || 0,
               unidadIncompleta: item.unidadIncompleta || false,
               observacionesFaltante: item.observacionesFaltante,
-              estadoAlistamiento: item.estadoAlistamiento || 'pendiente', // ✅ NUEVO
+              estadoAlistamiento: item.estadoAlistamiento || 'pendiente',
             })
           }
         })
@@ -170,7 +170,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     setEditingProduct({ entregador, product })
     setDisponibleInput(product.cantidadDisponible?.toString() || product.cantidadTotal.toString())
     
-    // Determinar estado basado en datos existentes
     if (product.estadoAlistamiento === 'no_alistado') {
       setEstadoSeleccionado('no_alistado')
     } else if (product.unidadIncompleta) {
@@ -187,7 +186,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
     const disponible = Number(disponibleInput) || 0
 
-    // Validaciones
     if (estadoSeleccionado === 'no_alistado' && !observaciones.trim()) {
       alert('Por favor agregue observaciones para productos no alistados')
       return
@@ -199,6 +197,8 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     }
 
     try {
+      setSaving(true)
+
       // 1. Actualizar estado de alistamiento
       await updateEstadoAlistamiento(
         editingProduct.product.codigo,
@@ -226,15 +226,20 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         })
       }
 
+      // Cerrar modal y limpiar
       setEditingProduct(null)
       setDisponibleInput("")
       setEstadoSeleccionado("completo")
       setObservaciones("")
+      
+      // Recargar datos
       await loadData()
 
     } catch (err) {
       console.error("[ALISTADOR] Error saving estado:", err)
       alert('Error al guardar estado de alistamiento')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -276,31 +281,30 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     setExpandedDeliveryPersons(newExpanded)
   }
 
-  // ✅ NUEVA FUNCIÓN: Obtener info de estado
   const getEstadoInfo = (estado: string) => {
     switch (estado) {
       case 'completo':
         return { 
           label: 'Completo', 
-          color: 'bg-green-100 text-green-700 border-green-300',
+          color: 'bg-green-100 text-green-800 border border-green-300',
           icon: '✅'
         }
       case 'incompleto':
         return { 
           label: 'Incompleto', 
-          color: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+          color: 'bg-yellow-100 text-yellow-800 border border-yellow-300',
           icon: '⚠️'
         }
       case 'no_alistado':
         return { 
           label: 'No Alistado', 
-          color: 'bg-red-100 text-red-700 border-red-300',
+          color: 'bg-red-100 text-red-800 border border-red-300',
           icon: '❌'
         }
       default:
         return { 
           label: 'Pendiente', 
-          color: 'bg-gray-100 text-gray-700 border-gray-300',
+          color: 'bg-gray-100 text-gray-700 border border-gray-300',
           icon: '⏳'
         }
     }
@@ -364,7 +368,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               const allPending = sheets.every((s) => s.estado === "pendiente")
               const allReady = sheets.every((s) => s.estado === "alistando")
               
-              // ✅ NUEVOS CONTADORES
               const totalCompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'completo').length
               const totalIncompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'incompleto').length
               const totalNoAlistados = consolidatedProducts.filter(p => p.estadoAlistamiento === 'no_alistado').length
@@ -397,10 +400,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                             </span>
                           )}
                           {totalIncompletos > 0 && (
-  <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
-    ⚠️ {totalIncompletos} incompletos
-  </span>
-)}
+                            <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
+                              ⚠️ {totalIncompletos} incompletos
+                            </span>
+                          )}
                           {totalNoAlistados > 0 && (
                             <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium flex items-center gap-1">
                               ❌ {totalNoAlistados} no alistados
@@ -483,7 +486,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                                 return (
                                   <tr 
                                     key={product.codigo} 
-                                    className={`border-b hover:bg-muted/50`}
+                                    className="border-b hover:bg-muted/50"
                                   >
                                     <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
                                     <td className="py-2 md:py-3 px-2 md:px-4">
@@ -503,7 +506,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                                       {product.cantidadTotal}
                                     </td>
                                     <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                      <span className={`text-xs px-2 py-1 rounded-full border ${estadoInfo.color}`}>
+                                      <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${estadoInfo.color}`}>
                                         {estadoInfo.icon} {estadoInfo.label}
                                       </span>
                                     </td>
@@ -534,8 +537,8 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         )}
       </main>
 
-      {/* Dialog para registrar estado de alistamiento */}
-      <Dialog open={!!editingProduct} onOpenChange={() => setEditingProduct(null)}>
+      {/* Dialog */}
+      <Dialog open={!!editingProduct} onOpenChange={() => !saving && setEditingProduct(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Estado de Alistamiento</DialogTitle>
@@ -543,18 +546,11 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           
           {editingProduct && (
             <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium mb-1">Producto:</p>
-                <p className="text-sm text-muted-foreground">{editingProduct.product.descripcion}</p>
-              </div>
-              
-              <div>
-                <p className="text-sm font-medium mb-1">Código:</p>
-                <p className="text-sm font-mono">{editingProduct.product.codigo}</p>
-              </div>
-
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <p className="text-sm font-bold text-blue-900">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm font-medium text-blue-900">Producto:</p>
+                <p className="text-sm text-blue-700">{editingProduct.product.descripcion}</p>
+                <p className="text-xs font-mono text-blue-600 mt-1">{editingProduct.product.codigo}</p>
+                <p className="text-sm font-bold text-blue-900 mt-2">
                   Cantidad solicitada: {editingProduct.product.cantidadTotal} unidades
                 </p>
               </div>
@@ -571,30 +567,32 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                   onChange={(e) => setDisponibleInput(e.target.value)}
                   placeholder="Ej: 10"
                   className="text-lg font-bold"
-                  autoFocus
+                  disabled={saving}
                 />
               </div>
 
               <div className="space-y-3">
-                <label className="text-sm font-medium block">
-                  Estado del producto:
-                </label>
-                <RadioGroup value={estadoSeleccionado} onValueChange={(v) => setEstadoSeleccionado(v as any)}>
-                  <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium block">Estado del producto:</label>
+                <RadioGroup 
+                  value={estadoSeleccionado} 
+                  onValueChange={(v) => setEstadoSeleccionado(v as any)}
+                  disabled={saving}
+                >
+                  <div className="flex items-center space-x-2 p-2 rounded border hover:bg-muted">
                     <RadioGroupItem value="completo" id="completo" />
-                    <Label htmlFor="completo" className="font-normal cursor-pointer">
+                    <Label htmlFor="completo" className="font-normal cursor-pointer flex-1">
                       ✅ Completo (todo OK)
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 p-2 rounded border hover:bg-muted">
                     <RadioGroupItem value="incompleto" id="incompleto" />
-                    <Label htmlFor="incompleto" className="font-normal cursor-pointer">
+                    <Label htmlFor="incompleto" className="font-normal cursor-pointer flex-1">
                       ⚠️ Incompleto (faltan piezas dentro de la unidad)
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 p-2 rounded border hover:bg-muted">
                     <RadioGroupItem value="no_alistado" id="no_alistado" />
-                    <Label htmlFor="no_alistado" className="font-normal cursor-pointer">
+                    <Label htmlFor="no_alistado" className="font-normal cursor-pointer flex-1">
                       ❌ No alistado (no hay stock)
                     </Label>
                   </div>
@@ -615,8 +613,9 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                         : "Ej: Sin stock disponible en bodega"
                     }
                     className="min-h-[80px]"
+                    disabled={saving}
                     required
-                  />
+                    />
                   <p className="text-xs text-muted-foreground mt-1">
                     * Requerido para productos incompletos o no alistados
                   </p>
@@ -626,15 +625,29 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setEditingProduct(null)
-              setObservaciones("")
-              setEstadoSeleccionado("completo")
-            }}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setEditingProduct(null)
+                setObservaciones("")
+                setEstadoSeleccionado("completo")
+              }}
+              disabled={saving}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleSaveEstadoAlistamiento} disabled={!disponibleInput}>
-              Guardar
+            <Button 
+              onClick={handleSaveEstadoAlistamiento} 
+              disabled={!disponibleInput || saving}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                'Guardar'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
