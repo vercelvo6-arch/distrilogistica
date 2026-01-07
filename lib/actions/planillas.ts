@@ -1,12 +1,10 @@
 "use server"
-
 import { getDB } from "@/lib/db"
 import { getSession } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 
 export async function updatePlanillaEstado(planillaId: string, estado: string, userId?: string) {
   const sql = getDB()
-
   try {
     if (estado === "alistado" && userId) {
       await sql`
@@ -24,7 +22,6 @@ export async function updatePlanillaEstado(planillaId: string, estado: string, u
         WHERE id = ${planillaId}
       `
     }
-
     revalidatePath("/")
     return { success: true }
     
@@ -36,7 +33,6 @@ export async function updatePlanillaEstado(planillaId: string, estado: string, u
 
 export async function updatePedidoEstado(pedidoId: string, estado: string) {
   const sql = getDB()
-
   try {
     await sql`
       UPDATE pedidos 
@@ -45,7 +41,6 @@ export async function updatePedidoEstado(pedidoId: string, estado: string) {
           updated_at = NOW()
       WHERE id = ${pedidoId}
     `
-
     revalidatePath("/")
     return { success: true }
     
@@ -57,14 +52,12 @@ export async function updatePedidoEstado(pedidoId: string, estado: string) {
 
 export async function updateProductoDevuelto(pedidoId: string, codigo: string, devuelto: boolean) {
   const sql = getDB()
-
   try {
     await sql`
       UPDATE pedido_productos 
       SET devuelto = ${devuelto}
       WHERE pedido_id = ${pedidoId} AND codigo = ${codigo}
     `
-
     revalidatePath("/")
     return { success: true }
     
@@ -84,7 +77,6 @@ export async function updatePlanillaTotales(
   },
 ) {
   const sql = getDB()
-
   try {
     await sql`
       UPDATE planillas 
@@ -95,7 +87,6 @@ export async function updatePlanillaTotales(
           updated_at = NOW()
       WHERE id = ${planillaId}
     `
-
     revalidatePath("/")
     return { success: true }
     
@@ -107,19 +98,46 @@ export async function updatePlanillaTotales(
 
 export async function completarPlanilla(planillaId: string) {
   const sql = getDB()
-
   try {
     await sql`
       UPDATE planillas 
       SET estado = 'completado', updated_at = NOW()
       WHERE id = ${planillaId}
     `
-
     revalidatePath("/")
     return { success: true }
     
   } catch (error) {
     console.error("[completarPlanilla] ❌ ERROR:", error)
+    throw error
+  }
+}
+
+// ✅ NUEVA FUNCIÓN: Actualizar estado de alistamiento por producto
+export async function updateEstadoAlistamiento(
+  codigo: string,
+  entregador: string,
+  estadoAlistamiento: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado'
+) {
+  const sql = getDB()
+  try {
+    // Actualizar todos los productos con ese código para ese entregador
+    await sql`
+      UPDATE pedido_productos pp
+      SET estado_alistamiento = ${estadoAlistamiento}
+      FROM pedidos ped
+      JOIN planillas pl ON ped.planilla_id = pl.id
+      WHERE pp.pedido_id = ped.id
+        AND pp.codigo = ${codigo}
+        AND pl.entregador = ${entregador}
+        AND pl.estado IN ('pendiente', 'alistando')
+    `
+    
+    revalidatePath("/")
+    return { success: true }
+    
+  } catch (error) {
+    console.error("[updateEstadoAlistamiento] ❌ ERROR:", error)
     throw error
   }
 }
