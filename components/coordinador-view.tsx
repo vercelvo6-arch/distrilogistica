@@ -76,7 +76,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         fecha: p.fecha,
         entregador: p.entregador,
         estado: p.estado,
-        totalOrders: (p.pedidos || []).filter((ped: any) => ped.id !== null).length,
+        totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
         totalAmount: Number(p.total_cargue) || 0,
         montoCargue: Number(p.total_cargue) || 0,
         montoEntregado: Number(p.total_entregado) || 0,
