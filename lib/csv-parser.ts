@@ -29,9 +29,9 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
       ruta: values[10] || "",
       vendidoPor: values[12] || "",
       vendidoA: values[13] || "",
-      fecha: values[9] || new Date().toISOString().split("T")[0],
+      fecha: values[9] || new Date().toISOString().split("T")[0], // Esta fecha se ignora ahora
       comentarios: values[15] || "",
-      idVenta: values[7] || "", // ← NUEVO: Columna H (índice 7)
+      idVenta: values[7] || "",
     }
 
     if (record.numeroArticulo && record.cantidadComprada > 0) {
@@ -77,11 +77,10 @@ export function parsePlanillaCSV(csvText: string): Product[] {
 export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Product[], fecha: string): Order[] {
   const productMap = new Map(productCatalog.map((p) => [p.codigo, p]))
   
-  // ✅ CAMBIO: Agrupar por RUTA + CLIENTE + ID_VENTA
+  // Agrupar por RUTA + CLIENTE + ID_VENTA
   const ordersByFactura = new Map<string, SalesRecord[]>()
 
   sales.forEach((sale) => {
-    // Cada factura es un pedido separado
     const key = `${sale.ruta}-${sale.vendidoA}-${sale.idVenta}`
     if (!ordersByFactura.has(key)) {
       ordersByFactura.set(key, [])
@@ -117,7 +116,7 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
       id: uniqueId,
       cliente: facturaSales[0].vendidoA,
       ruta: facturaSales[0].ruta,
-      fecha,
+      fecha, // ✅ Usa la fecha que viene como parámetro (HOY)
       items,
       total,
       estado: "pendiente",
@@ -129,7 +128,7 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
 
   console.log("[v0] Generated orders:", orders.length)
   console.log("[v0] Sample order:", orders[0])
-  return orders
+  return records
 }
 
 export function generateRouteSheets(orders: Order[]): RouteSheet[] {
@@ -149,13 +148,13 @@ export function generateRouteSheets(orders: Order[]): RouteSheet[] {
     sheetCounter++
     const totalAmount = routeOrders.reduce((sum, order) => sum + order.total, 0)
 
-    // ID único: timestamp + contador + ruta + random para evitar duplicados
+    // ID único: timestamp + contador + ruta + random
     const uniqueId = `PLN${Date.now()}${String(sheetCounter).padStart(3, '0')}R${ruta}${Math.random().toString(36).substr(2, 3)}`
 
     sheets.push({
       id: uniqueId,
       ruta,
-      fecha: routeOrders[0].fecha,
+      fecha: routeOrders[0].fecha, // ✅ Tomará la fecha de HOY que pasaste
       orders: routeOrders,
       totalOrders: routeOrders.length,
       totalAmount,
