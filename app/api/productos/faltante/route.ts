@@ -41,11 +41,11 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // Obtener planillas del entregador que están en proceso de alistamiento
+    // Obtener planillas del entregador que están pendientes o en proceso de alistamiento
     const planillas = await sql`
       SELECT id FROM planillas 
       WHERE entregador = ${entregador} 
-      AND estado IN ('pendiente', 'alistando')
+      AND estado IN ('pendiente', 'alistando', 'alistándose')
     `
 
     console.log('[API FALTANTE] Planillas encontradas:', planillas.length)
