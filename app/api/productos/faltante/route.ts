@@ -82,8 +82,7 @@ export async function POST(request: NextRequest) {
           cantidad_disponible = ${disponible},
           cantidad_faltante = ${faltante},
           unidad_incompleta = ${esIncompleta},
-          observaciones_faltante = ${obs},
-          updated_at = NOW()
+          observaciones_faltante = ${obs}
         WHERE codigo = ${codigo}
         AND pedido_id IN (
           SELECT id FROM pedidos 
