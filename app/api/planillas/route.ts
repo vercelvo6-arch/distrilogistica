@@ -285,7 +285,7 @@ export async function GET(request: NextRequest) {
                     'cantidad', pp.cantidad,
                     'precio_unitario', pp.precio_unitario,
                     'total', pp.total,
-                    'devuelto', pp.devuelto,
+                    'devuelto', COALESCE(pp.devuelto, false),
                     'monto_entregado', pp.monto_entregado,
                     'monto_devuelto', pp.monto_devuelto
                   ) ORDER BY pp.id
