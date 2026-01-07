@@ -340,7 +340,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               <LogOut className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">Salir</span>
             </Button>
-            </Button>
           
           {/* Tabs de navegación */}
           <div className="flex gap-2 mt-3">
