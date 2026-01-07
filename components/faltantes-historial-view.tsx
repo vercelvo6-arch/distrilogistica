@@ -5,9 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download, Filter, AlertTriangle, CheckCircle, Package, Calendar } from "lucide-react"
+import { Download, Filter, AlertTriangle, CheckCircle, Package } from "lucide-react"
 import type { Faltante } from "@/lib/types"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export function FaltantesHistorialView() {
   const [faltantes, setFaltantes] = useState<Faltante[]>([])
@@ -70,7 +69,7 @@ export function FaltantesHistorialView() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `faltantes_${new Date().toISOString().split('T')[0]}.xlsx`
+      a.download = `faltantes_${new Date().toISOString().split('T')[0]}.csv`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -83,7 +82,12 @@ export function FaltantesHistorialView() {
     }
   }
 
-  const entregadores = Array.from(new Set(faltantes.map(f => f.entregador).filter(Boolean))) as string[]
+  // Extraer entregadores únicos de forma segura
+  const entregadores = faltantes
+    .map(f => f.entregador)
+    .filter((e): e is string => Boolean(e) && typeof e === 'string')
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .sort()
   
   const stats = {
     total: faltantes.length,
@@ -161,9 +165,9 @@ export function FaltantesHistorialView() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
-              {entregadores.filter(e => e).map(e => (
-  <SelectItem key={e} value={e}>{e}</SelectItem>
-))}
+              {entregadores.map(e => (
+                <SelectItem key={e} value={e}>{e}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -204,7 +208,7 @@ export function FaltantesHistorialView() {
             className="w-full"
           >
             <Download className="h-4 w-4 mr-2" />
-            {exporting ? 'Exportando...' : 'Excel'}
+            {exporting ? 'Exportando...' : 'CSV'}
           </Button>
         </div>
       </Card>
@@ -288,9 +292,11 @@ export function FaltantesHistorialView() {
                         {f.estado === 'resuelto' && f.observaciones_resolucion && (
                           <p className="text-green-700">
                             ✅ {f.observaciones_resolucion}
-                            <span className="block text-xs mt-1">
-                              Por: {f.resuelto_por_nombre} - {formatFecha(f.fecha_resolucion!)}
-                            </span>
+                            {f.resuelto_por_nombre && f.fecha_resolucion && (
+                              <span className="block text-xs mt-1">
+                                Por: {f.resuelto_por_nombre} - {formatFecha(f.fecha_resolucion)}
+                              </span>
+                            )}
                           </p>
                         )}
                       </div>
