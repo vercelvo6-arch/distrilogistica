@@ -83,7 +83,7 @@ export function FaltantesHistorialView() {
     }
   }
 
-  const entregadores = Array.from(new Set(faltantes.map(f => f.entregador)))
+  const entregadores = Array.from(new Set(faltantes.map(f => f.entregador).filter(Boolean))) as string[]
   
   const stats = {
     total: faltantes.length,
@@ -161,9 +161,9 @@ export function FaltantesHistorialView() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
-              {entregadores.map(e => (
-                <SelectItem key={e} value={e}>{e}</SelectItem>
-              ))}
+              {entregadores.filter(e => e).map(e => (
+  <SelectItem key={e} value={e}>{e}</SelectItem>
+))}
             </SelectContent>
           </Select>
 
