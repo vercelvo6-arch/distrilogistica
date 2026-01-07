@@ -14,7 +14,8 @@ export interface OrderItem {
   cantidadFaltante?: number
   unidadIncompleta?: boolean
   observacionesFaltante?: string | null
-  // ✅ NUEVO: Para entregas parciales
+  estadoAlistamiento?: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado' // ✅ NUEVO
+  // Para entregas parciales
   cantidadEntregada?: number | null
 }
 
@@ -210,6 +211,7 @@ export type EstadoUsuario = "activo" | "inactivo"
 export type EstadoComision = "pendiente" | "pagado"
 export type EstadoFiado = "fiado" | "pagado"
 export type EstadoRecepcion = "cuadrado" | "con_diferencia"
+export type EstadoAlistamiento = "pendiente" | "completo" | "incompleto" | "no_alistado" // ✅ NUEVO
 
 export interface DateRange {
   desde: string
