@@ -1,4 +1,4 @@
-// Force redeploy - 2025-12-30 - UUID to TEXT migration applied
+// Force redeploy - 2025-12-30 - UUID to TEXT migration applied + BULK INSERTS
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const createdPlanillas = [];
     const errors = [];
 
-    // 5. Procesar cada planilla
+    // 5. Procesar cada planilla con BULK INSERTS
     for (let sheetIndex = 0; sheetIndex < routeSheets.length; sheetIndex++) {
       const sheet = routeSheets[sheetIndex];
       
@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
         console.log(`[API] ID original: ${sheet.id}`);
         console.log(`[API] Órdenes: ${sheet.orders?.length || 0}`);
         
-        // Usar el ID tal como viene (ahora funciona con TEXT)
         const planillaId = sheet.id;
         
         // Validar datos esenciales
@@ -66,126 +65,124 @@ export async function POST(request: NextRequest) {
           throw new Error(`Datos faltantes en planilla ${sheetIndex + 1}`);
         }
         
-        // 5.1. Insertar planilla
-        const insertPlanillaResult = await sql`
-          INSERT INTO planillas (
-            id, 
-            fecha, 
-            tipo_ruta, 
-            entregador, 
-            total_cargue,
-            total_entregado, 
-            total_fiado, 
-            total_repaso, 
-            total_devolucion,
-            estado, 
-            observaciones, 
-            created_at, 
-            updated_at
-          ) VALUES (
-            ${planillaId}, 
-            ${sheet.fecha}::date, 
-            ${sheet.ruta}, 
-            ${sheet.entregador || null},
-            ${Number(sheet.totalAmount) || 0}, 
-            ${0}, 
-            ${0}, 
-            ${0}, 
-            ${0}, 
-            'pendiente', 
-            ${null},
-            NOW(),
-            NOW()
-          )
-          RETURNING id
-        `;
-        
-        console.log(`[API] ✓ Planilla insertada:`, insertPlanillaResult[0]?.id);
-        insertCount++;
+        // ✅ INICIO DE TRANSACCIÓN
+        await sql.begin(async sql => {
+          // 5.1. Insertar planilla
+          await sql`
+            INSERT INTO planillas (
+              id, 
+              fecha, 
+              tipo_ruta, 
+              entregador, 
+              total_cargue,
+              total_entregado, 
+              total_fiado, 
+              total_repaso, 
+              total_devolucion,
+              estado, 
+              observaciones, 
+              created_at, 
+              updated_at
+            ) VALUES (
+              ${planillaId}, 
+              ${sheet.fecha}::date, 
+              ${sheet.ruta}, 
+              ${sheet.entregador || null},
+              ${Number(sheet.totalAmount) || 0}, 
+              ${0}, 
+              ${0}, 
+              ${0}, 
+              ${0}, 
+              'pendiente', 
+              ${null},
+              NOW(),
+              NOW()
+            )
+          `;
+          
+          console.log(`[API] ✓ Planilla insertada:`, planillaId);
 
-        // 5.2. Insertar pedidos
-        if (sheet.orders && Array.isArray(sheet.orders)) {
-          for (let orderIndex = 0; orderIndex < sheet.orders.length; orderIndex++) {
-            const order = sheet.orders[orderIndex];
-            const pedidoId = order.id || `${planillaId}-order-${orderIndex + 1}`;
+          // 5.2. BULK INSERT de pedidos
+          if (sheet.orders && Array.isArray(sheet.orders) && sheet.orders.length > 0) {
+            const pedidosValues = sheet.orders.map((order, orderIndex) => {
+              const pedidoId = order.id || `${planillaId}-order-${orderIndex + 1}`;
+              
+              return {
+                id: pedidoId,
+                planilla_id: planillaId,
+                secuencia: orderIndex + 1,
+                cliente: order.cliente || 'Sin nombre',
+                direccion: order.direccion || '',
+                telefono: order.telefono || '',
+                barrio: order.barrio || '',
+                total: Number(order.total) || 0,
+                estado: 'pendiente',
+                observaciones: order.comentarios || order.observaciones || null
+              };
+            });
+
+            // ✅ INSERTAR TODOS LOS PEDIDOS EN UNA SOLA QUERY
+            await sql`
+              INSERT INTO pedidos ${sql(pedidosValues, 
+                'id', 
+                'planilla_id', 
+                'secuencia', 
+                'cliente', 
+                'direccion', 
+                'telefono', 
+                'barrio', 
+                'total', 
+                'estado', 
+                'observaciones'
+              )}
+            `;
             
-            try {
-              // Insertar pedido
-              await sql`
-                INSERT INTO pedidos (
-                  id, 
-                  planilla_id, 
-                  secuencia, 
-                  cliente, 
-                  direccion, 
-                  telefono,
-                  barrio, 
-                  total, 
-                  estado, 
-                  observaciones, 
-                  created_at, 
-                  updated_at
-                ) VALUES (
-                  ${pedidoId}, 
-                  ${planillaId}, 
-                  ${orderIndex + 1}, 
-                  ${order.cliente || 'Sin nombre'},
-                  ${order.direccion || ''},
-                  ${order.telefono || ''},
-                  ${order.barrio || ''},
-                  ${Number(order.total) || 0}, 
-                  'pendiente', 
-                  ${order.comentarios || order.observaciones || null},
-                  NOW(),
-                  NOW()
-                )
-              `;
+            console.log(`[API] ✓ ${sheet.orders.length} pedidos insertados en BULK`);
 
-              // 5.3. Insertar productos del pedido
+            // 5.3. BULK INSERT de productos
+            const allProductos = [];
+            
+            sheet.orders.forEach((order, orderIndex) => {
+              const pedidoId = order.id || `${planillaId}-order-${orderIndex + 1}`;
+              
               if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-                for (const item of order.items) {
-                  await sql`
-                    INSERT INTO pedido_productos (
-                      pedido_id, 
-                      codigo, 
-                      nombre,
-                      categoria,
-                      cantidad, 
-                      precio_unitario, 
-                      total, 
-                      devuelto
-                    ) VALUES (
-                      ${pedidoId}, 
-                      ${item.codigo || ''}, 
-                      ${item.descripcion || item.nombre || 'Sin nombre'},
-                      ${item.categoria || ''},
-                      ${Number(item.cantidad) || 0},
-                      ${Number(item.valorUnidad || item.precio_unitario) || 0}, 
-                      ${Number(item.subtotal || item.total) || 0}, 
-                      false
-                    )
-                  `;
-                }
-                
-                if (orderIndex % 10 === 0) {
-                  console.log(`[API]   → ${orderIndex + 1}/${sheet.orders.length} pedidos procesados`);
-                }
+                order.items.forEach(item => {
+                  allProductos.push({
+                    pedido_id: pedidoId,
+                    codigo: item.codigo || '',
+                    nombre: item.descripcion || item.nombre || 'Sin nombre',
+                    categoria: item.categoria || '',
+                    cantidad: Number(item.cantidad) || 0,
+                    precio_unitario: Number(item.valorUnidad || item.precio_unitario) || 0,
+                    total: Number(item.subtotal || item.total) || 0,
+                    devuelto: false
+                  });
+                });
               }
-            } catch (orderError) {
-              console.error(`[API] ❌ Error en pedido ${orderIndex + 1}:`, orderError);
-              errors.push({
-                planilla: sheet.ruta,
-                pedido: orderIndex + 1,
-                pedidoId: pedidoId,
-                error: orderError instanceof Error ? orderError.message : 'Error desconocido',
-                stack: orderError instanceof Error ? orderError.stack : null
-              });
+            });
+
+            if (allProductos.length > 0) {
+              // ✅ INSERTAR TODOS LOS PRODUCTOS EN UNA SOLA QUERY
+              await sql`
+                INSERT INTO pedido_productos ${sql(allProductos,
+                  'pedido_id',
+                  'codigo',
+                  'nombre',
+                  'categoria',
+                  'cantidad',
+                  'precio_unitario',
+                  'total',
+                  'devuelto'
+                )}
+              `;
+              
+              console.log(`[API] ✓ ${allProductos.length} productos insertados en BULK`);
             }
           }
-          
-          console.log(`[API] ✓ ${sheet.orders.length} pedidos insertados para ruta ${sheet.ruta}`);
-        }
+        });
+        // ✅ FIN DE TRANSACCIÓN
         
+        insertCount++;
         createdPlanillas.push({
           id: planillaId,
           ruta: sheet.ruta,
@@ -211,14 +208,14 @@ export async function POST(request: NextRequest) {
     if (errors.length > 0) {
       console.log(`[API] ⚠️ PRIMER ERROR:`, JSON.stringify(errors[0], null, 2));
     }
-    console.log(`[API] ✓ Duración: ${duration}ms`);
+    console.log(`[API] ✓ Duración: ${duration}ms (${(duration/1000).toFixed(2)}s)`);
     console.log(`[API] ========== FIN ==========\n`);
     
     return NextResponse.json({ 
       success: insertCount > 0, 
       count: insertCount,
       planillas: createdPlanillas,
-      errors: errors, // SIEMPRE devolver errores para debugging
+      errors: errors,
       duration: `${duration}ms`
     });
 
@@ -288,7 +285,9 @@ export async function GET(request: NextRequest) {
                     'cantidad', pp.cantidad,
                     'precio_unitario', pp.precio_unitario,
                     'total', pp.total,
-                    'devuelto', pp.devuelto
+                    'devuelto', pp.devuelto,
+                    'monto_entregado', pp.monto_entregado,
+                    'monto_devuelto', pp.monto_devuelto
                   ) ORDER BY pp.id
                 ), '[]'::json)
                 FROM pedido_productos pp
