@@ -1,5 +1,8 @@
 "use client"
 
+
+import { FaltantesHistorialView } from "@/components/faltantes-historial-view"
+import { FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, AlertTriangle, Edit, Loader2 } from "lucide-react"
@@ -41,6 +44,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [disponibleInput, setDisponibleInput] = useState("")
   const [estadoSeleccionado, setEstadoSeleccionado] = useState<'completo' | 'incompleto' | 'no_alistado'>("completo")
   const [observaciones, setObservaciones] = useState("")
+  const [activeTab, setActiveTab] = useState<"alistamiento" | "faltantes">("alistamiento")
 
   useEffect(() => {
     loadData()
@@ -336,12 +340,36 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               <LogOut className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">Salir</span>
             </Button>
+            </Button>
+          
+          {/* Tabs de navegación */}
+          <div className="flex gap-2 mt-3">
+            <Button
+              variant={activeTab === "alistamiento" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveTab("alistamiento")}
+            >
+              <Package className="h-4 w-4 mr-2" />
+              Alistamiento
+            </Button>
+            <Button
+              variant={activeTab === "faltantes" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveTab("faltantes")}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Faltantes Registrados
+            </Button>
+          </div>
+        </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-7xl">
-        {unassignedSheets.length > 0 && (
+        {activeTab === "alistamiento" ? (
+          <>
+            {unassignedSheets.length > 0 && (
           <Alert className="mb-4 md:mb-6 bg-amber-50 border-amber-200">
             <AlertDescription className="text-xs md:text-sm text-amber-800">
               Hay {unassignedSheets.length} ruta(s) esperando asignación de entregador por parte del coordinador
@@ -534,6 +562,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               )
             })}
           </div>
+        )}
+            </>
+        ) : (
+          <FaltantesHistorialView />
         )}
       </main>
 
