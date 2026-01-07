@@ -39,6 +39,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [disponibleInput, setDisponibleInput] = useState("")
   const [estadoUnidad, setEstadoUnidad] = useState<"completa" | "incompleta">("completa")
   const [observaciones, setObservaciones] = useState("")
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -85,9 +86,9 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
             cantidad: Number(prod.cantidad) || 0,
             valorUnidad: Number(prod.precio_unitario) || 0,
             subtotal: Number(prod.total) || 0,
-            cantidadDisponible: prod.cantidad_disponible,
-            cantidadFaltante: prod.cantidad_faltante || 0,
-            unidadIncompleta: prod.unidad_incompleta || false,
+            cantidadDisponible: prod.cantidad_disponible !== null ? Number(prod.cantidad_disponible) : null,
+            cantidadFaltante: Number(prod.cantidad_faltante) || 0,
+            unidadIncompleta: Boolean(prod.unidad_incompleta),
             observacionesFaltante: prod.observaciones_faltante,
           })),
         })),
@@ -169,33 +170,55 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const handleSaveCantidadDisponible = async () => {
     if (!editingProduct) return
 
-    const disponible = Number(disponibleInput) || 0
+    const disponible = Number(disponibleInput)
+    
+    if (isNaN(disponible) || disponible < 0) {
+      alert('Por favor ingrese una cantidad válida (0 o mayor)')
+      return
+    }
+
+    if (disponible > editingProduct.product.cantidadTotal) {
+      alert(`La cantidad disponible no puede ser mayor a la solicitada (${editingProduct.product.cantidadTotal})`)
+      return
+    }
+
     const faltante = Math.max(0, editingProduct.product.cantidadTotal - disponible)
     const esIncompleta = estadoUnidad === "incompleta"
 
-    // Validación: si es incompleta, debe tener observaciones
     if (esIncompleta && !observaciones.trim()) {
       alert('Por favor agregue observaciones para unidades incompletas')
       return
     }
 
+    setSaving(true)
+
     try {
+      const payload = {
+        codigo: editingProduct.product.codigo,
+        entregador: editingProduct.entregador,
+        cantidadSolicitada: editingProduct.product.cantidadTotal,
+        cantidadDisponible: disponible,
+        cantidadFaltante: faltante,
+        unidadIncompleta: esIncompleta,
+        observaciones: esIncompleta ? observaciones.trim() : null,
+        usuarioId: user.id,
+      }
+
+      console.log('[ALISTADOR] Enviando payload:', payload)
+
       const response = await fetch('/api/productos/faltante', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          codigo: editingProduct.product.codigo,
-          entregador: editingProduct.entregador,
-          cantidadSolicitada: editingProduct.product.cantidadTotal,
-          cantidadDisponible: disponible,
-          cantidadFaltante: faltante,
-          unidadIncompleta: esIncompleta,
-          observaciones: esIncompleta ? observaciones.trim() : null,
-          usuarioId: user.id,
-        }),
+        body: JSON.stringify(payload),
       })
 
-      if (!response.ok) throw new Error('Error al guardar cantidad')
+      const result = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Error al guardar cantidad')
+      }
+
+      console.log('[ALISTADOR] Respuesta exitosa:', result)
 
       setEditingProduct(null)
       setDisponibleInput("")
@@ -205,7 +228,9 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
     } catch (err) {
       console.error("[ALISTADOR] Error saving cantidad:", err)
-      alert('Error al guardar cantidad disponible')
+      alert(err instanceof Error ? err.message : 'Error al guardar cantidad disponible')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -483,8 +508,14 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         )}
       </main>
 
-      {/* Dialog para editar cantidad disponible */}
-      <Dialog open={!!editingProduct} onOpenChange={() => setEditingProduct(null)}>
+      <Dialog open={!!editingProduct} onOpenChange={() => {
+        if (!saving) {
+          setEditingProduct(null)
+          setObservaciones("")
+          setEstadoUnidad("completa")
+          setDisponibleInput("")
+        }
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Registrar Cantidad Disponible</DialogTitle>
@@ -521,6 +552,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                   placeholder="Ej: 7"
                   className="text-lg font-bold"
                   autoFocus
+                  disabled={saving}
                 />
               </div>
 
@@ -533,6 +565,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                     <RadioGroup 
                       value={estadoUnidad} 
                       onValueChange={(value: string) => setEstadoUnidad(value as "completa" | "incompleta")}
+                      disabled={saving}
                     >
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="completa" id="completa" />
@@ -560,6 +593,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                         placeholder="Ej: Caja incompleta: faltan 2 latas de 6"
                         className="min-h-[80px]"
                         required
+                        disabled={saving}
                       />
                       <p className="text-xs text-muted-foreground mt-1">
                         * Requerido para unidades incompletas
@@ -592,15 +626,23 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setEditingProduct(null)
-              setObservaciones("")
-              setEstadoUnidad("completa")
-            }}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setEditingProduct(null)
+                setObservaciones("")
+                setEstadoUnidad("completa")
+                setDisponibleInput("")
+              }}
+              disabled={saving}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleSaveCantidadDisponible} disabled={!disponibleInput}>
-              Guardar
+            <Button 
+              onClick={handleSaveCantidadDisponible} 
+              disabled={!disponibleInput || saving}
+            >
+              {saving ? 'Guardando...' : 'Guardar'}
             </Button>
           </DialogFooter>
         </DialogContent>
