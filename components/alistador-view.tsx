@@ -362,7 +362,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           </div>
         </div>
           </div>
-        </div>
+        
       </header>
 
       <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-7xl">
