@@ -40,9 +40,10 @@ export function FaltantesHistorialView() {
       if (!response.ok) throw new Error('Error al cargar faltantes')
       
       const data = await response.json()
-      setFaltantes(data.faltantes || [])
+      setFaltantes(Array.isArray(data.faltantes) ? data.faltantes : [])
     } catch (err) {
       console.error('[FALTANTES] Error:', err)
+      setFaltantes([])
     } finally {
       setLoading(false)
     }
@@ -82,28 +83,42 @@ export function FaltantesHistorialView() {
     }
   }
 
+  const formatFecha = (fecha: string) => {
+    try {
+      return new Date(fecha).toLocaleString('es-CO', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    } catch {
+      return fecha
+    }
+  }
+
+  // Mostrar loading mientras carga
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
   // Extraer entregadores únicos de forma segura
-  const entregadores = faltantes
-    .map(f => f.entregador)
-    .filter((e): e is string => Boolean(e) && typeof e === 'string')
-    .filter((v, i, a) => a.indexOf(v) === i)
-    .sort()
+  const entregadores = Array.isArray(faltantes) 
+    ? [...new Set(faltantes
+        .map(f => f?.entregador)
+        .filter((e): e is string => Boolean(e) && typeof e === 'string'))]
+        .sort()
+    : []
   
   const stats = {
     total: faltantes.length,
     pendientes: faltantes.filter(f => f.estado === 'pendiente').length,
     resueltos: faltantes.filter(f => f.estado === 'resuelto').length,
-    totalUnidades: faltantes.reduce((sum, f) => sum + f.cantidad_faltante, 0)
-  }
-
-  const formatFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleString('es-CO', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    totalUnidades: faltantes.reduce((sum, f) => sum + (f.cantidad_faltante || 0), 0)
   }
 
   return (
@@ -165,7 +180,7 @@ export function FaltantesHistorialView() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
-              {entregadores.map(e => (
+              {entregadores.length > 0 && entregadores.map(e => (
                 <SelectItem key={e} value={e}>{e}</SelectItem>
               ))}
             </SelectContent>
@@ -214,11 +229,7 @@ export function FaltantesHistorialView() {
       </Card>
 
       {/* Tabla de faltantes */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-        </div>
-      ) : faltantes.length === 0 ? (
+      {faltantes.length === 0 ? (
         <Card className="p-12 text-center">
           <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2">No hay faltantes registrados</h3>
@@ -251,13 +262,13 @@ export function FaltantesHistorialView() {
                       f.estado === 'pendiente' ? 'bg-orange-50' : ''
                     }`}
                   >
-                    <td className="py-3 px-4 text-xs">
+                    <td className="py-3 px-4 text-xs whitespace-nowrap">
                       {formatFecha(f.fecha_marcado)}
                     </td>
-                    <td className="py-3 px-4">{f.entregador}</td>
-                    <td className="py-3 px-4 font-mono text-xs">{f.codigo}</td>
+                    <td className="py-3 px-4">{f.entregador || '-'}</td>
+                    <td className="py-3 px-4 font-mono text-xs">{f.codigo || '-'}</td>
                     <td className="py-3 px-4">
-                      {f.descripcion}
+                      {f.descripcion || '-'}
                       {f.unidad_incompleta && (
                         <span className="ml-2 text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded">
                           Incompleta
@@ -265,13 +276,13 @@ export function FaltantesHistorialView() {
                       )}
                     </td>
                     <td className="text-right py-3 px-4 font-bold">
-                      {f.cantidad_solicitada}
+                      {f.cantidad_solicitada || 0}
                     </td>
                     <td className="text-right py-3 px-4">
-                      {f.cantidad_disponible}
+                      {f.cantidad_disponible || 0}
                     </td>
                     <td className="text-right py-3 px-4 font-bold text-red-600">
-                      {f.cantidad_faltante}
+                      {f.cantidad_faltante || 0}
                     </td>
                     <td className="text-center py-3 px-4">
                       <span className={`text-xs px-2 py-1 rounded-full ${
