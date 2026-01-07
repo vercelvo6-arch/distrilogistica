@@ -1,5 +1,5 @@
 // types.ts - Sistema dinámico de entregadores desde BD
-export type Entregador = string // Ya no limitado a nombres específicos
+export type Entregador = string
 
 export interface OrderItem {
   codigo: string
@@ -9,17 +9,21 @@ export interface OrderItem {
   valorUnidad: number
   subtotal: number
   devuelto?: boolean
-  // ✅ Campos para faltantes parciales
+  // Campos para faltantes
   cantidadDisponible?: number | null
   cantidadFaltante?: number
-  // ✅ NUEVO: Para unidades incompletas
   unidadIncompleta?: boolean
   observacionesFaltante?: string | null
+  // ✅ NUEVO: Para entregas parciales
+  cantidadEntregada?: number | null
 }
 
 export interface Order {
   id: string
   cliente: string
+  direccion?: string
+  telefono?: string
+  barrio?: string
   ruta: string
   fecha: string
   items: OrderItem[]
@@ -105,7 +109,6 @@ export interface RecepcionCaja {
   created_at: string
   updated_at: string
   
-  // Datos JOIN (cuando se consulta con planilla y usuario)
   entregador?: string
   tipo_ruta?: string
   fecha_planilla?: string
@@ -166,7 +169,7 @@ export interface ComisionReporte {
 }
 
 // ==========================================
-// TIPOS PARA MÓDULO DE FIADOS (CUENTAS POR COBRAR)
+// TIPOS PARA MÓDULO DE FIADOS
 // ==========================================
 
 export interface Fiado {
@@ -184,7 +187,6 @@ export interface Fiado {
   created_at: string
   updated_at: string
   
-  // Datos JOIN
   entregador?: string
   tipo_ruta?: string
   fecha_planilla?: string
@@ -196,25 +198,6 @@ export interface FiadoResumen {
   monto_total: number
   monto_pendiente: number
   monto_pagado: number
-}
-
-// ==========================================
-// TIPOS PARA RESPUESTAS DE API
-// ==========================================
-
-export interface ApiResponse<T = any> {
-  success: boolean
-  data?: T
-  error?: string
-  message?: string
-}
-
-export interface PaginatedResponse<T> {
-  data: T[]
-  total: number
-  page: number
-  pageSize: number
-  totalPages: number
 }
 
 // ==========================================
