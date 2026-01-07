@@ -113,8 +113,7 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-// GET - Listar faltantes
+// GET - Listar faltantes con filtros avanzados
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
@@ -124,32 +123,57 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const entregador = searchParams.get('entregador');
-    const fecha = searchParams.get('fecha');
+    const estado = searchParams.get('estado');
+    const fecha_inicio = searchParams.get('fecha_inicio');
+    const fecha_fin = searchParams.get('fecha_fin');
+    const codigo = searchParams.get('codigo');
 
     const sql = getDB();
 
-    let query;
-    if (entregador) {
-      query = sql`
-        SELECT * FROM faltantes 
-        WHERE entregador = ${entregador}
-        ORDER BY fecha_marcado DESC
-      `;
-    } else if (fecha) {
-      query = sql`
-        SELECT * FROM faltantes 
-        WHERE DATE(fecha_marcado) = ${fecha}
-        ORDER BY entregador, ruta, codigo
-      `;
-    } else {
-      query = sql`
-        SELECT * FROM faltantes 
-        ORDER BY fecha_marcado DESC
-        LIMIT 100
-      `;
+    // Construir query dinámica con filtros
+    let conditions = [];
+    
+    if (entregador && entregador !== 'all') {
+      conditions.push(`f.entregador = '${entregador}'`);
     }
 
-    const faltantes = await query;
+    if (estado && estado !== 'all') {
+      conditions.push(`f.estado = '${estado}'`);
+    }
+
+    if (codigo) {
+      conditions.push(`f.codigo ILIKE '%${codigo}%'`);
+    }
+
+    if (fecha_inicio) {
+      conditions.push(`DATE(f.fecha_marcado) >= '${fecha_inicio}'`);
+    }
+
+    if (fecha_fin) {
+      conditions.push(`DATE(f.fecha_marcado) <= '${fecha_fin}'`);
+    }
+
+    const whereClause = conditions.length > 0 
+      ? 'WHERE ' + conditions.join(' AND ')
+      : '';
+
+    // Query con joins para nombres de usuarios
+    const faltantes = await sql.unsafe(`
+      SELECT 
+        f.*,
+        u_marcado.nombre as marcado_por_nombre,
+        u_resuelto.nombre as resuelto_por_nombre,
+        pl.fecha as planilla_fecha
+      FROM faltantes f
+      LEFT JOIN usuarios u_marcado ON f.marcado_por = u_marcado.id
+      LEFT JOIN usuarios u_resuelto ON f.resuelto_por = u_resuelto.id
+      LEFT JOIN planillas pl ON f.planilla_id = pl.id
+      ${whereClause}
+      ORDER BY 
+        CASE WHEN f.estado = 'pendiente' THEN 0 ELSE 1 END,
+        f.fecha_marcado DESC
+      LIMIT 500
+    `);
 
     return NextResponse.json({ 
       success: true,
