@@ -139,9 +139,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     setError(null)
 
     try {
+      console.log("[COORD] 📄 Leyendo archivos...")
       const nurturingText = await nurturingFile.text()
       const planillaText = await planillaFile.text()
 
+      console.log("[COORD] 🔍 Parseando CSV...")
       const sales = parseNurturingCSV(nurturingText)
       const products = parsePlanillaCSV(planillaText)
 
@@ -157,32 +159,61 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         return
       }
 
+      console.log("[COORD] 📦 Generando órdenes...")
       const fecha = new Date().toISOString().split("T")[0]
+      console.log("[COORD] Fecha de hoy:", fecha)
       const orders = generateOrdersFromSales(sales, products, fecha)
+      
+      console.log("[COORD] 📋 Generando planillas...")
       const sheets = generateRouteSheets(orders)
+
+      console.log("[COORD] 🚀 Enviando al servidor...")
+      console.log("[COORD] Planillas a enviar:", sheets.length)
+      console.log("[COORD] Primera planilla:", sheets[0])
+      console.log("[COORD] Tamaño del JSON:", JSON.stringify({ routeSheets: sheets }).length, "caracteres")
 
       const response = await fetch('/api/planillas', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ routeSheets: sheets })
       })
 
+      console.log("[COORD] 📡 Respuesta del servidor - Status:", response.status)
+      console.log("[COORD] 📡 Respuesta del servidor - OK:", response.ok)
+
       const result = await response.json()
+      console.log("[COORD] 📡 Resultado completo:", result)
 
       if (!response.ok) {
-        throw new Error(result.error || 'Error al crear planillas')
+        console.error("[COORD] ❌ Error del servidor:", result)
+        throw new Error(result.error || `Error del servidor: ${response.status}`)
       }
 
+      console.log("[COORD] ✅ Planillas creadas exitosamente")
+      console.log("[COORD] 📊 Total insertadas:", result.count)
+      
+      if (result.errors && result.errors.length > 0) {
+        console.warn("[COORD] ⚠️ Errores durante inserción:", result.errors)
+      }
+
+      console.log("[COORD] ⏳ Esperando 2 segundos antes de recargar...")
       await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      console.log("[COORD] 🔄 Recargando planillas...")
       await loadPlanillas()
       
-      // Cambiar a pestaña "Asignar" después de generar
+      console.log("[COORD] ✅ Cambiando a pestaña Asignar")
       setActiveTab("asignar")
       
       setIsProcessing(false)
       
     } catch (err) {
-      console.error("[COORD] ❌ ERROR en proceso:", err)
+      console.error("[COORD] ❌ ERROR COMPLETO:", err)
+      console.error("[COORD] ❌ Tipo de error:", err instanceof Error ? err.constructor.name : typeof err)
+      console.error("[COORD] ❌ Mensaje:", err instanceof Error ? err.message : String(err))
+      console.error("[COORD] ❌ Stack trace:", err instanceof Error ? err.stack : 'No disponible')
       setError("Error al procesar los archivos: " + (err as Error).message)
       setIsProcessing(false)
     }
@@ -651,7 +682,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                 </div>
               )}
             </Card>
-          </TabsContent>
+            </TabsContent>
         </Tabs>
       </main>
     </>
