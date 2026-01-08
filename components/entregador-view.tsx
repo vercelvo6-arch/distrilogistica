@@ -119,30 +119,23 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   }
 
   const handleOrderStatusChange = async (sheetId: string, orderId: string, newStatus: Order["estado"]) => {
-    try {
-      await updatePedidoEstado(orderId, newStatus)
-      await loadData()
+  try {
+    await updatePedidoEstado(orderId, newStatus)
+    await loadData()
 
-      const updatedSheet = routeSheets.find((s) => s.id === sheetId)
-      if (updatedSheet) {
-        const totals = calculateRouteTotals(updatedSheet)
-        await updatePlanillaTotales(sheetId, totals)
-        await loadData()
-      }
-
-      toast({
-        title: "Actualizado",
-        description: `Pedido marcado como ${newStatus}`,
-      })
-    } catch (err) {
-      console.error("[ENTREGADOR] Error updating order status:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el pedido",
-        variant: "destructive",
-      })
-    }
+    toast({
+      title: "Actualizado",
+      description: `Pedido marcado como ${newStatus}`,
+    })
+  } catch (err) {
+    console.error("[ENTREGADOR] Error updating order status:", err)
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar el pedido",
+      variant: "destructive",
+    })
   }
+}
 
   const handleCompleteRoute = async (sheetId: string) => {
     try {
