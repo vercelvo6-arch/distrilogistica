@@ -105,7 +105,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   // ARREGLADO: Cambiar "alistado" por "alistada"
   const myRoutes = routeSheets.filter((s) => 
-    s.entregador === deliveryPerson && s.estado === "alistada"
+    s.entregador === deliveryPerson && s.estado === "alistado"
   )
 
   console.log('🔍 [ENTREGADOR] Rutas filtradas para mí:', myRoutes.length)
