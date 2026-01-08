@@ -1,157 +1,198 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDB } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { NextRequest, NextResponse } from "next/server";
+import { getDB } from "@/lib/db";
+import { getSession } from "@/lib/session";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
-  const startTime = Date.now();
-  console.log('[API /planillas] ===== INICIO =====');
+  console.log("[API /planillas] ===== INICIO =====");
 
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+      return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    const { routeSheets } = await request.json();
+    const body = await request.json();
+    const { routeSheets } = body;
 
     if (!Array.isArray(routeSheets) || routeSheets.length === 0) {
-      return NextResponse.json({ error: 'Datos inválidos' }, { status: 400 });
+      return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
     }
 
     const sql = getDB();
 
-    const results = [];
-    const errors = [];
+    let insertadas = 0;
+    const errores: any[] = [];
 
-    // 🔁 UNA PLANILLA A LA VEZ (pero rápida y segura)
     for (let i = 0; i < routeSheets.length; i++) {
       const sheet = routeSheets[i];
 
       try {
-        await sql.begin(async (tx) => {
-          const planillaId = sheet.id;
+        if (!sheet.id || !sheet.ruta || !sheet.fecha) {
+          throw new Error("Datos incompletos en la planilla");
+        }
 
-          if (!planillaId || !sheet.ruta || !sheet.fecha) {
-            throw new Error('Datos obligatorios faltantes');
-          }
+        // 1️⃣ PLANILLA
+        await sql`
+          INSERT INTO planillas (
+            id,
+            fecha,
+            tipo_ruta,
+            entregador,
+            total_cargue,
+            total_entregado,
+            total_fiado,
+            total_repaso,
+            total_devolucion,
+            estado,
+            observaciones,
+            created_at,
+            updated_at
+          ) VALUES (
+            ${sheet.id},
+            ${sheet.fecha}::date,
+            ${sheet.ruta},
+            ${sheet.entregador || null},
+            ${Number(sheet.totalAmount) || 0},
+            0,
+            0,
+            0,
+            0,
+            'pendiente',
+            null,
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (id) DO NOTHING
+        `;
 
-          // 1️⃣ PLANILLA
-          await tx`
-            INSERT INTO planillas (
-              id, fecha, tipo_ruta, entregador,
-              total_cargue, total_entregado, total_fiado,
-              total_repaso, total_devolucion,
-              estado, observaciones, created_at, updated_at
-            ) VALUES (
-              ${planillaId},
-              ${sheet.fecha}::date,
-              ${sheet.ruta},
-              ${sheet.entregador || null},
-              ${Number(sheet.totalAmount) || 0},
-              0, 0, 0, 0,
-              'pendiente',
-              null,
-              NOW(),
-              NOW()
-            )
-          `;
+        // 2️⃣ PEDIDOS
+        if (Array.isArray(sheet.orders)) {
+          for (let j = 0; j < sheet.orders.length; j++) {
+            const order = sheet.orders[j];
+            const pedidoId = order.id || `${sheet.id}-${j + 1}`;
 
-          // 2️⃣ PEDIDOS (paralelo)
-          if (Array.isArray(sheet.orders) && sheet.orders.length > 0) {
-            await Promise.all(
-              sheet.orders.map((order, index) => {
-                const pedidoId = order.id || `${planillaId}-pedido-${index + 1}`;
+            await sql`
+              INSERT INTO pedidos (
+                id,
+                planilla_id,
+                secuencia,
+                cliente,
+                direccion,
+                telefono,
+                barrio,
+                total,
+                estado,
+                observaciones
+              ) VALUES (
+                ${pedidoId},
+                ${sheet.id},
+                ${j + 1},
+                ${order.cliente || "Sin nombre"},
+                ${order.direccion || ""},
+                ${order.telefono || ""},
+                ${order.barrio || ""},
+                ${Number(order.total) || 0},
+                'pendiente',
+                ${order.observaciones || null}
+              )
+              ON CONFLICT (id) DO NOTHING
+            `;
 
-                return tx`
-                  INSERT INTO pedidos (
-                    id, planilla_id, secuencia,
-                    cliente, direccion, telefono, barrio,
-                    total, estado, observaciones
-                  ) VALUES (
-                    ${pedidoId},
-                    ${planillaId},
-                    ${index + 1},
-                    ${order.cliente || 'Sin nombre'},
-                    ${order.direccion || ''},
-                    ${order.telefono || ''},
-                    ${order.barrio || ''},
-                    ${Number(order.total) || 0},
-                    'pendiente',
-                    ${order.comentarios || order.observaciones || null}
-                  )
-                `;
-              })
-            );
-
-            // 3️⃣ PRODUCTOS (paralelo controlado)
-            const productInserts = sheet.orders.flatMap((order, orderIndex) => {
-              const pedidoId = order.id || `${planillaId}-pedido-${orderIndex + 1}`;
-
-              if (!Array.isArray(order.items)) return [];
-
-              return order.items.map((item) =>
-                tx`
+            // 3️⃣ PRODUCTOS
+            if (Array.isArray(order.items)) {
+              for (const item of order.items) {
+                await sql`
                   INSERT INTO pedido_productos (
-                    pedido_id, codigo, nombre, categoria,
-                    cantidad, precio_unitario, total, devuelto
+                    pedido_id,
+                    codigo,
+                    nombre,
+                    categoria,
+                    cantidad,
+                    precio_unitario,
+                    total,
+                    devuelto
                   ) VALUES (
                     ${pedidoId},
-                    ${item.codigo || ''},
-                    ${item.descripcion || item.nombre || 'Sin nombre'},
-                    ${item.categoria || ''},
+                    ${item.codigo || ""},
+                    ${item.descripcion || item.nombre || "Sin nombre"},
+                    ${item.categoria || ""},
                     ${Number(item.cantidad) || 0},
                     ${Number(item.valorUnidad || item.precio_unitario) || 0},
                     ${Number(item.subtotal || item.total) || 0},
                     false
                   )
-                `
-              );
-            });
-
-            if (productInserts.length > 0) {
-              await Promise.all(productInserts);
+                `;
+              }
             }
           }
-        });
+        }
 
-        results.push({
-          id: sheet.id,
-          ruta: sheet.ruta,
-          pedidos: sheet.orders?.length || 0
-        });
-
-        console.log(`✓ Planilla OK (${i + 1}/${routeSheets.length}) → ${sheet.ruta}`);
-      } catch (err) {
-        console.error(`❌ Error planilla ${sheet.ruta}:`, err);
-
-        errors.push({
-          planilla: sheet.ruta,
+        insertadas++;
+      } catch (err: any) {
+        console.error("❌ Error planilla:", sheet.id, err);
+        errores.push({
           planillaId: sheet.id,
-          error: err instanceof Error ? err.message : 'Error desconocido'
+          ruta: sheet.ruta,
+          error: err.message,
         });
       }
     }
 
-    const duration = Date.now() - startTime;
-
-    console.log(`[API /planillas] FIN → ${results.length}/${routeSheets.length} en ${duration}ms`);
-
     return NextResponse.json({
-      success: results.length > 0,
-      inserted: results.length,
+      success: insertadas > 0,
+      insertadas,
       total: routeSheets.length,
-      planillas: results,
-      errors,
-      duration: `${duration}ms`
+      errores,
     });
-
-  } catch (fatal) {
-    console.error('[API /planillas] ERROR FATAL:', fatal);
+  } catch (error: any) {
+    console.error("[API /planillas] ERROR FATAL", error);
     return NextResponse.json(
-      { success: false, error: 'Error interno del servidor' },
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET() {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+    }
+
+    const sql = getDB();
+
+    const planillas = await sql`
+      SELECT
+        p.*,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', pe.id,
+                'cliente', pe.cliente,
+                'total', pe.total,
+                'estado', pe.estado
+              )
+              ORDER BY pe.secuencia
+            )
+            FROM pedidos pe
+            WHERE pe.planilla_id = p.id
+          ),
+          '[]'::json
+        ) AS pedidos
+      FROM planillas p
+      ORDER BY p.created_at DESC
+    `;
+
+    return NextResponse.json({ planillas });
+  } catch (error) {
+    console.error("[API /planillas GET] ERROR", error);
+    return NextResponse.json(
+      { error: "Error al obtener planillas" },
       { status: 500 }
     );
   }
