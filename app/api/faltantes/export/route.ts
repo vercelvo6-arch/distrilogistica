@@ -19,73 +19,50 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB();
 
-    // Construir WHERE clause manualmente
-    let whereConditions = [];
-    let params: any[] = [];
-    let paramIndex = 1;
-
+    // COPIAR LA MISMA LÓGICA QUE FUNCIONA EN GET /api/faltantes
+    let conditions = [];
+    
     if (entregador && entregador !== 'all') {
-      whereConditions.push(`f.entregador = $${paramIndex}`);
-      params.push(entregador);
-      paramIndex++;
+      conditions.push(`f.entregador = '${entregador}'`);
     }
 
     if (estado && estado !== 'all') {
-      whereConditions.push(`f.estado = $${paramIndex}`);
-      params.push(estado);
-      paramIndex++;
+      conditions.push(`f.estado = '${estado}'`);
     }
 
     if (fecha_inicio) {
-      whereConditions.push(`f.fecha_marcado::date >= $${paramIndex}::date`);
-      params.push(fecha_inicio);
-      paramIndex++;
+      conditions.push(`DATE(f.fecha_marcado) >= '${fecha_inicio}'`);
     }
 
     if (fecha_fin) {
-      whereConditions.push(`f.fecha_marcado::date <= $${paramIndex}::date`);
-      params.push(fecha_fin);
-      paramIndex++;
+      conditions.push(`DATE(f.fecha_marcado) <= '${fecha_fin}'`);
     }
 
-    const whereClause = whereConditions.length > 0 
-      ? 'WHERE ' + whereConditions.join(' AND ')
+    const whereClause = conditions.length > 0 
+      ? 'WHERE ' + conditions.join(' AND ')
       : '';
 
     console.log('[EXPORT] WHERE:', whereClause);
-    console.log('[EXPORT] Params:', params);
 
-    // Query usando unsafe con parámetros
-    const query = `
+    // Usar EXACTAMENTE la misma forma que en /api/faltantes
+    const faltantes = await sql.unsafe(`
       SELECT 
-        f.fecha_marcado,
-        f.entregador,
-        f.ruta,
-        f.codigo,
-        f.descripcion,
-        f.categoria,
-        f.cantidad_solicitada,
-        f.cantidad_disponible,
-        f.cantidad_faltante,
-        f.unidad_incompleta,
-        f.observaciones,
-        f.estado,
-        u_marcado.nombre as marcado_por,
-        f.fecha_resolucion,
-        u_resuelto.nombre as resuelto_por,
-        f.observaciones_resolucion
+        f.*,
+        u_marcado.nombre as marcado_por_nombre,
+        u_resuelto.nombre as resuelto_por_nombre
       FROM faltantes f
       LEFT JOIN usuarios u_marcado ON f.marcado_por = u_marcado.id
       LEFT JOIN usuarios u_resuelto ON f.resuelto_por = u_resuelto.id
       ${whereClause}
       ORDER BY f.fecha_marcado DESC
-    `;
+    `);
 
-    const faltantes = await sql.unsafe(query, params);
+    console.log('[EXPORT] Tipo de dato:', typeof faltantes);
+    console.log('[EXPORT] Es array?:', Array.isArray(faltantes));
+    console.log('[EXPORT] Length:', faltantes?.length);
+    console.log('[EXPORT] Primer registro:', faltantes?.[0]);
 
-    console.log('[EXPORT] Registros encontrados:', faltantes.length);
-
-    if (!Array.isArray(faltantes) || faltantes.length === 0) {
+    if (!faltantes || faltantes.length === 0) {
       return NextResponse.json({ 
         error: 'No hay datos para exportar' 
       }, { status: 404 });
@@ -104,11 +81,7 @@ export async function GET(request: NextRequest) {
       'Faltante',
       'Unidad Incompleta',
       'Observaciones',
-      'Estado',
-      'Marcado Por',
-      'Fecha Resolución',
-      'Resuelto Por',
-      'Obs. Resolución'
+      'Estado'
     ];
 
     // Filas
@@ -123,12 +96,8 @@ export async function GET(request: NextRequest) {
       f.cantidad_disponible || 0,
       f.cantidad_faltante || 0,
       f.unidad_incompleta ? 'Sí' : 'No',
-      (f.observaciones || '').replace(/"/g, '""'),
-      f.estado === 'pendiente' ? 'PENDIENTE' : 'RESUELTO',
-      f.marcado_por || '',
-      f.fecha_resolucion ? new Date(f.fecha_resolucion).toLocaleString('es-CO') : '',
-      f.resuelto_por || '',
-      (f.observaciones_resolucion || '').replace(/"/g, '""')
+      (f.observaciones || '').replace(/"/g, '""').replace(/\n/g, ' '),
+      f.estado === 'pendiente' ? 'PENDIENTE' : 'RESUELTO'
     ]);
 
     // CSV
@@ -139,7 +108,7 @@ export async function GET(request: NextRequest) {
 
     const csvContent = '\uFEFF' + csvLines.join('\n');
 
-    console.log('[EXPORT] ✓ CSV generado');
+    console.log('[EXPORT] ✓ CSV generado con', rows.length, 'filas');
 
     return new NextResponse(csvContent, {
       headers: {
@@ -149,7 +118,8 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[EXPORT] ERROR:', error);
+    console.error('[EXPORT] ERROR completo:', error);
+    console.error('[EXPORT] Stack:', error instanceof Error ? error.stack : 'No stack');
     return NextResponse.json(
       { error: 'Error al exportar', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
