@@ -1,49 +1,34 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, Edit, Loader2, FileText } from "lucide-react"
-import type { RouteSheet } from "@/lib/types"
+import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2, MapPin, Phone } from "lucide-react"
+import { User } from "lucide-react"
+import type { RouteSheet, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
-import { useState, useEffect } from "react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { updatePlanillaEstado } from "@/lib/actions/planillas"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FaltantesHistorialView } from "@/components/faltantes-historial-view"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  updatePedidoEstado,
+  updateProductoDevuelto,
+  updatePlanillaTotales,
+  completarPlanilla,
+} from "@/lib/actions/planillas"
+import { useToast } from "@/hooks/use-toast"
 
-interface AlistadorViewProps {
+interface EntregadorViewProps {
   onLogout: () => void
-  user: { id: string; nombre: string }
+  user: any
 }
 
-interface ConsolidatedProduct {
-  codigo: string
-  descripcion: string
-  categoria: string
-  cantidadTotal: number
-  valorUnidad: number
-  cantidadDisponible: number | null
-  cantidadFaltante: number
-  unidadIncompleta: boolean
-  observacionesFaltante: string | null
-  estadoAlistamiento: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado'
-}
-
-export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
+export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
+  const { toast } = useToast()
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [expandedDeliveryPersons, setExpandedDeliveryPersons] = useState<Set<string>>(new Set())
-  const [editingProduct, setEditingProduct] = useState<{ entregador: string; product: ConsolidatedProduct } | null>(null)
-  const [disponibleInput, setDisponibleInput] = useState("")
-  const [estadoSeleccionado, setEstadoSeleccionado] = useState<'completo' | 'incompleto' | 'no_alistado'>("completo")
-  const [observaciones, setObservaciones] = useState("")
-  const [activeTab, setActiveTab] = useState("alistamiento")
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(null)
+
+  const deliveryPerson = user.nombre
 
   useEffect(() => {
     loadData()
@@ -66,16 +51,19 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         fecha: p.fecha,
         entregador: p.entregador,
         estado: p.estado,
-        totalOrders: (p.pedidos || []).filter((ped: any) => ped.id !== null).length,
+        totalOrders: p.pedidos?.length || 0,
         totalAmount: Number(p.total_cargue) || 0,
         montoCargue: Number(p.total_cargue) || 0,
         montoEntregado: Number(p.total_entregado) || 0,
         montoFiado: Number(p.total_fiado) || 0,
         montoDevoluciones: Number(p.total_devolucion) || 0,
         montoRepasos: Number(p.total_repaso) || 0,
-        orders: (p.pedidos || []).filter((ped: any) => ped.id !== null).map((ped: any) => ({
+        orders: (p.pedidos || []).map((ped: any) => ({
           id: ped.id,
           cliente: ped.cliente,
+          direccion: ped.direccion || '',
+          telefono: ped.telefono || '',
+          barrio: ped.barrio || '',
           ruta: p.tipo_ruta,
           fecha: p.fecha,
           estado: ped.estado,
@@ -86,232 +74,140 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           items: (ped.productos || []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
-            categoria: prod.categoria || '',
+            categoria: '',
             cantidad: Number(prod.cantidad) || 0,
             valorUnidad: Number(prod.precio_unitario) || 0,
             subtotal: Number(prod.total) || 0,
-            cantidadDisponible: prod.cantidad_disponible,
-            cantidadFaltante: prod.cantidad_faltante || 0,
-            unidadIncompleta: prod.unidad_incompleta || false,
-            observacionesFaltante: prod.observaciones_faltante,
-            estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
+            devuelto: prod.devuelto || false,
           })),
         })),
         cuentasPorCobrar: [],
       }))
       
-      setRouteSheets(planillas)
+      console.log('📦 [ENTREGADOR] Planillas totales:', planillas.length)
+      console.log('👤 [ENTREGADOR] Mi nombre:', deliveryPerson)
       
+      const misRutas = planillas.filter(p => p.entregador === deliveryPerson)
+      console.log('🚚 [ENTREGADOR] Mis rutas:', misRutas.length)
+      
+      setRouteSheets(planillas)
     } catch (err) {
-      console.error("[ALISTADOR] Error loading planillas:", err)
+      console.error("[ENTREGADOR] Error loading planillas:", err)
     } finally {
       setLoading(false)
     }
   }
 
-  const pendingSheets = routeSheets.filter(
-    (s) => s.entregador && (s.estado === "pendiente" || s.estado === "alistando"),
+  const myRoutes = routeSheets.filter((s) => 
+    s.entregador === deliveryPerson && s.estado === "alistado"
   )
 
-  const unassignedSheets = routeSheets.filter((s) => !s.entregador)
+  console.log('🔍 [ENTREGADOR] Rutas filtradas para mí:', myRoutes.length)
 
-  const groupedByDeliveryPerson = pendingSheets.reduce(
-    (acc, sheet) => {
-      const entregador = sheet.entregador!
-      if (!acc[entregador]) {
-        acc[entregador] = []
-      }
-      acc[entregador].push(sheet)
-      return acc
-    },
-    {} as Record<string, RouteSheet[]>,
-  )
-
-  const getConsolidatedProducts = (sheets: RouteSheet[]): ConsolidatedProduct[] => {
-    const productMap = new Map<string, ConsolidatedProduct>()
-
-    sheets.forEach((sheet) => {
-      sheet.orders.forEach((order) => {
-        order.items.forEach((item) => {
-          const existing = productMap.get(item.codigo)
-          if (existing) {
-            existing.cantidadTotal += item.cantidad
-            if (item.cantidadFaltante) {
-              existing.cantidadFaltante += item.cantidadFaltante
-            }
-            if (item.unidadIncompleta) {
-              existing.unidadIncompleta = true
-            }
-            if (item.estadoAlistamiento && item.estadoAlistamiento !== 'pendiente') {
-              existing.estadoAlistamiento = item.estadoAlistamiento
-            }
-          } else {
-            productMap.set(item.codigo, {
-              codigo: item.codigo,
-              descripcion: item.descripcion,
-              categoria: item.categoria,
-              cantidadTotal: item.cantidad,
-              valorUnidad: item.valorUnidad,
-              cantidadDisponible: item.cantidadDisponible,
-              cantidadFaltante: item.cantidadFaltante || 0,
-              unidadIncompleta: item.unidadIncompleta || false,
-              observacionesFaltante: item.observacionesFaltante,
-              estadoAlistamiento: item.estadoAlistamiento || 'pendiente',
-            })
-          }
-        })
+  const handleItemReturn = async (sheetId: string, orderId: string, codigo: string, currentDevuelto: boolean) => {
+    try {
+      await updateProductoDevuelto(orderId, codigo, !currentDevuelto)
+      await loadData()
+    } catch (err) {
+      console.error("[ENTREGADOR] Error updating product return:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el producto",
+        variant: "destructive",
       })
+    }
+  }
+
+  const handleOrderStatusChange = async (sheetId: string, orderId: string, newStatus: Order["estado"]) => {
+  try {
+    await updatePedidoEstado(orderId, newStatus)
+    await loadData()
+
+    toast({
+      title: "Actualizado",
+      description: `Pedido marcado como ${newStatus}`,
+    })
+  } catch (err) {
+    console.error("[ENTREGADOR] Error updating order status:", err)
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar el pedido",
+      variant: "destructive",
+    })
+  }
+}
+
+  const handleCompleteRoute = async (sheetId: string) => {
+    try {
+      await completarPlanilla(sheetId)
+      await loadData()
+      setSelectedRoute(null)
+
+      toast({
+        title: "Ruta Completada",
+        description: "La ruta ha sido marcada como completada y la comisión ha sido calculada",
+      })
+    } catch (err) {
+      console.error("[ENTREGADOR] Error completing route:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo completar la ruta",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const calculateRouteTotals = (route: RouteSheet) => {
+    let entregado = 0
+    let fiado = 0
+    let devolucion = 0
+    let repaso = 0
+
+    route.orders.forEach((order) => {
+      const orderTotal = order.items.reduce((sum, item) => {
+        if (item.devuelto) {
+          devolucion += item.subtotal
+          return sum
+        }
+        return sum + item.subtotal
+      }, 0)
+
+      if (order.estado === "entregado") {
+        entregado += orderTotal
+      } else if (order.estado === "fiado") {
+        fiado += orderTotal
+      } else if (order.estado === "devolucion") {
+        devolucion += orderTotal
+      } else if (order.estado === "repaso") {
+        repaso += orderTotal
+      }
     })
 
-    return Array.from(productMap.values()).sort((a, b) => {
-      const cat = a.categoria.localeCompare(b.categoria)
-      return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
-    })
+    return {
+      total_entregado: entregado,
+      total_fiado: fiado,
+      total_devolucion: devolucion,
+      total_repaso: repaso,
+    }
   }
 
-  const handleOpenEditDialog = (entregador: string, product: ConsolidatedProduct) => {
-    setEditingProduct({ entregador, product })
-    setDisponibleInput(product.cantidadDisponible?.toString() || product.cantidadTotal.toString())
-    
-    if (product.estadoAlistamiento === 'no_alistado') {
-      setEstadoSeleccionado('no_alistado')
-    } else if (product.unidadIncompleta) {
-      setEstadoSeleccionado('incompleto')
+  const toggleOrder = (orderId: string) => {
+    const newExpanded = new Set(expandedOrders)
+    if (newExpanded.has(orderId)) {
+      newExpanded.delete(orderId)
     } else {
-      setEstadoSeleccionado('completo')
+      newExpanded.add(orderId)
     }
-    
-    setObservaciones(product.observacionesFaltante || "")
+    setExpandedOrders(newExpanded)
   }
 
-  const handleSaveEstadoAlistamiento = async () => {
-    if (!editingProduct) return
+  const activeRoute = myRoutes.find((r) => r.id === selectedRoute)
 
-    const disponible = Number(disponibleInput) || 0
+  const allOrdersProcessed = activeRoute?.orders.every((o) => o.estado !== "pendiente") || false
 
-    if (estadoSeleccionado === 'no_alistado' && !observaciones.trim()) {
-      alert('Por favor agregue observaciones para productos no alistados')
-      return
-    }
-
-    if (estadoSeleccionado === 'incompleto' && !observaciones.trim()) {
-      alert('Por favor agregue observaciones para productos incompletos')
-      return
-    }
-
-    try {
-      setSaving(true)
-
-      const sheetForEntregador = routeSheets.find(s => s.entregador === editingProduct.entregador)
-      
-      if (!sheetForEntregador) {
-        throw new Error('No se encontró planilla para el entregador')
-      }
-
-      if (estadoSeleccionado === 'incompleto' || estadoSeleccionado === 'no_alistado') {
-        const faltante = editingProduct.product.cantidadTotal - disponible
-
-        await fetch('/api/faltantes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            planilla_id: sheetForEntregador.id,
-            codigo: editingProduct.product.codigo,
-            descripcion: editingProduct.product.descripcion,
-            categoria: editingProduct.product.categoria,
-            entregador: editingProduct.entregador,
-            ruta: sheetForEntregador.ruta,
-            cantidadSolicitada: editingProduct.product.cantidadTotal,
-            cantidadDisponible: disponible,
-            cantidadFaltante: faltante,
-            unidadIncompleta: estadoSeleccionado === 'incompleto',
-            observaciones: observaciones.trim(),
-            marcadoPor: user.id,
-          }),
-        })
-      }
-
-      setEditingProduct(null)
-      setDisponibleInput("")
-      setEstadoSeleccionado("completo")
-      setObservaciones("")
-      
-      await loadData()
-
-    } catch (err) {
-      console.error("[ALISTADOR] Error saving estado:", err)
-      alert('Error al guardar estado de alistamiento')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleStartPreparation = async (entregador: string) => {
-    try {
-      const sheetsToUpdate = routeSheets.filter((s) => s.entregador === entregador && s.estado === "pendiente")
-
-      for (const sheet of sheetsToUpdate) {
-        await updatePlanillaEstado(sheet.id, "alistando")
-      }
-
-      await loadData()
-    } catch (err) {
-      console.error("[ALISTADOR] Error starting preparation:", err)
-    }
-  }
-
-  const handleCompletePreparation = async (entregador: string) => {
-    try {
-      const sheetsToUpdate = routeSheets.filter((s) => s.entregador === entregador && s.estado === "alistando")
-
-      for (const sheet of sheetsToUpdate) {
-        await updatePlanillaEstado(sheet.id, "alistado", user.id)
-      }
-
-      await loadData()
-    } catch (err) {
-      console.error("[ALISTADOR] Error completing preparation:", err)
-    }
-  }
-
-  const toggleDeliveryPerson = (entregador: string) => {
-    const newExpanded = new Set(expandedDeliveryPersons)
-    if (newExpanded.has(entregador)) {
-      newExpanded.delete(entregador)
-    } else {
-      newExpanded.add(entregador)
-    }
-    setExpandedDeliveryPersons(newExpanded)
-  }
-
-  const getEstadoInfo = (estado: string) => {
-    switch (estado) {
-      case 'completo':
-        return { 
-          label: 'Completo', 
-          color: 'bg-green-100 text-green-800 border border-green-300',
-          icon: '✅'
-        }
-      case 'incompleto':
-        return { 
-          label: 'Incompleto', 
-          color: 'bg-yellow-100 text-yellow-800 border border-yellow-300',
-          icon: '⚠️'
-        }
-      case 'no_alistado':
-        return { 
-          label: 'No Alistado', 
-          color: 'bg-red-100 text-red-800 border border-red-300',
-          icon: '❌'
-        }
-      default:
-        return { 
-          label: 'Pendiente', 
-          color: 'bg-gray-100 text-gray-700 border border-gray-300',
-          icon: '⏳'
-        }
-    }
-  }
+  const totalRoutes = myRoutes.length
+  const totalOrders = myRoutes.reduce((sum, sheet) => sum + sheet.totalOrders, 0)
+  const totalAmount = myRoutes.reduce((sum, sheet) => sum + (sheet.montoCargue || 0), 0)
 
   if (loading) {
     return (
@@ -327,12 +223,14 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         <div className="container mx-auto px-3 md:px-4 py-3 md:py-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 md:gap-3">
-              <div className="flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-lg bg-purple-500">
-                <Package className="h-4 w-4 md:h-5 md:w-5 text-white" />
+              <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
+                <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-base md:text-xl font-bold">Alistador de Bodega</h1>
-                <p className="text-xs text-muted-foreground hidden sm:block">Preparación optimizada por entregador</p>
+                <h2 className="font-bold text-lg md:text-xl">{deliveryPerson}</h2>
+                <p className="text-xs md:text-sm text-muted-foreground">
+                  {totalRoutes} ruta{totalRoutes !== 1 ? "s" : ""} · {totalOrders} pedidos · Total: {formatCOP(totalAmount)}
+                </p>
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={onLogout}>
@@ -343,337 +241,261 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         </div>
       </header>
 
-      <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-7xl">
-        {unassignedSheets.length > 0 && (
-          <Alert className="mb-4 md:mb-6 bg-amber-50 border-amber-200">
-            <AlertDescription className="text-xs md:text-sm text-amber-800">
-              Hay {unassignedSheets.length} ruta(s) esperando asignación de entregador por parte del coordinador
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="alistamiento" className="text-sm md:text-base">
-              <Package className="h-4 w-4 mr-2" />
-              Alistamiento
-            </TabsTrigger>
-            <TabsTrigger value="novedades" className="text-sm md:text-base">
-              <FileText className="h-4 w-4 mr-2" />
-              Novedades Registradas
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="alistamiento">
-            {pendingSheets.length === 0 ? (
-              <Card className="p-8 md:p-12 text-center">
-                <Package className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas para alistar</h3>
+      <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-6xl">
+        {activeRoute ? (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="text-xl md:text-2xl font-bold">Ruta {activeRoute.ruta}</h2>
                 <p className="text-sm md:text-base text-muted-foreground">
-                  Espere a que el coordinador genere las planillas y asigne los entregadores
+                  {activeRoute.totalOrders} pedidos · Cargue total: {formatCOP(activeRoute.montoCargue || 0)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {allOrdersProcessed && (
+                  <Button onClick={() => handleCompleteRoute(activeRoute.id)} className="bg-green-600">
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Completar Ruta
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setSelectedRoute(null)}>
+                  Ver Todas
+                </Button>
+              </div>
+            </div>
+
+            {allOrdersProcessed && (
+              <Card className="p-4 bg-green-50 border-green-200">
+                <p className="text-sm text-green-700 font-medium">
+                  Todos los pedidos han sido procesados. Haz clic en "Completar Ruta" para finalizar y calcular tu comisión.
                 </p>
               </Card>
-            ) : (
-              <div className="space-y-4 md:space-y-6">
-                {Object.entries(groupedByDeliveryPerson).map(([entregador, sheets]) => {
-                  const isExpanded = expandedDeliveryPersons.has(entregador)
-                  const consolidatedProducts = getConsolidatedProducts(sheets)
-                  const totalRoutes = sheets.length
-                  const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
-                  const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
-                  const allPending = sheets.every((s) => s.estado === "pendiente")
-                  const allReady = sheets.every((s) => s.estado === "alistando")
-                  
-                  const totalCompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'completo').length
-                  const totalIncompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'incompleto').length
-                  const totalNoAlistados = consolidatedProducts.filter(p => p.estadoAlistamiento === 'no_alistado').length
-                  const totalPendientes = consolidatedProducts.filter(p => p.estadoAlistamiento === 'pendiente').length
+            )}
 
-                  return (
-                    <Card key={entregador} className="overflow-hidden border-2">
-                      <div className="p-4 md:p-5 bg-gradient-to-r from-purple-50 to-blue-50">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 md:gap-3 mb-2">
-                              <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-purple-600">
-                                <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
-                              </div>
-                              <div>
-                                <h2 className="font-bold text-lg md:text-xl">{entregador}</h2>
-                                <p className="text-xs md:text-sm text-muted-foreground">
-                                  {totalRoutes} ruta{totalRoutes > 1 ? "s" : ""} · {totalOrders} pedidos · Total:{" "}
-                                  {formatCOP(totalAmount)}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 mt-3">
-                              <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-purple-700 rounded-full font-medium">
-                                {consolidatedProducts.length} productos
-                              </span>
-                              {totalCompletos > 0 && (
-                                <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
-                                  ✅ {totalCompletos} completos
-                                </span>
-                              )}
-                              {totalIncompletos > 0 && (
-                                <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
-                                  ⚠️ {totalIncompletos} incompletos
-                                </span>
-                              )}
-                              {totalNoAlistados > 0 && (
-                                <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium flex items-center gap-1">
-                                  ❌ {totalNoAlistados} no alistados
-                                </span>
-                              )}
-                              {totalPendientes > 0 && (
-                                <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium flex items-center gap-1">
-                                  ⏳ {totalPendientes} pendientes
-                                </span>
-                              )}
-                              <span
-                                className={`text-xs px-2 md:px-3 py-1 rounded-full font-medium ${
-                                  allPending
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : allReady
-                                      ? "bg-blue-100 text-blue-700"
-                                      : "bg-orange-100 text-orange-700"
-                                }`}
-                              >
-                                {allPending ? "Por alistar" : allReady ? "Listo para completar" : "En proceso"}
-                              </span>
-                            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              <Card className="p-3 md:p-4">
+                <p className="text-xs md:text-sm text-muted-foreground">Entregado</p>
+                <p className="text-lg md:text-xl font-bold text-green-600">
+                  {formatCOP(activeRoute.montoEntregado || 0)}
+                </p>
+              </Card>
+              <Card className="p-3 md:p-4">
+                <p className="text-xs md:text-sm text-muted-foreground">Fiado</p>
+                <p className="text-lg md:text-xl font-bold text-yellow-600">{formatCOP(activeRoute.montoFiado || 0)}</p>
+              </Card>
+              <Card className="p-3 md:p-4">
+                <p className="text-xs md:text-sm text-muted-foreground">Devoluciones</p>
+                <p className="text-lg md:text-xl font-bold text-red-600">
+                  {formatCOP(activeRoute.montoDevoluciones || 0)}
+                </p>
+              </Card>
+              <Card className="p-3 md:p-4">
+                <p className="text-xs md:text-sm text-muted-foreground">Repasos</p>
+                <p className="text-lg md:text-xl font-bold text-blue-600">{formatCOP(activeRoute.montoRepasos || 0)}</p>
+              </Card>
+            </div>
+
+            <div className="space-y-3">
+              {activeRoute.orders.map((order) => {
+                const isExpanded = expandedOrders.has(order.id)
+                const effectiveTotal = order.items
+                  .filter((item) => !item.devuelto)
+                  .reduce((sum, item) => sum + item.subtotal, 0)
+                const returnedTotal = order.items
+                  .filter((item) => item.devuelto)
+                  .reduce((sum, item) => sum + item.subtotal, 0)
+
+                return (
+                  <Card key={order.id} className="overflow-hidden">
+                    <div className="p-3 md:p-4 bg-muted/50">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <h3 className="font-semibold text-sm md:text-base truncate">{order.cliente}</h3>
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full shrink-0 ${
+                                order.estado === "pendiente"
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : order.estado === "entregado"
+                                    ? "bg-green-100 text-green-700"
+                                    : order.estado === "fiado"
+                                      ? "bg-orange-100 text-orange-700"
+                                      : order.estado === "repaso"
+                                        ? "bg-blue-100 text-blue-700"
+                                        : "bg-red-100 text-red-700"
+                              }`}
+                            >
+                              {order.estado}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2 justify-end">
-                            <Button variant="outline" size="sm" onClick={() => toggleDeliveryPerson(entregador)}>
-                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            </Button>
-                            {allPending && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleStartPreparation(entregador)}
-                                className="bg-blue-600 text-xs md:text-sm"
-                              >
-                                Iniciar
-                              </Button>
+                          
+                          {/* INFORMACIÓN DE CONTACTO */}
+                          <div className="space-y-1 mb-2">
+                            {order.direccion && (
+                              <div className="flex items-start gap-2 text-xs md:text-sm text-muted-foreground">
+                                <MapPin className="h-4 w-4 shrink-0 mt-0.5" />
+                                <span className="break-words">
+                                  {order.direccion}
+                                  {order.barrio && ` - ${order.barrio}`}
+                                </span>
+                              </div>
                             )}
-                            {allReady && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleCompletePreparation(entregador)}
-                                className="bg-green-600 text-xs md:text-sm"
-                              >
-                                <CheckCircle className="h-4 w-4 mr-1 md:mr-2" />
-                                Completar
-                              </Button>
+                            {order.telefono && (
+                              <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
+                                <Phone className="h-4 w-4 shrink-0" />
+                                <a 
+                                  href={`tel:${order.telefono}`}
+                                  className="hover:text-primary hover:underline font-medium"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {order.telefono}
+                                </a>
+                              </div>
                             )}
                           </div>
+
+                          <p className="text-xs md:text-sm text-muted-foreground">
+                            {order.items.length} productos · {formatCOP(effectiveTotal)}
+                            {returnedTotal > 0 && (
+                              <span className="text-red-600 ml-2">· Dev: {formatCOP(returnedTotal)}</span>
+                            )}
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => toggleOrder(order.id)}>
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="p-3 md:p-4 space-y-4">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs md:text-sm">
+                            <thead>
+                              <tr className="border-b">
+                                <th className="text-left py-2 w-10">Dev.</th>
+                                <th className="text-left py-2">Código</th>
+                                <th className="text-left py-2">Descripción</th>
+                                <th className="text-right py-2">Cant.</th>
+                                <th className="text-right py-2">Subtotal</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.items.map((item, idx) => (
+                                <tr
+                                  key={idx}
+                                  className={`border-b ${item.devuelto ? "bg-red-50 line-through opacity-60" : ""}`}
+                                >
+                                  <td className="py-2">
+                                    <Checkbox
+                                      checked={item.devuelto || false}
+                                      onCheckedChange={() =>
+                                        handleItemReturn(activeRoute.id, order.id, item.codigo, item.devuelto || false)
+                                      }
+                                      disabled={order.estado !== "pendiente"}
+                                    />
+                                  </td>
+                                  <td className="py-2 font-mono">{item.codigo}</td>
+                                  <td className="py-2">{item.descripcion}</td>
+                                  <td className="text-right py-2">{item.cantidad}</td>
+                                  <td className="text-right py-2 font-medium">{formatCOP(item.subtotal)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="font-semibold">
+                                <td colSpan={4} className="text-right py-3 text-xs md:text-sm">
+                                  Total:
+                                </td>
+                                <td className="text-right py-3">{formatCOP(effectiveTotal)}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleOrderStatusChange(activeRoute.id, order.id, "entregado")}
+                            className="bg-green-600 flex-1 sm:flex-none"
+                            disabled={order.estado !== "pendiente"}
+                          >
+                            Entregado
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOrderStatusChange(activeRoute.id, order.id, "fiado")}
+                            className="flex-1 sm:flex-none"
+                            disabled={order.estado !== "pendiente"}
+                          >
+                            Fiado
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOrderStatusChange(activeRoute.id, order.id, "repaso")}
+                            className="flex-1 sm:flex-none"
+                            disabled={order.estado !== "pendiente"}
+                          >
+                            Repaso
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleOrderStatusChange(activeRoute.id, order.id, "devolucion")}
+                            className="flex-1 sm:flex-none"
+                            disabled={order.estado !== "pendiente"}
+                          >
+                            Devolución
+                          </Button>
                         </div>
                       </div>
-
-                      {isExpanded && (
-                        <div className="p-3 md:p-5">
-                          <div className="mb-4 md:mb-6">
-                            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 md:p-4 mb-4">
-                              <h3 className="font-bold text-base md:text-lg mb-1 text-green-800 flex items-center gap-2">
-                                <Package className="h-4 w-4 md:h-5 md:w-5" />
-                                Lista de Productos Consolidados
-                              </h3>
-                              <p className="text-xs md:text-sm text-green-700 mb-4">
-                                Registre el estado de alistamiento de cada producto
-                              </p>
-                            </div>
-                            <div className="overflow-x-auto border rounded-lg">
-                              <table className="w-full text-xs md:text-sm">
-                                <thead className="bg-muted">
-                                  <tr>
-                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
-                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
-                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">
-                                      Categoría
-                                    </th>
-                                    <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Solicitado</th>
-                                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
-                                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {consolidatedProducts.map((product) => {
-                                    const estadoInfo = getEstadoInfo(product.estadoAlistamiento)
-                                    return (
-                                      <tr 
-                                        key={product.codigo} 
-                                        className="border-b hover:bg-muted/50"
-                                      >
-                                        <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
-                                        <td className="py-2 md:py-3 px-2 md:px-4">
-                                          {product.descripcion}
-                                          {product.observacionesFaltante && (
-                                            <p className="text-xs text-orange-600 mt-1">
-                                              📝 {product.observacionesFaltante}
-                                            </p>
-                                          )}
-                                        </td>
-                                        <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
-                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                            {product.categoria}
-                                          </span>
-                                        </td>
-                                        <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
-                                          {product.cantidadTotal}
-                                        </td>
-                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${estadoInfo.color}`}>
-                                            {estadoInfo.icon} {estadoInfo.label}
-                                          </span>
-                                        </td>
-                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleOpenEditDialog(entregador, product)}
-                                            className="text-xs"
-                                          >
-                                            <Edit className="h-3 w-3 mr-1" />
-                                            {product.estadoAlistamiento === 'pendiente' ? 'Registrar' : 'Editar'}
-                                          </Button>
-                                        </td>
-                                      </tr>
-                                    )
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </Card>
-                  )
-                })}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="novedades">
-            <FaltantesHistorialView userId={user.id} userRole="alistador" />
-          </TabsContent>
-        </Tabs>
-      </main>
-
-      <Dialog open={!!editingProduct} onOpenChange={() => !saving && setEditingProduct(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Estado de Alistamiento</DialogTitle>
-          </DialogHeader>
-          
-          {editingProduct && (
-            <div className="space-y-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm font-medium text-blue-900">Producto:</p>
-                <p className="text-sm text-blue-700">{editingProduct.product.descripcion}</p>
-                <p className="text-xs font-mono text-blue-600 mt-1">{editingProduct.product.codigo}</p>
-                <p className="text-sm font-bold text-blue-900 mt-2">
-                  Cantidad solicitada: {editingProduct.product.cantidadTotal} unidades
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  ¿Cuántas unidades hay disponibles?
-                </label>
-                <Input
-                  type="number"
-                  min="0"
-                  max={editingProduct.product.cantidadTotal}
-                  value={disponibleInput}
-                  onChange={(e) => setDisponibleInput(e.target.value)}
-                  placeholder="Ej: 10"
-                  className="text-lg font-bold"
-                  disabled={saving}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-sm font-medium block">Estado del producto:</label>
-                <RadioGroup 
-                  value={estadoSeleccionado} 
-                  onValueChange={(value: string) => setEstadoSeleccionado(value as 'completo' | 'incompleto' | 'no_alistado')}
-                  disabled={saving}
-                >
-                  <div className="flex items-center space-x-2 p-2 rounded border hover:bg-muted">
-                    <RadioGroupItem value="completo" id="completo" />
-                    <Label htmlFor="completo" className="font-normal cursor-pointer flex-1">
-                      ✅ Completo (todo OK)
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 p-2 rounded border hover:bg-muted">
-                    <RadioGroupItem value="incompleto" id="incompleto" />
-                    <Label htmlFor="incompleto" className="font-normal cursor-pointer flex-1">
-                      ⚠️ Incompleto (faltan piezas dentro de la unidad)
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2 p-2 rounded border hover:bg-muted">
-                    <RadioGroupItem value="no_alistado" id="no_alistado" />
-                    <Label htmlFor="no_alistado" className="font-normal cursor-pointer flex-1">
-                      ❌ No alistado (no hay stock)
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
-              {(estadoSeleccionado === "incompleto" || estadoSeleccionado === "no_alistado") && (
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Observaciones {estadoSeleccionado !== "completo" && <span className="text-red-500">*</span>}
-                  </label>
-                  <Textarea
-                    value={observaciones}
-                    onChange={(e) => setObservaciones(e.target.value)}
-                    placeholder={
-                      estadoSeleccionado === "incompleto"
-                        ? "Ej: Faltan 2 piezas en una unidad, unidad dañada, etc."
-                        : "Ej: No hay stock, producto descontinuado, etc."
-                    }
-                    className="min-h-[100px]"
-                    disabled={saving}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {estadoSeleccionado === "incompleto"
-                      ? "Explique qué falta o qué problema tiene el producto"
-                      : "Explique por qué no se pudo alistar el producto"}
-                  </p>
-                </div>
-              )}
+                    )}
+                  </Card>
+                )
+              })}
             </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setEditingProduct(null)}
-              disabled={saving}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSaveEstadoAlistamiento}
-              disabled={saving}
-              className="bg-purple-600 hover:bg-purple-700"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Guardar Estado
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {myRoutes.length > 0 ? (
+              <div>
+                <h2 className="text-lg md:text-xl font-bold mb-4">Mis Rutas Alistadas</h2>
+                <div className="space-y-3">
+                  {myRoutes.map((sheet) => (
+                    <Card
+                      key={sheet.id}
+                      className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
+                      onClick={() => setSelectedRoute(sheet.id)}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-sm md:text-base">Ruta {sheet.ruta}</p>
+                          <p className="text-xs md:text-sm text-muted-foreground">
+                            {sheet.totalOrders} pedidos · Cargue: {formatCOP(sheet.montoCargue || 0)}
+                          </p>
+                        </div>
+                        <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700 w-fit">
+                          Lista para entregar
+                        </span>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <Card className="p-8 md:p-12 text-center">
+                <Truck className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas listas para entrega</h3>
+                <p className="text-sm md:text-base text-muted-foreground">
+                  Espera a que el alistador prepare tus rutas asignadas
+                </p>
+              </Card>
+            )}
+          </div>
+        )}
+      </main>
     </>
   )
 }
