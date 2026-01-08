@@ -2,17 +2,19 @@
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, AlertTriangle, Edit, Loader2 } from "lucide-react"
+import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, Edit, Loader2, FileText } from "lucide-react"
 import type { RouteSheet } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { updatePlanillaEstado, updateEstadoAlistamiento } from "@/lib/actions/planillas"
+import { updatePlanillaEstado } from "@/lib/actions/planillas"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { FaltantesHistorialView } from "@/components/faltantes-historial-view"
 
 interface AlistadorViewProps {
   onLogout: () => void
@@ -41,6 +43,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [disponibleInput, setDisponibleInput] = useState("")
   const [estadoSeleccionado, setEstadoSeleccionado] = useState<'completo' | 'incompleto' | 'no_alistado'>("completo")
   const [observaciones, setObservaciones] = useState("")
+  const [activeTab, setActiveTab] = useState("alistamiento")
 
   useEffect(() => {
     loadData()
@@ -199,14 +202,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     try {
       setSaving(true)
 
-      // 1. Actualizar estado de alistamiento
-      await updateEstadoAlistamiento(
-        editingProduct.product.codigo,
-        editingProduct.entregador,
-        estadoSeleccionado
-      )
+      const sheetForEntregador = routeSheets.find(s => s.entregador === editingProduct.entregador)
+      
+      if (!sheetForEntregador) {
+        throw new Error('No se encontró planilla para el entregador')
+      }
 
-      // 2. Si hay faltante o incompleto, registrar en faltantes
       if (estadoSeleccionado === 'incompleto' || estadoSeleccionado === 'no_alistado') {
         const faltante = editingProduct.product.cantidadTotal - disponible
 
@@ -214,25 +215,27 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            planilla_id: sheetForEntregador.id,
             codigo: editingProduct.product.codigo,
+            descripcion: editingProduct.product.descripcion,
+            categoria: editingProduct.product.categoria,
             entregador: editingProduct.entregador,
+            ruta: sheetForEntregador.ruta,
             cantidadSolicitada: editingProduct.product.cantidadTotal,
             cantidadDisponible: disponible,
             cantidadFaltante: faltante,
             unidadIncompleta: estadoSeleccionado === 'incompleto',
             observaciones: observaciones.trim(),
-            usuarioId: user.id,
+            marcadoPor: user.id,
           }),
         })
       }
 
-      // Cerrar modal y limpiar
       setEditingProduct(null)
       setDisponibleInput("")
       setEstadoSeleccionado("completo")
       setObservaciones("")
       
-      // Recargar datos
       await loadData()
 
     } catch (err) {
@@ -349,195 +352,213 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           </Alert>
         )}
 
-        {pendingSheets.length === 0 ? (
-          <Card className="p-8 md:p-12 text-center">
-            <Package className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas para alistar</h3>
-            <p className="text-sm md:text-base text-muted-foreground">
-              Espere a que el coordinador genere las planillas y asigne los entregadores
-            </p>
-          </Card>
-        ) : (
-          <div className="space-y-4 md:space-y-6">
-            {Object.entries(groupedByDeliveryPerson).map(([entregador, sheets]) => {
-              const isExpanded = expandedDeliveryPersons.has(entregador)
-              const consolidatedProducts = getConsolidatedProducts(sheets)
-              const totalRoutes = sheets.length
-              const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
-              const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
-              const allPending = sheets.every((s) => s.estado === "pendiente")
-              const allReady = sheets.every((s) => s.estado === "alistando")
-              
-              const totalCompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'completo').length
-              const totalIncompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'incompleto').length
-              const totalNoAlistados = consolidatedProducts.filter(p => p.estadoAlistamiento === 'no_alistado').length
-              const totalPendientes = consolidatedProducts.filter(p => p.estadoAlistamiento === 'pendiente').length
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsTrigger value="alistamiento" className="text-sm md:text-base">
+              <Package className="h-4 w-4 mr-2" />
+              Alistamiento
+            </TabsTrigger>
+            <TabsTrigger value="novedades" className="text-sm md:text-base">
+              <FileText className="h-4 w-4 mr-2" />
+              Novedades Registradas
+            </TabsTrigger>
+          </TabsList>
 
-              return (
-                <Card key={entregador} className="overflow-hidden border-2">
-                  <div className="p-4 md:p-5 bg-gradient-to-r from-purple-50 to-blue-50">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 md:gap-3 mb-2">
-                          <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-purple-600">
-                            <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
+          <TabsContent value="alistamiento">
+            {pendingSheets.length === 0 ? (
+              <Card className="p-8 md:p-12 text-center">
+                <Package className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas para alistar</h3>
+                <p className="text-sm md:text-base text-muted-foreground">
+                  Espere a que el coordinador genere las planillas y asigne los entregadores
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-4 md:space-y-6">
+                {Object.entries(groupedByDeliveryPerson).map(([entregador, sheets]) => {
+                  const isExpanded = expandedDeliveryPersons.has(entregador)
+                  const consolidatedProducts = getConsolidatedProducts(sheets)
+                  const totalRoutes = sheets.length
+                  const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
+                  const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
+                  const allPending = sheets.every((s) => s.estado === "pendiente")
+                  const allReady = sheets.every((s) => s.estado === "alistando")
+                  
+                  const totalCompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'completo').length
+                  const totalIncompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'incompleto').length
+                  const totalNoAlistados = consolidatedProducts.filter(p => p.estadoAlistamiento === 'no_alistado').length
+                  const totalPendientes = consolidatedProducts.filter(p => p.estadoAlistamiento === 'pendiente').length
+
+                  return (
+                    <Card key={entregador} className="overflow-hidden border-2">
+                      <div className="p-4 md:p-5 bg-gradient-to-r from-purple-50 to-blue-50">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 md:gap-3 mb-2">
+                              <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-purple-600">
+                                <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
+                              </div>
+                              <div>
+                                <h2 className="font-bold text-lg md:text-xl">{entregador}</h2>
+                                <p className="text-xs md:text-sm text-muted-foreground">
+                                  {totalRoutes} ruta{totalRoutes > 1 ? "s" : ""} · {totalOrders} pedidos · Total:{" "}
+                                  {formatCOP(totalAmount)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-3">
+                              <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-purple-700 rounded-full font-medium">
+                                {consolidatedProducts.length} productos
+                              </span>
+                              {totalCompletos > 0 && (
+                                <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                                  ✅ {totalCompletos} completos
+                                </span>
+                              )}
+                              {totalIncompletos > 0 && (
+                                <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
+                                  ⚠️ {totalIncompletos} incompletos
+                                </span>
+                              )}
+                              {totalNoAlistados > 0 && (
+                                <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium flex items-center gap-1">
+                                  ❌ {totalNoAlistados} no alistados
+                                </span>
+                              )}
+                              {totalPendientes > 0 && (
+                                <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium flex items-center gap-1">
+                                  ⏳ {totalPendientes} pendientes
+                                </span>
+                              )}
+                              <span
+                                className={`text-xs px-2 md:px-3 py-1 rounded-full font-medium ${
+                                  allPending
+                                    ? "bg-yellow-100 text-yellow-700"
+                                    : allReady
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-orange-100 text-orange-700"
+                                }`}
+                              >
+                                {allPending ? "Por alistar" : allReady ? "Listo para completar" : "En proceso"}
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <h2 className="font-bold text-lg md:text-xl">{entregador}</h2>
-                            <p className="text-xs md:text-sm text-muted-foreground">
-                              {totalRoutes} ruta{totalRoutes > 1 ? "s" : ""} · {totalOrders} pedidos · Total:{" "}
-                              {formatCOP(totalAmount)}
-                            </p>
+                          <div className="flex items-center gap-2 justify-end">
+                            <Button variant="outline" size="sm" onClick={() => toggleDeliveryPerson(entregador)}>
+                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </Button>
+                            {allPending && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleStartPreparation(entregador)}
+                                className="bg-blue-600 text-xs md:text-sm"
+                              >
+                                Iniciar
+                              </Button>
+                            )}
+                            {allReady && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleCompletePreparation(entregador)}
+                                className="bg-green-600 text-xs md:text-sm"
+                              >
+                                <CheckCircle className="h-4 w-4 mr-1 md:mr-2" />
+                                Completar
+                              </Button>
+                            )}
                           </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 mt-3">
-                          <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-purple-700 rounded-full font-medium">
-                            {consolidatedProducts.length} productos
-                          </span>
-                          {totalCompletos > 0 && (
-                            <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
-                              ✅ {totalCompletos} completos
-                            </span>
-                          )}
-                          {totalIncompletos > 0 && (
-                            <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
-                              ⚠️ {totalIncompletos} incompletos
-                            </span>
-                          )}
-                          {totalNoAlistados > 0 && (
-                            <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium flex items-center gap-1">
-                              ❌ {totalNoAlistados} no alistados
-                            </span>
-                          )}
-                          {totalPendientes > 0 && (
-                            <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium flex items-center gap-1">
-                              ⏳ {totalPendientes} pendientes
-                            </span>
-                          )}
-                          <span
-                            className={`text-xs px-2 md:px-3 py-1 rounded-full font-medium ${
-                              allPending
-                                ? "bg-yellow-100 text-yellow-700"
-                                : allReady
-                                  ? "bg-blue-100 text-blue-700"
-                                  : "bg-orange-100 text-orange-700"
-                            }`}
-                          >
-                            {allPending ? "Por alistar" : allReady ? "Listo para completar" : "En proceso"}
-                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 justify-end">
-                        <Button variant="outline" size="sm" onClick={() => toggleDeliveryPerson(entregador)}>
-                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </Button>
-                        {allPending && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleStartPreparation(entregador)}
-                            className="bg-blue-600 text-xs md:text-sm"
-                          >
-                            Iniciar
-                          </Button>
-                        )}
-                        {allReady && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleCompletePreparation(entregador)}
-                            className="bg-green-600 text-xs md:text-sm"
-                          >
-                            <CheckCircle className="h-4 w-4 mr-1 md:mr-2" />
-                            Completar
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
 
-                  {isExpanded && (
-                    <div className="p-3 md:p-5">
-                      <div className="mb-4 md:mb-6">
-                        <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 md:p-4 mb-4">
-                          <h3 className="font-bold text-base md:text-lg mb-1 text-green-800 flex items-center gap-2">
-                            <Package className="h-4 w-4 md:h-5 md:w-5" />
-                            Lista de Productos Consolidados
-                          </h3>
-                          <p className="text-xs md:text-sm text-green-700 mb-4">
-                            Registre el estado de alistamiento de cada producto
-                          </p>
-                        </div>
-                        <div className="overflow-x-auto border rounded-lg">
-                          <table className="w-full text-xs md:text-sm">
-                            <thead className="bg-muted">
-                              <tr>
-                                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
-                                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
-                                <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">
-                                  Categoría
-                                </th>
-                                <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Solicitado</th>
-                                <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
-                                <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {consolidatedProducts.map((product) => {
-                                const estadoInfo = getEstadoInfo(product.estadoAlistamiento)
-                                return (
-                                  <tr 
-                                    key={product.codigo} 
-                                    className="border-b hover:bg-muted/50"
-                                  >
-                                    <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
-                                    <td className="py-2 md:py-3 px-2 md:px-4">
-                                      {product.descripcion}
-                                      {product.observacionesFaltante && (
-                                        <p className="text-xs text-orange-600 mt-1">
-                                          📝 {product.observacionesFaltante}
-                                        </p>
-                                      )}
-                                    </td>
-                                    <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
-                                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                        {product.categoria}
-                                      </span>
-                                    </td>
-                                    <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
-                                      {product.cantidadTotal}
-                                    </td>
-                                    <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                      <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${estadoInfo.color}`}>
-                                        {estadoInfo.icon} {estadoInfo.label}
-                                      </span>
-                                    </td>
-                                    <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => handleOpenEditDialog(entregador, product)}
-                                        className="text-xs"
-                                      >
-                                        <Edit className="h-3 w-3 mr-1" />
-                                        {product.estadoAlistamiento === 'pendiente' ? 'Registrar' : 'Editar'}
-                                      </Button>
-                                    </td>
+                      {isExpanded && (
+                        <div className="p-3 md:p-5">
+                          <div className="mb-4 md:mb-6">
+                            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 md:p-4 mb-4">
+                              <h3 className="font-bold text-base md:text-lg mb-1 text-green-800 flex items-center gap-2">
+                                <Package className="h-4 w-4 md:h-5 md:w-5" />
+                                Lista de Productos Consolidados
+                              </h3>
+                              <p className="text-xs md:text-sm text-green-700 mb-4">
+                                Registre el estado de alistamiento de cada producto
+                              </p>
+                            </div>
+                            <div className="overflow-x-auto border rounded-lg">
+                              <table className="w-full text-xs md:text-sm">
+                                <thead className="bg-muted">
+                                  <tr>
+                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
+                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
+                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">
+                                      Categoría
+                                    </th>
+                                    <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Solicitado</th>
+                                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
+                                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
                                   </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
+                                </thead>
+                                <tbody>
+                                  {consolidatedProducts.map((product) => {
+                                    const estadoInfo = getEstadoInfo(product.estadoAlistamiento)
+                                    return (
+                                      <tr 
+                                        key={product.codigo} 
+                                        className="border-b hover:bg-muted/50"
+                                      >
+                                        <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4">
+                                          {product.descripcion}
+                                          {product.observacionesFaltante && (
+                                            <p className="text-xs text-orange-600 mt-1">
+                                              📝 {product.observacionesFaltante}
+                                            </p>
+                                          )}
+                                        </td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                            {product.categoria}
+                                          </span>
+                                        </td>
+                                        <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
+                                          {product.cantidadTotal}
+                                        </td>
+                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                          <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${estadoInfo.color}`}>
+                                            {estadoInfo.icon} {estadoInfo.label}
+                                          </span>
+                                        </td>
+                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleOpenEditDialog(entregador, product)}
+                                            className="text-xs"
+                                          >
+                                            <Edit className="h-3 w-3 mr-1" />
+                                            {product.estadoAlistamiento === 'pendiente' ? 'Registrar' : 'Editar'}
+                                          </Button>
+                                        </td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              )
-            })}
-          </div>
-        )}
+                      )}
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="novedades">
+            <FaltantesHistorialView userId={user.id} userRole="alistador" />
+          </TabsContent>
+        </Tabs>
       </main>
 
-      {/* Dialog */}
       <Dialog open={!!editingProduct} onOpenChange={() => !saving && setEditingProduct(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -601,44 +622,34 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
               {(estadoSeleccionado === "incompleto" || estadoSeleccionado === "no_alistado") && (
                 <div>
-                  <label className="text-sm font-medium mb-2 block text-orange-700">
-                    Observaciones: *
+                  <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Observaciones (requerido):
                   </label>
                   <Textarea
                     value={observaciones}
                     onChange={(e) => setObservaciones(e.target.value)}
-                    placeholder={
-                      estadoSeleccionado === "incompleto"
-                        ? "Ej: Caja incompleta: faltan 2 unidades de 6"
-                        : "Ej: Sin stock disponible en bodega"
-                    }
-                    className="min-h-[80px]"
+                    placeholder="Describe la situación: ¿qué falta?, ¿por qué?, ¿cuándo estará disponible?"
+                    className="min-h-[100px]"
                     disabled={saving}
-                    required
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    * Requerido para productos incompletos o no alistados
-                  </p>
                 </div>
               )}
             </div>
-              )}
+          )}
 
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setEditingProduct(null)
-                setObservaciones("")
-                setEstadoSeleccionado("completo")
-              }}
+            <Button
+              variant="outline"
+              onClick={() => setEditingProduct(null)}
               disabled={saving}
             >
               Cancelar
             </Button>
-            <Button 
-              onClick={handleSaveEstadoAlistamiento} 
-              disabled={!disponibleInput || saving}
+            <Button
+              onClick={handleSaveEstadoAlistamiento}
+              disabled={saving}
+              className="bg-green-600 hover:bg-green-700"
             >
               {saving ? (
                 <>
@@ -646,7 +657,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                   Guardando...
                 </>
               ) : (
-                'Guardar'
+                <>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Guardar Estado
+                </>
               )}
             </Button>
           </DialogFooter>
