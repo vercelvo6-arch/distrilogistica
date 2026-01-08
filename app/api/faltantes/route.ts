@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    console.log('[FALTANTES] Request:', body);
+    console.log('[FALTANTES] Guardando:', body);
 
     const { 
       planilla_id,
@@ -28,20 +28,9 @@ export async function POST(request: NextRequest) {
       marcadoPor
     } = body;
 
-    // Validaciones
-    if (!codigo || !entregador || cantidadDisponible === undefined) {
-      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
-    }
-
-    if (unidadIncompleta && !observaciones?.trim()) {
-      return NextResponse.json({ 
-        error: 'Las unidades incompletas requieren observaciones' 
-      }, { status: 400 });
-    }
-
     const sql = getDB();
 
-    // Insertar faltante directamente con los datos recibidos
+    // SIMPLE: Solo guardar el faltante
     const result = await sql`
       INSERT INTO faltantes (
         planilla_id,
@@ -56,7 +45,8 @@ export async function POST(request: NextRequest) {
         unidad_incompleta,
         observaciones,
         marcado_por,
-        estado
+        estado,
+        fecha_marcado
       ) VALUES (
         ${planilla_id},
         ${entregador},
@@ -68,35 +58,31 @@ export async function POST(request: NextRequest) {
         ${cantidadDisponible},
         ${cantidadFaltante},
         ${unidadIncompleta || false},
-        ${observaciones || null},
+        ${observaciones || ''},
         ${marcadoPor},
-        'pendiente'
+        'pendiente',
+        NOW()
       )
-      RETURNING id
+      RETURNING *
     `;
 
-    console.log('[FALTANTES] ✓ Registrado:', result[0].id);
+    console.log('[FALTANTES] ✓ Guardado ID:', result[0].id);
 
     return NextResponse.json({ 
       success: true,
-      message: unidadIncompleta 
-        ? 'Registrado como incompleto'
-        : cantidadFaltante > 0 
-          ? `Faltante: ${cantidadFaltante} unidades` 
-          : 'Cantidad completa registrada',
-      id: result[0].id
+      faltante: result[0]
     });
 
   } catch (error) {
-    console.error('[FALTANTES] Error completo:', error);
+    console.error('[FALTANTES] ERROR:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error al registrar' },
+      { error: error instanceof Error ? error.message : 'Error' },
       { status: 500 }
     );
   }
 }
 
-// GET - Listar faltantes con filtros avanzados
+// GET - Ver faltantes
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
@@ -105,67 +91,57 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const planilla_id = searchParams.get('planilla_id');
     const entregador = searchParams.get('entregador');
-    const estado = searchParams.get('estado');
-    const fecha_inicio = searchParams.get('fecha_inicio');
-    const fecha_fin = searchParams.get('fecha_fin');
-    const codigo = searchParams.get('codigo');
 
     const sql = getDB();
 
-    // Construir query dinámica con filtros
-    let conditions = [];
-    
-    if (entregador && entregador !== 'all') {
-      conditions.push(`f.entregador = '${entregador}'`);
+    let faltantes;
+
+    if (planilla_id) {
+      faltantes = await sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        WHERE f.planilla_id = ${planilla_id}
+        ORDER BY f.fecha_marcado DESC
+      `;
+    } else if (entregador) {
+      faltantes = await sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre,
+          pl.fecha as planilla_fecha
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        LEFT JOIN planillas pl ON f.planilla_id = pl.id
+        WHERE f.entregador = ${entregador}
+        ORDER BY f.fecha_marcado DESC
+        LIMIT 100
+      `;
+    } else {
+      faltantes = await sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre,
+          pl.fecha as planilla_fecha
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        LEFT JOIN planillas pl ON f.planilla_id = pl.id
+        ORDER BY f.fecha_marcado DESC
+        LIMIT 100
+      `;
     }
-
-    if (estado && estado !== 'all') {
-      conditions.push(`f.estado = '${estado}'`);
-    }
-
-    if (codigo) {
-      conditions.push(`f.codigo ILIKE '%${codigo}%'`);
-    }
-
-    if (fecha_inicio) {
-      conditions.push(`DATE(f.fecha_marcado) >= '${fecha_inicio}'`);
-    }
-
-    if (fecha_fin) {
-      conditions.push(`DATE(f.fecha_marcado) <= '${fecha_fin}'`);
-    }
-
-    const whereClause = conditions.length > 0 
-      ? 'WHERE ' + conditions.join(' AND ')
-      : '';
-
-    // Query con joins para nombres de usuarios
-    const faltantes = await sql.unsafe(`
-      SELECT 
-        f.*,
-        u_marcado.nombre as marcado_por_nombre,
-        u_resuelto.nombre as resuelto_por_nombre,
-        pl.fecha as planilla_fecha
-      FROM faltantes f
-      LEFT JOIN usuarios u_marcado ON f.marcado_por = u_marcado.id
-      LEFT JOIN usuarios u_resuelto ON f.resuelto_por = u_resuelto.id
-      LEFT JOIN planillas pl ON f.planilla_id = pl.id
-      ${whereClause}
-      ORDER BY 
-        CASE WHEN f.estado = 'pendiente' THEN 0 ELSE 1 END,
-        f.fecha_marcado DESC
-      LIMIT 500
-    `);
 
     return NextResponse.json({ 
       success: true,
-      faltantes,
-      total: faltantes.length
+      faltantes
     });
 
   } catch (error) {
-    console.error('[FALTANTES] Error:', error);
+    console.error('[FALTANTES] ERROR:', error);
     return NextResponse.json(
       { error: 'Error al obtener faltantes' },
       { status: 500 }
