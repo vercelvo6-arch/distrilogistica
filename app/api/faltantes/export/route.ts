@@ -17,53 +17,67 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB();
 
-    let conditions = [];
-    
-    if (entregador && entregador !== 'all') {
-      conditions.push(`f.entregador = '${entregador}'`);
+    // Usar la MISMA sintaxis que funciona
+    let faltantes;
+
+    if (entregador && entregador !== 'all' && estado && estado !== 'all') {
+      faltantes = await sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre,
+          pl.fecha as planilla_fecha
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        LEFT JOIN planillas pl ON f.planilla_id = pl.id
+        WHERE f.entregador = ${entregador}
+        AND f.estado = ${estado}
+        ORDER BY f.fecha_marcado DESC
+      `;
+    } else if (entregador && entregador !== 'all') {
+      faltantes = await sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre,
+          pl.fecha as planilla_fecha
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        LEFT JOIN planillas pl ON f.planilla_id = pl.id
+        WHERE f.entregador = ${entregador}
+        ORDER BY f.fecha_marcado DESC
+      `;
+    } else if (estado && estado !== 'all') {
+      faltantes = await sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre,
+          pl.fecha as planilla_fecha
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        LEFT JOIN planillas pl ON f.planilla_id = pl.id
+        WHERE f.estado = ${estado}
+        ORDER BY f.fecha_marcado DESC
+      `;
+    } else {
+      faltantes = await sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre,
+          pl.fecha as planilla_fecha
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        LEFT JOIN planillas pl ON f.planilla_id = pl.id
+        ORDER BY f.fecha_marcado DESC
+        LIMIT 100
+      `;
     }
 
-    if (estado && estado !== 'all') {
-      conditions.push(`f.estado = '${estado}'`);
-    }
-
-    if (fecha_inicio) {
-      conditions.push(`DATE(f.fecha_marcado) >= '${fecha_inicio}'`);
-    }
-
-    if (fecha_fin) {
-      conditions.push(`DATE(f.fecha_marcado) <= '${fecha_fin}'`);
-    }
-
-    const whereClause = conditions.length > 0 
-      ? 'WHERE ' + conditions.join(' AND ')
-      : '';
-
-    const faltantes = await sql.unsafe(`
-      SELECT 
-        f.*,
-        u_marcado.nombre as marcado_por_nombre,
-        u_resuelto.nombre as resuelto_por_nombre,
-        pl.fecha as planilla_fecha
-      FROM faltantes f
-      LEFT JOIN usuarios u_marcado ON f.marcado_por = u_marcado.id
-      LEFT JOIN usuarios u_resuelto ON f.resuelto_por = u_resuelto.id
-      LEFT JOIN planillas pl ON f.planilla_id = pl.id
-      ${whereClause}
-      ORDER BY 
-        CASE WHEN f.estado = 'pendiente' THEN 0 ELSE 1 END,
-        f.fecha_marcado DESC
-      LIMIT 500
-    `);
-
-    const data = Array.from(faltantes);
-
-    if (data.length === 0) {
+    if (!faltantes || faltantes.length === 0) {
       return NextResponse.json({ 
         error: 'No hay datos para exportar' 
       }, { status: 404 });
     }
 
+    // Headers
     const headers = [
       'Fecha',
       'Entregador',
@@ -80,10 +94,10 @@ export async function GET(request: NextRequest) {
       'Marcado Por'
     ];
 
-    const csvRows = [];
-    csvRows.push(headers.join(','));
+    // Filas
+    const csvRows = [headers.join(',')];
 
-    for (const f of data) {
+    for (const f of faltantes) {
       const row = [
         f.fecha_marcado ? new Date(f.fecha_marcado).toLocaleString('es-CO') : '',
         f.entregador || '',
