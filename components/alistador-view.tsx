@@ -621,7 +621,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                   </p>
                 </div>
               )}
-            </div
+            </div>
               )}
 
           <DialogFooter>
