@@ -167,28 +167,84 @@ export async function GET() {
 
     const planillas = await sql`
       SELECT
-        p.*,
-        COALESCE(
-          (
-            SELECT json_agg(
-              json_build_object(
-                'id', pe.id,
-                'cliente', pe.cliente,
-                'total', pe.total,
-                'estado', pe.estado
-              )
-              ORDER BY pe.secuencia
-            )
-            FROM pedidos pe
-            WHERE pe.planilla_id = p.id
-          ),
-          '[]'::json
-        ) AS pedidos
+        p.id,
+        p.fecha,
+        p.tipo_ruta,
+        p.entregador,
+        p.estado,
+        p.total_cargue,
+        p.total_entregado,
+        p.total_fiado,
+        p.total_repaso,
+        p.total_devolucion,
+        p.alistado_por,
+        p.alistado_en,
+        p.completado_en,
+        p.cuadrado_en_caja,
+        p.observaciones,
+        p.created_at,
+        p.updated_at
       FROM planillas p
       ORDER BY p.created_at DESC
     `;
 
-    return NextResponse.json({ planillas });
+    // Obtener pedidos y productos para cada planilla
+    const planillasConPedidos = await Promise.all(
+      planillas.map(async (planilla) => {
+        const pedidos = await sql`
+          SELECT 
+            pe.id,
+            pe.cliente,
+            pe.direccion,
+            pe.telefono,
+            pe.barrio,
+            pe.total,
+            pe.estado,
+            pe.observaciones,
+            pe.entregado_en
+          FROM pedidos pe
+          WHERE pe.planilla_id = ${planilla.id}
+          ORDER BY pe.secuencia
+        `;
+
+        const pedidosConProductos = await Promise.all(
+          pedidos.map(async (pedido) => {
+            const productos = await sql`
+              SELECT 
+                codigo,
+                nombre,
+                categoria,
+                cantidad,
+                precio_unitario,
+                total,
+                devuelto,
+                estado_alistamiento,
+                cantidad_disponible,
+                cantidad_faltante,
+                unidad_incompleta,
+                observaciones_faltante
+              FROM pedido_productos
+              WHERE pedido_id = ${pedido.id}
+              ORDER BY codigo
+            `;
+
+            return {
+              ...pedido,
+              productos
+            };
+          })
+        );
+
+        return {
+          ...planilla,
+          pedidos: pedidosConProductos
+        };
+      })
+    );
+
+    console.log('[API /planillas GET] ✓', planillasConPedidos.length, 'planillas obtenidas');
+
+    return NextResponse.json({ planillas: planillasConPedidos });
   } catch (error) {
     console.error("[API /planillas GET] ERROR", error);
     return NextResponse.json(
