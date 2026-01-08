@@ -75,7 +75,8 @@ export async function POST(request: NextRequest) {
         cantidad_faltante,
         unidad_incompleta,
         observaciones,
-        marcado_por
+        marcado_por,
+        estado
       ) VALUES (
         ${info.planilla_id},
         ${entregador},
@@ -88,7 +89,8 @@ export async function POST(request: NextRequest) {
         ${cantidadFaltante},
         ${unidadIncompleta || false},
         ${observaciones || null},
-        ${usuarioId}
+        ${usuarioId},
+        'pendiente'
       )
       RETURNING id
     `;
@@ -113,6 +115,7 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 // GET - Listar faltantes con filtros avanzados
 export async function GET(request: NextRequest) {
   try {
