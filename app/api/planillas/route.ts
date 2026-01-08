@@ -21,103 +21,119 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
     }
 
+    console.log(`[API /planillas] Recibidas ${routeSheets.length} planillas`);
+    
+    // Log de ejemplo para debug
+    if (routeSheets.length > 0) {
+      const ejemplo = routeSheets.find(s => s.ruta === '72') || routeSheets[0];
+      console.log(`[API /planillas] Ejemplo ruta ${ejemplo.ruta}:`, {
+        id: ejemplo.id,
+        totalOrders: ejemplo.orders?.length || 0,
+        primeraOrden: ejemplo.orders?.[0]?.id
+      });
+    }
+
     const sql = getDB();
 
     let insertadas = 0;
     const errores: any[] = [];
 
-    // ✅ OPTIMIZACIÓN: Procesar en lotes más pequeños para evitar timeout
-    const BATCH_SIZE = 5; // Procesar 5 planillas a la vez
-    
-    for (let batchStart = 0; batchStart < routeSheets.length; batchStart += BATCH_SIZE) {
-      const batch = routeSheets.slice(batchStart, batchStart + BATCH_SIZE);
-      
-      for (const sheet of batch) {
-        try {
-          if (!sheet.id || !sheet.ruta || !sheet.fecha) {
-            throw new Error("Datos incompletos en la planilla");
-          }
+    for (const sheet of routeSheets) {
+      try {
+        if (!sheet.id || !sheet.ruta || !sheet.fecha) {
+          throw new Error("Datos incompletos en la planilla");
+        }
 
-          // 1️⃣ PLANILLA
-          await sql`
-            INSERT INTO planillas (
-              id,
-              fecha,
-              tipo_ruta,
-              entregador,
-              total_cargue,
-              total_entregado,
-              total_fiado,
-              total_repaso,
-              total_devolucion,
-              estado,
-              observaciones,
-              created_at,
-              updated_at
-            ) VALUES (
-              ${sheet.id},
-              ${sheet.fecha}::date,
-              ${sheet.ruta},
-              ${sheet.entregador || null},
-              ${Number(sheet.totalAmount) || 0},
-              0,
-              0,
-              0,
-              0,
-              'pendiente',
-              null,
-              NOW(),
-              NOW()
-            )
-            ON CONFLICT (id) DO NOTHING
-          `;
+        console.log(`[API /planillas] Procesando planilla ${sheet.id} - Ruta ${sheet.ruta} - ${sheet.orders?.length || 0} pedidos`);
 
-          // 2️⃣ PEDIDOS - Procesar en lotes
-          if (Array.isArray(sheet.orders) && sheet.orders.length > 0) {
-            for (let j = 0; j < sheet.orders.length; j++) {
-              const order = sheet.orders[j];
-              const pedidoId = order.id || `${sheet.id}-${j + 1}`;
+        // 1️⃣ PLANILLA
+        await sql`
+          INSERT INTO planillas (
+            id,
+            fecha,
+            tipo_ruta,
+            entregador,
+            total_cargue,
+            total_entregado,
+            total_fiado,
+            total_repaso,
+            total_devolucion,
+            estado,
+            observaciones,
+            created_at,
+            updated_at
+          ) VALUES (
+            ${sheet.id},
+            ${sheet.fecha}::date,
+            ${sheet.ruta},
+            ${sheet.entregador || null},
+            ${Number(sheet.totalAmount) || 0},
+            0,
+            0,
+            0,
+            0,
+            'pendiente',
+            null,
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            updated_at = NOW()
+        `;
 
+        // 2️⃣ PEDIDOS
+        if (Array.isArray(sheet.orders) && sheet.orders.length > 0) {
+          console.log(`[API /planillas] Insertando ${sheet.orders.length} pedidos para planilla ${sheet.id}`);
+          
+          for (let j = 0; j < sheet.orders.length; j++) {
+            const order = sheet.orders[j];
+            const pedidoId = order.id || `${sheet.id}-PED-${j + 1}`;
+
+            console.log(`[API /planillas] Pedido ${j + 1}/${sheet.orders.length}: ${pedidoId} - ${order.items?.length || 0} items`);
+
+            const resultPedido = await sql`
+              INSERT INTO pedidos (
+                id,
+                planilla_id,
+                secuencia,
+                cliente,
+                direccion,
+                telefono,
+                barrio,
+                total,
+                estado,
+                observaciones
+              ) VALUES (
+                ${pedidoId},
+                ${sheet.id},
+                ${j + 1},
+                ${order.cliente || "Sin nombre"},
+                ${order.direccion || ""},
+                ${order.telefono || ""},
+                ${order.barrio || ""},
+                ${Number(order.total) || 0},
+                'pendiente',
+                ${order.observaciones || order.comentarios || null}
+              )
+              ON CONFLICT (id) DO UPDATE SET
+                updated_at = NOW()
+              RETURNING id
+            `;
+
+            console.log(`[API /planillas] ✓ Pedido insertado: ${resultPedido[0]?.id}`);
+
+            // 3️⃣ PRODUCTOS
+            if (Array.isArray(order.items) && order.items.length > 0) {
+              // Primero eliminar productos existentes de este pedido
               await sql`
-                INSERT INTO pedidos (
-                  id,
-                  planilla_id,
-                  secuencia,
-                  cliente,
-                  direccion,
-                  telefono,
-                  barrio,
-                  total,
-                  estado,
-                  observaciones
-                ) VALUES (
-                  ${pedidoId},
-                  ${sheet.id},
-                  ${j + 1},
-                  ${order.cliente || "Sin nombre"},
-                  ${order.direccion || ""},
-                  ${order.telefono || ""},
-                  ${order.barrio || ""},
-                  ${Number(order.total) || 0},
-                  'pendiente',
-                  ${order.observaciones || null}
-                )
-                ON CONFLICT (id) DO NOTHING
+                DELETE FROM pedido_productos 
+                WHERE pedido_id = ${pedidoId}
               `;
 
-              // 3️⃣ PRODUCTOS - Insertar todos los productos de un pedido en una sola operación
-              if (Array.isArray(order.items) && order.items.length > 0) {
-                const valores = order.items.map(item => sql`(
-                  ${pedidoId},
-                  ${item.codigo || ""},
-                  ${item.descripcion || item.nombre || "Sin nombre"},
-                  ${item.categoria || ""},
-                  ${Number(item.cantidad) || 0},
-                  ${Number(item.valorUnidad || item.precio_unitario) || 0},
-                  ${Number(item.subtotal || item.total) || 0},
-                  false
-                )`);
-
+              // Insertar productos uno por uno para mejor logging
+              for (let k = 0; k < order.items.length; k++) {
+                const item = order.items[k];
+                
                 await sql`
                   INSERT INTO pedido_productos (
                     pedido_id,
@@ -128,23 +144,36 @@ export async function POST(request: NextRequest) {
                     precio_unitario,
                     total,
                     devuelto
-                  ) VALUES ${sql(valores)}
+                  ) VALUES (
+                    ${pedidoId},
+                    ${item.codigo || ""},
+                    ${item.descripcion || item.nombre || "Sin nombre"},
+                    ${item.categoria || ""},
+                    ${Number(item.cantidad) || 0},
+                    ${Number(item.valorUnidad || item.precio_unitario) || 0},
+                    ${Number(item.subtotal || item.total) || 0},
+                    false
+                  )
                 `;
               }
+              
+              console.log(`[API /planillas] ✓ ${order.items.length} productos insertados para pedido ${pedidoId}`);
             }
           }
-
-          insertadas++;
-          console.log(`✅ Planilla ${sheet.id} insertada (${insertadas}/${routeSheets.length})`);
-          
-        } catch (err: any) {
-          console.error("❌ Error planilla:", sheet.id, err);
-          errores.push({
-            planillaId: sheet.id,
-            ruta: sheet.ruta,
-            error: err.message,
-          });
+        } else {
+          console.warn(`[API /planillas] ⚠️ Planilla ${sheet.id} no tiene pedidos`);
         }
+
+        insertadas++;
+        console.log(`✅ Planilla ${sheet.id} completada (${insertadas}/${routeSheets.length})`);
+        
+      } catch (err: any) {
+        console.error("❌ Error planilla:", sheet.id, err);
+        errores.push({
+          planillaId: sheet.id,
+          ruta: sheet.ruta,
+          error: err.message,
+        });
       }
     }
 
@@ -174,7 +203,6 @@ export async function GET() {
 
     const sql = getDB();
 
-    // ✅ CORRECCIÓN: Remover columna completado_en si no existe
     const planillas = await sql`
       SELECT
         p.id,
@@ -197,7 +225,6 @@ export async function GET() {
       ORDER BY p.created_at DESC
     `;
 
-    // Obtener pedidos y productos para cada planilla
     const planillasConPedidos = await Promise.all(
       planillas.map(async (planilla) => {
         const pedidos = await sql`
@@ -215,6 +242,8 @@ export async function GET() {
           WHERE pe.planilla_id = ${planilla.id}
           ORDER BY pe.secuencia
         `;
+
+        console.log(`[API GET] Planilla ${planilla.id}: ${pedidos.length} pedidos`);
 
         const pedidosConProductos = await Promise.all(
           pedidos.map(async (pedido) => {
