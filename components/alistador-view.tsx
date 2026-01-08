@@ -635,17 +635,17 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                     Observaciones: *
                   </label>
                   <Textarea
-                    value={observaciones}
-                    onChange={(e) => setObservaciones(e.target.value)}
-                    placeholder={
-                      estadoSeleccionado === "incompleto"
-                        ? "Ej: Caja incompleta: faltan 2 unidades de 6"
-                        : "Ej: Sin stock disponible en bodega"
-                    }
-                    className="min-h-[80px]"
-                    disabled={saving}
-                    required
-                    />
+  value={observaciones}
+  onChange={(e) => setObservaciones(e.target.value)}
+  placeholder={
+    estadoSeleccionado === "incompleto"
+      ? "Ej: Caja incompleta: faltan 2 unidades de 6"
+      : "Ej: Sin stock disponible en bodega"
+  }
+  className="min-h-[80px]"
+  disabled={saving}
+  required
+/>  // ✅ SIN el espacio antes de />
                   <p className="text-xs text-muted-foreground mt-1">
                     * Requerido para productos incompletos o no alistados
                   </p>
