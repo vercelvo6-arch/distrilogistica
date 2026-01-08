@@ -203,12 +203,11 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     try {
       setSaving(true)
 
-      // 1. Actualizar estado de alistamiento
-      await updateEstadoAlistamiento(
-        editingProduct.product.codigo,
-        editingProduct.entregador,
-        estadoSeleccionado
-      )
+      try {
+  setSaving(true)
+
+  // 2. Si hay faltante o incompleto, registrar en faltantes
+  if (estadoSeleccionado === 'incompleto' || estadoSeleccionado === 'no_alistado') {
 
       // 2. Si hay faltante o incompleto, registrar en faltantes
       if (estadoSeleccionado === 'incompleto' || estadoSeleccionado === 'no_alistado') {
