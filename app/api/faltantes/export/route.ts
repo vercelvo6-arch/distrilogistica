@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
 
-// GET - Exportar faltantes a CSV
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
@@ -19,26 +18,7 @@ export async function GET(request: NextRequest) {
     const sql = getDB();
 
     // Construir filtros
-    let conditions = [];
-    if (entregador && entregador !== 'all') {
-      conditions.push(`f.entregador = '${entregador}'`);
-    }
-    if (estado && estado !== 'all') {
-      conditions.push(`f.estado = '${estado}'`);
-    }
-    if (fecha_inicio) {
-      conditions.push(`DATE(f.fecha_marcado) >= '${fecha_inicio}'`);
-    }
-    if (fecha_fin) {
-      conditions.push(`DATE(f.fecha_marcado) <= '${fecha_fin}'`);
-    }
-
-    const whereClause = conditions.length > 0 
-      ? 'WHERE ' + conditions.join(' AND ')
-      : '';
-
-    // Obtener datos
-    const faltantes = await sql.unsafe(`
+    let query = `
       SELECT 
         TO_CHAR(f.fecha_marcado, 'YYYY-MM-DD HH24:MI') as fecha,
         f.entregador,
@@ -62,9 +42,32 @@ export async function GET(request: NextRequest) {
       FROM faltantes f
       LEFT JOIN usuarios u_marcado ON f.marcado_por = u_marcado.id
       LEFT JOIN usuarios u_resuelto ON f.resuelto_por = u_resuelto.id
-      ${whereClause}
-      ORDER BY f.fecha_marcado DESC
-    `);
+      WHERE 1=1
+    `;
+
+    if (entregador && entregador !== 'all') {
+      query += ` AND f.entregador = '${entregador}'`;
+    }
+    if (estado && estado !== 'all') {
+      query += ` AND f.estado = '${estado}'`;
+    }
+    if (fecha_inicio) {
+      query += ` AND DATE(f.fecha_marcado) >= '${fecha_inicio}'`;
+    }
+    if (fecha_fin) {
+      query += ` AND DATE(f.fecha_marcado) <= '${fecha_fin}'`;
+    }
+
+    query += ` ORDER BY f.fecha_marcado DESC`;
+
+    console.log('[EXPORT] Ejecutando query...');
+    
+    const result = await sql.unsafe(query);
+    
+    // Asegurar que result es un array
+    const faltantes = Array.isArray(result) ? result : [];
+
+    console.log('[EXPORT] Registros encontrados:', faltantes.length);
 
     if (faltantes.length === 0) {
       return NextResponse.json({ 
@@ -92,37 +95,46 @@ export async function GET(request: NextRequest) {
       'Observaciones Resolución'
     ];
 
-    const rows = faltantes.map(f => [
-      f.fecha,
-      f.entregador,
-      f.ruta,
-      f.codigo,
-      f.descripcion,
-      f.categoria,
-      f.cantidad_solicitada,
-      f.cantidad_disponible,
-      f.cantidad_faltante,
-      f.estado_unidad,
-      f.observaciones,
+    const rows = faltantes.map((f: any) => [
+      f.fecha || '',
+      f.entregador || '',
+      f.ruta || '',
+      f.codigo || '',
+      f.descripcion || '',
+      f.categoria || '',
+      f.cantidad_solicitada || 0,
+      f.cantidad_disponible || 0,
+      f.cantidad_faltante || 0,
+      f.estado_unidad || '',
+      f.observaciones || '',
       f.estado === 'pendiente' ? 'PENDIENTE' : 'RESUELTO',
-      f.marcado_por,
-      f.fecha_resolucion,
-      f.resuelto_por,
-      f.observaciones_resolucion
+      f.marcado_por || '',
+      f.fecha_resolucion || '',
+      f.resuelto_por || '',
+      f.observaciones_resolucion || ''
     ]);
 
-    // Convertir a CSV
+    // Construir CSV
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ...rows.map((row: any[]) => 
+        row.map(cell => {
+          const cellStr = String(cell).replace(/"/g, '""');
+          return `"${cellStr}"`;
+        }).join(',')
+      )
     ].join('\n');
 
-    // Nombre del archivo
+    // BOM para Excel UTF-8
+    const bom = '\uFEFF';
+    const csvWithBom = bom + csvContent;
+
     const fecha = new Date().toISOString().split('T')[0];
     const filename = `faltantes_${fecha}.csv`;
 
-    // Retornar CSV
-    return new NextResponse(csvContent, {
+    console.log('[EXPORT] CSV generado exitosamente');
+
+    return new NextResponse(csvWithBom, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="${filename}"`,
@@ -130,9 +142,12 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[FALTANTES] Error en export:', error);
+    console.error('[EXPORT] Error completo:', error);
     return NextResponse.json(
-      { error: 'Error al exportar datos' },
+      { 
+        error: 'Error al exportar datos',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     );
   }
