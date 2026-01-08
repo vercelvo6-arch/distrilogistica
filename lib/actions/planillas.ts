@@ -153,12 +153,13 @@ export async function updateEstadoAlistamiento(
 export async function completarPlanilla(planillaId: string) {
   const sql = getDB()
   try {
+    // Obtener planilla con configuración de comisión
     const planilla = await sql`
       SELECT 
         p.*,
         COALESCE(cc.porcentaje_comision, 0) as porcentaje_comision
       FROM planillas p
-      LEFT JOIN comisiones_config cc ON p.entregador = cc.entregador
+      LEFT JOIN comisiones_config cc ON p.entregador = cc.entregador AND cc.activo = true
       WHERE p.id = ${planillaId}
     `
 
@@ -168,13 +169,27 @@ export async function completarPlanilla(planillaId: string) {
 
     const p = planilla[0]
     
+    // Verificar que existe configuración de comisión
+    if (!p.porcentaje_comision || p.porcentaje_comision === 0) {
+      throw new Error(`No hay configuración de comisión activa para ${p.entregador}. Configure el porcentaje en Admin > Comisiones > Configuración`)
+    }
+
+    console.log('[completarPlanilla] 📊 Datos de planilla:', {
+      id: p.id,
+      entregador: p.entregador,
+      tipo_ruta: p.tipo_ruta,
+      fecha: p.fecha,
+      total_entregado: p.total_entregado,
+      total_devolucion: p.total_devolucion,
+      porcentaje: p.porcentaje_comision
+    })
+    
     const totalEntregas = Number(p.total_entregado) || 0
     const totalDevoluciones = Number(p.total_devolucion) || 0
     const baseComisionable = totalEntregas - totalDevoluciones
     const montoComision = baseComisionable * (Number(p.porcentaje_comision) / 100)
 
-    console.log('[completarPlanilla] Calculando comisión:', {
-      entregador: p.entregador,
+    console.log('[completarPlanilla] 💰 Calculando comisión:', {
       entregas: totalEntregas,
       devoluciones: totalDevoluciones,
       base: baseComisionable,
@@ -182,11 +197,11 @@ export async function completarPlanilla(planillaId: string) {
       comision: montoComision
     })
 
+    // Insertar o actualizar comisión (SIN la columna ruta)
     await sql`
       INSERT INTO comisiones (
         planilla_id,
         entregador,
-        ruta,
         fecha,
         total_entregas_efectivas,
         total_devoluciones,
@@ -197,7 +212,6 @@ export async function completarPlanilla(planillaId: string) {
       ) VALUES (
         ${planillaId},
         ${p.entregador},
-        ${p.tipo_ruta},
         ${p.fecha},
         ${totalEntregas},
         ${totalDevoluciones},
@@ -212,9 +226,11 @@ export async function completarPlanilla(planillaId: string) {
         total_devoluciones = EXCLUDED.total_devoluciones,
         base_comisionable = EXCLUDED.base_comisionable,
         porcentaje_aplicado = EXCLUDED.porcentaje_aplicado,
-        monto_comision = EXCLUDED.monto_comision
+        monto_comision = EXCLUDED.monto_comision,
+        updated_at = NOW()
     `
 
+    // Actualizar estado de planilla a completado
     await sql`
       UPDATE planillas 
       SET estado = 'completado',
@@ -228,8 +244,8 @@ export async function completarPlanilla(planillaId: string) {
     revalidatePath("/")
     return { success: true, comision: montoComision }
     
-  } catch (error) {
+  } catch (error: any) {
     console.error("[completarPlanilla] ❌ ERROR:", error)
-    throw error
+    throw new Error(error.message || "Error al completar la planilla")
   }
 }
