@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2, MapPin, Phone } from "lucide-react"
+import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2, MapPin, Phone, AlertCircle } from "lucide-react"
 import { User } from "lucide-react"
 import type { RouteSheet, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
@@ -11,7 +11,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   updatePedidoEstado,
   updateProductoDevuelto,
-  updatePlanillaTotales,
   completarPlanilla,
 } from "@/lib/actions/planillas"
 import { useToast } from "@/hooks/use-toast"
@@ -27,6 +26,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [loading, setLoading] = useState(true)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null)
+  const [completingRoute, setCompletingRoute] = useState(false)
 
   const deliveryPerson = user.nombre
 
@@ -93,13 +93,19 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       setRouteSheets(planillas)
     } catch (err) {
       console.error("[ENTREGADOR] Error loading planillas:", err)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las planillas",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
+  // ARREGLADO: Cambiar "alistado" por "alistada"
   const myRoutes = routeSheets.filter((s) => 
-    s.entregador === deliveryPerson && s.estado === "alistado"
+    s.entregador === deliveryPerson && s.estado === "alistada"
   )
 
   console.log('🔍 [ENTREGADOR] Rutas filtradas para mí:', myRoutes.length)
@@ -108,6 +114,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     try {
       await updateProductoDevuelto(orderId, codigo, !currentDevuelto)
       await loadData()
+      
+      toast({
+        title: currentDevuelto ? "Producto activado" : "Producto devuelto",
+        description: `El producto ha sido marcado como ${!currentDevuelto ? "devuelto" : "activo"}`,
+      })
     } catch (err) {
       console.error("[ENTREGADOR] Error updating product return:", err)
       toast({
@@ -119,75 +130,44 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   }
 
   const handleOrderStatusChange = async (sheetId: string, orderId: string, newStatus: Order["estado"]) => {
-  try {
-    await updatePedidoEstado(orderId, newStatus)
-    await loadData()
-
-    toast({
-      title: "Actualizado",
-      description: `Pedido marcado como ${newStatus}`,
-    })
-  } catch (err) {
-    console.error("[ENTREGADOR] Error updating order status:", err)
-    toast({
-      title: "Error",
-      description: "No se pudo actualizar el pedido",
-      variant: "destructive",
-    })
-  }
-}
-
-  const handleCompleteRoute = async (sheetId: string) => {
     try {
-      await completarPlanilla(sheetId)
+      await updatePedidoEstado(orderId, newStatus)
       await loadData()
-      setSelectedRoute(null)
 
       toast({
-        title: "Ruta Completada",
-        description: "La ruta ha sido marcada como completada y la comisión ha sido calculada",
+        title: "Actualizado",
+        description: `Pedido marcado como ${newStatus}`,
       })
     } catch (err) {
-      console.error("[ENTREGADOR] Error completing route:", err)
+      console.error("[ENTREGADOR] Error updating order status:", err)
       toast({
         title: "Error",
-        description: "No se pudo completar la ruta",
+        description: "No se pudo actualizar el pedido",
         variant: "destructive",
       })
     }
   }
 
-  const calculateRouteTotals = (route: RouteSheet) => {
-    let entregado = 0
-    let fiado = 0
-    let devolucion = 0
-    let repaso = 0
+  const handleCompleteRoute = async (sheetId: string) => {
+    setCompletingRoute(true)
+    try {
+      const result = await completarPlanilla(sheetId)
+      await loadData()
+      setSelectedRoute(null)
 
-    route.orders.forEach((order) => {
-      const orderTotal = order.items.reduce((sum, item) => {
-        if (item.devuelto) {
-          devolucion += item.subtotal
-          return sum
-        }
-        return sum + item.subtotal
-      }, 0)
-
-      if (order.estado === "entregado") {
-        entregado += orderTotal
-      } else if (order.estado === "fiado") {
-        fiado += orderTotal
-      } else if (order.estado === "devolucion") {
-        devolucion += orderTotal
-      } else if (order.estado === "repaso") {
-        repaso += orderTotal
-      }
-    })
-
-    return {
-      total_entregado: entregado,
-      total_fiado: fiado,
-      total_devolucion: devolucion,
-      total_repaso: repaso,
+      toast({
+        title: "🎉 Ruta Completada",
+        description: `La ruta ha sido completada exitosamente. Comisión calculada: ${formatCOP(result.comision || 0)}`,
+      })
+    } catch (err: any) {
+      console.error("[ENTREGADOR] Error completing route:", err)
+      toast({
+        title: "Error",
+        description: err.message || "No se pudo completar la ruta",
+        variant: "destructive",
+      })
+    } finally {
+      setCompletingRoute(false)
     }
   }
 
@@ -203,7 +183,14 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   const activeRoute = myRoutes.find((r) => r.id === selectedRoute)
 
-  const allOrdersProcessed = activeRoute?.orders.every((o) => o.estado !== "pendiente") || false
+  // MEJORADO: Verificar que todos los pedidos están procesados
+  const allOrdersProcessed = activeRoute 
+    ? activeRoute.orders.every((o) => o.estado !== "pendiente")
+    : false
+
+  const pendingOrdersCount = activeRoute
+    ? activeRoute.orders.filter((o) => o.estado === "pendiente").length
+    : 0
 
   const totalRoutes = myRoutes.length
   const totalOrders = myRoutes.reduce((sum, sheet) => sum + sheet.totalOrders, 0)
@@ -252,23 +239,58 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 </p>
               </div>
               <div className="flex gap-2">
-                {allOrdersProcessed && (
-                  <Button onClick={() => handleCompleteRoute(activeRoute.id)} className="bg-green-600">
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Completar Ruta
-                  </Button>
-                )}
                 <Button variant="outline" size="sm" onClick={() => setSelectedRoute(null)}>
                   Ver Todas
                 </Button>
               </div>
             </div>
 
-            {allOrdersProcessed && (
-              <Card className="p-4 bg-green-50 border-green-200">
-                <p className="text-sm text-green-700 font-medium">
-                  Todos los pedidos han sido procesados. Haz clic en "Completar Ruta" para finalizar y calcular tu comisión.
-                </p>
+            {/* MEJORADO: Banner de completar ruta más prominente */}
+            {allOrdersProcessed ? (
+              <Card className="p-4 md:p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-green-300">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="h-6 w-6 text-green-600 shrink-0 mt-1" />
+                    <div>
+                      <h3 className="font-semibold text-green-900 mb-1">¡Todos los pedidos procesados!</h3>
+                      <p className="text-sm text-green-700">
+                        Completa la ruta para calcular tu comisión y notificar a caja
+                      </p>
+                    </div>
+                  </div>
+                  <Button 
+                    onClick={() => handleCompleteRoute(activeRoute.id)} 
+                    className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
+                    size="lg"
+                    disabled={completingRoute}
+                  >
+                    {completingRoute ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Procesando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-5 w-5 mr-2" />
+                        Completar Ruta
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </Card>
+            ) : (
+              <Card className="p-4 bg-blue-50 border-blue-200">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-blue-900 font-medium">
+                      Faltan {pendingOrdersCount} pedido{pendingOrdersCount !== 1 ? "s" : ""} por procesar
+                    </p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Marca todos los pedidos como entregado, fiado, repaso o devolución para completar la ruta
+                    </p>
+                  </div>
+                </div>
               </Card>
             )}
 
@@ -313,7 +335,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                           <div className="flex flex-wrap items-center gap-2 mb-2">
                             <h3 className="font-semibold text-sm md:text-base truncate">{order.cliente}</h3>
                             <span
-                              className={`text-xs px-2 py-1 rounded-full shrink-0 ${
+                              className={`text-xs px-2 py-1 rounded-full shrink-0 font-medium ${
                                 order.estado === "pendiente"
                                   ? "bg-yellow-100 text-yellow-700"
                                   : order.estado === "entregado"
@@ -417,7 +439,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                           <Button
                             size="sm"
                             onClick={() => handleOrderStatusChange(activeRoute.id, order.id, "entregado")}
-                            className="bg-green-600 flex-1 sm:flex-none"
+                            className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
                             disabled={order.estado !== "pendiente"}
                           >
                             Entregado
@@ -426,7 +448,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                             size="sm"
                             variant="outline"
                             onClick={() => handleOrderStatusChange(activeRoute.id, order.id, "fiado")}
-                            className="flex-1 sm:flex-none"
+                            className="flex-1 sm:flex-none border-orange-300 text-orange-700 hover:bg-orange-50"
                             disabled={order.estado !== "pendiente"}
                           >
                             Fiado
@@ -435,7 +457,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                             size="sm"
                             variant="outline"
                             onClick={() => handleOrderStatusChange(activeRoute.id, order.id, "repaso")}
-                            className="flex-1 sm:flex-none"
+                            className="flex-1 sm:flex-none border-blue-300 text-blue-700 hover:bg-blue-50"
                             disabled={order.estado !== "pendiente"}
                           >
                             Repaso
@@ -476,7 +498,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                             {sheet.totalOrders} pedidos · Cargue: {formatCOP(sheet.montoCargue || 0)}
                           </p>
                         </div>
-                        <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700 w-fit">
+                        <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700 w-fit font-medium">
                           Lista para entregar
                         </span>
                       </div>
