@@ -14,16 +14,21 @@ export async function POST(request: NextRequest) {
     console.log('[FALTANTES] Request:', body);
 
     const { 
-      codigo, 
-      entregador, 
+      planilla_id,
+      codigo,
+      descripcion,
+      categoria,
+      entregador,
+      ruta,
       cantidadSolicitada,
       cantidadDisponible, 
       cantidadFaltante,
       unidadIncompleta,
       observaciones,
-      usuarioId 
+      marcadoPor
     } = body;
 
+    // Validaciones
     if (!codigo || !entregador || cantidadDisponible === undefined) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });
     }
@@ -36,32 +41,7 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB();
 
-    // Obtener info de la planilla y producto
-    const planillas = await sql`
-      SELECT 
-        pl.id as planilla_id,
-        pl.tipo_ruta as ruta,
-        pl.entregador,
-        pp.nombre as descripcion,
-        pp.categoria
-      FROM planillas pl
-      JOIN pedidos p ON p.planilla_id = pl.id
-      JOIN pedido_productos pp ON pp.pedido_id = p.id
-      WHERE pl.entregador = ${entregador}
-      AND pl.estado IN ('pendiente', 'alistando')
-      AND pp.codigo = ${codigo}
-      LIMIT 1
-    `;
-
-    if (planillas.length === 0) {
-      return NextResponse.json({ 
-        error: 'No se encontró información de la planilla o producto' 
-      }, { status: 404 });
-    }
-
-    const info = planillas[0];
-
-    // Insertar faltante
+    // Insertar faltante directamente con los datos recibidos
     const result = await sql`
       INSERT INTO faltantes (
         planilla_id,
@@ -78,18 +58,18 @@ export async function POST(request: NextRequest) {
         marcado_por,
         estado
       ) VALUES (
-        ${info.planilla_id},
+        ${planilla_id},
         ${entregador},
-        ${info.ruta},
+        ${ruta},
         ${codigo},
-        ${info.descripcion},
-        ${info.categoria || ''},
+        ${descripcion},
+        ${categoria || ''},
         ${cantidadSolicitada},
         ${cantidadDisponible},
         ${cantidadFaltante},
         ${unidadIncompleta || false},
         ${observaciones || null},
-        ${usuarioId},
+        ${marcadoPor},
         'pendiente'
       )
       RETURNING id
@@ -108,7 +88,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[FALTANTES] Error:', error);
+    console.error('[FALTANTES] Error completo:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Error al registrar' },
       { status: 500 }
