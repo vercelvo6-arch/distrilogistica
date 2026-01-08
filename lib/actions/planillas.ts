@@ -41,6 +41,33 @@ export async function updatePedidoEstado(pedidoId: string, estado: string) {
           updated_at = NOW()
       WHERE id = ${pedidoId}
     `
+
+    const pedido = await sql`SELECT planilla_id FROM pedidos WHERE id = ${pedidoId}`
+    
+    if (pedido.length > 0) {
+      const planillaId = pedido[0].planilla_id
+
+      const totales = await sql`
+        SELECT 
+          COALESCE(SUM(CASE WHEN p.estado = 'entregado' THEN p.total ELSE 0 END), 0) as total_entregado,
+          COALESCE(SUM(CASE WHEN p.estado = 'fiado' THEN p.total ELSE 0 END), 0) as total_fiado,
+          COALESCE(SUM(CASE WHEN p.estado = 'repaso' THEN p.total ELSE 0 END), 0) as total_repaso,
+          COALESCE(SUM(CASE WHEN p.estado = 'devolucion' THEN p.total ELSE 0 END), 0) as total_devolucion
+        FROM pedidos p
+        WHERE p.planilla_id = ${planillaId}
+      `
+
+      await sql`
+        UPDATE planillas 
+        SET total_entregado = ${totales[0].total_entregado},
+            total_fiado = ${totales[0].total_fiado},
+            total_repaso = ${totales[0].total_repaso},
+            total_devolucion = ${totales[0].total_devolucion},
+            updated_at = NOW()
+        WHERE id = ${planillaId}
+      `
+    }
+
     revalidatePath("/")
     return { success: true }
     
@@ -96,7 +123,6 @@ export async function updatePlanillaTotales(
   }
 }
 
-// ✅ Actualizar estado de alistamiento por producto
 export async function updateEstadoAlistamiento(
   codigo: string,
   entregador: string,
@@ -104,7 +130,6 @@ export async function updateEstadoAlistamiento(
 ) {
   const sql = getDB()
   try {
-    // Actualizar todos los productos con ese código para ese entregador
     await sql`
       UPDATE pedido_productos pp
       SET estado_alistamiento = ${estadoAlistamiento}
@@ -125,11 +150,9 @@ export async function updateEstadoAlistamiento(
   }
 }
 
-// ✅ Completar planilla con cálculo de comisiones
 export async function completarPlanilla(planillaId: string) {
   const sql = getDB()
   try {
-    // 1. Obtener datos de la planilla
     const planilla = await sql`
       SELECT 
         p.*,
@@ -145,7 +168,6 @@ export async function completarPlanilla(planillaId: string) {
 
     const p = planilla[0]
     
-    // 2. Calcular base de comisión
     const totalEntregas = Number(p.total_entregado) || 0
     const totalDevoluciones = Number(p.total_devolucion) || 0
     const baseComisionable = totalEntregas - totalDevoluciones
@@ -160,7 +182,6 @@ export async function completarPlanilla(planillaId: string) {
       comision: montoComision
     })
 
-    // 3. Guardar comisión
     await sql`
       INSERT INTO comisiones (
         planilla_id,
@@ -194,7 +215,6 @@ export async function completarPlanilla(planillaId: string) {
         monto_comision = EXCLUDED.monto_comision
     `
 
-    // 4. Actualizar planilla como completada
     await sql`
       UPDATE planillas 
       SET estado = 'completado',
