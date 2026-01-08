@@ -96,24 +96,7 @@ export async function updatePlanillaTotales(
   }
 }
 
-export async function completarPlanilla(planillaId: string) {
-  const sql = getDB()
-  try {
-    await sql`
-      UPDATE planillas 
-      SET estado = 'completado', updated_at = NOW()
-      WHERE id = ${planillaId}
-    `
-    revalidatePath("/")
-    return { success: true }
-    
-  } catch (error) {
-    console.error("[completarPlanilla] ❌ ERROR:", error)
-    throw error
-  }
-}
-
-// ✅ NUEVA FUNCIÓN: Actualizar estado de alistamiento por producto
+// ✅ Actualizar estado de alistamiento por producto
 export async function updateEstadoAlistamiento(
   codigo: string,
   entregador: string,
@@ -141,6 +124,8 @@ export async function updateEstadoAlistamiento(
     throw error
   }
 }
+
+// ✅ Completar planilla con cálculo de comisiones
 export async function completarPlanilla(planillaId: string) {
   const sql = getDB()
   try {
