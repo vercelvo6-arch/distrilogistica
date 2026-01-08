@@ -622,7 +622,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
               {(estadoSeleccionado === "incompleto" || estadoSeleccionado === "no_alistado") && (
                 <div>
-                  <div>
                   <label className="text-sm font-medium mb-2 block">
                     Observaciones (requerido):
                   </label>
