@@ -1,8 +1,5 @@
 "use client"
 
-
-import { FaltantesHistorialView } from "@/components/faltantes-historial-view"
-import { FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, AlertTriangle, Edit, Loader2 } from "lucide-react"
@@ -44,7 +41,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [disponibleInput, setDisponibleInput] = useState("")
   const [estadoSeleccionado, setEstadoSeleccionado] = useState<'completo' | 'incompleto' | 'no_alistado'>("completo")
   const [observaciones, setObservaciones] = useState("")
-  const [activeTab, setActiveTab] = useState<"alistamiento" | "faltantes">("alistamiento")
 
   useEffect(() => {
     loadData()
@@ -67,14 +63,14 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         fecha: p.fecha,
         entregador: p.entregador,
         estado: p.estado,
-        totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
+        totalOrders: (p.pedidos || []).filter((ped: any) => ped.id !== null).length,
         totalAmount: Number(p.total_cargue) || 0,
         montoCargue: Number(p.total_cargue) || 0,
         montoEntregado: Number(p.total_entregado) || 0,
         montoFiado: Number(p.total_fiado) || 0,
         montoDevoluciones: Number(p.total_devolucion) || 0,
         montoRepasos: Number(p.total_repaso) || 0,
-        orders: (p.pedidos || []).map((ped: any) => ({
+        orders: (p.pedidos || []).filter((ped: any) => ped.id !== null).map((ped: any) => ({
           id: ped.id,
           cliente: ped.cliente,
           ruta: p.tipo_ruta,
@@ -203,11 +199,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     try {
       setSaving(true)
 
-      try {
-  setSaving(true)
-
-  // 2. Si hay faltante o incompleto, registrar en faltantes
-  if (estadoSeleccionado === 'incompleto' || estadoSeleccionado === 'no_alistado') {
+      // 1. Actualizar estado de alistamiento
+      await updateEstadoAlistamiento(
+        editingProduct.product.codigo,
+        editingProduct.entregador,
+        estadoSeleccionado
+      )
 
       // 2. Si hay faltante o incompleto, registrar en faltantes
       if (estadoSeleccionado === 'incompleto' || estadoSeleccionado === 'no_alistado') {
@@ -339,35 +336,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               <LogOut className="h-4 w-4 md:mr-2" />
               <span className="hidden md:inline">Salir</span>
             </Button>
-          
-          {/* Tabs de navegación */}
-          <div className="flex gap-2 mt-3">
-            <Button
-              variant={activeTab === "alistamiento" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setActiveTab("alistamiento")}
-            >
-              <Package className="h-4 w-4 mr-2" />
-              Alistamiento
-            </Button>
-            <Button
-              variant={activeTab === "faltantes" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setActiveTab("faltantes")}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Faltantes Registrados
-            </Button>
           </div>
         </div>
-          </div>
-        
       </header>
 
       <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-7xl">
-        {activeTab === "alistamiento" ? (
-          <>
-            {unassignedSheets.length > 0 && (
+        {unassignedSheets.length > 0 && (
           <Alert className="mb-4 md:mb-6 bg-amber-50 border-amber-200">
             <AlertDescription className="text-xs md:text-sm text-amber-800">
               Hay {unassignedSheets.length} ruta(s) esperando asignación de entregador por parte del coordinador
@@ -561,10 +535,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
             })}
           </div>
         )}
-            </>
-        ) : (
-          <FaltantesHistorialView />
-        )}
       </main>
 
       {/* Dialog */}
@@ -605,7 +575,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                 <label className="text-sm font-medium block">Estado del producto:</label>
                 <RadioGroup 
                   value={estadoSeleccionado} 
-                  onValueChange={(v) => setEstadoSeleccionado(v as any)}
+                  onValueChange={(value: string) => setEstadoSeleccionado(value as 'completo' | 'incompleto' | 'no_alistado')}
                   disabled={saving}
                 >
                   <div className="flex items-center space-x-2 p-2 rounded border hover:bg-muted">
@@ -635,24 +605,24 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                     Observaciones: *
                   </label>
                   <Textarea
-  value={observaciones}
-  onChange={(e) => setObservaciones(e.target.value)}
-  placeholder={
-    estadoSeleccionado === "incompleto"
-      ? "Ej: Caja incompleta: faltan 2 unidades de 6"
-      : "Ej: Sin stock disponible en bodega"
-  }
-  className="min-h-[80px]"
-  disabled={saving}
-  required
-/>  // ✅ SIN el espacio antes de />
+                    value={observaciones}
+                    onChange={(e) => setObservaciones(e.target.value)}
+                    placeholder={
+                      estadoSeleccionado === "incompleto"
+                        ? "Ej: Caja incompleta: faltan 2 unidades de 6"
+                        : "Ej: Sin stock disponible en bodega"
+                    }
+                    className="min-h-[80px]"
+                    disabled={saving}
+                    required
+                  />
                   <p className="text-xs text-muted-foreground mt-1">
                     * Requerido para productos incompletos o no alistados
                   </p>
                 </div>
               )}
-            </div>
-          )}
+            </div
+              )}
 
           <DialogFooter>
             <Button 
