@@ -17,7 +17,6 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB();
 
-    // EXACTAMENTE igual que en /api/faltantes route.ts que SÍ FUNCIONA
     let conditions = [];
     
     if (entregador && entregador !== 'all') {
@@ -57,7 +56,6 @@ export async function GET(request: NextRequest) {
       LIMIT 500
     `);
 
-    // Convertir explícitamente a array
     const data = Array.from(faltantes);
 
     if (data.length === 0) {
@@ -66,7 +64,6 @@ export async function GET(request: NextRequest) {
       }, { status: 404 });
     }
 
-    // Headers CSV
     const headers = [
       'Fecha',
       'Entregador',
@@ -83,7 +80,6 @@ export async function GET(request: NextRequest) {
       'Marcado Por'
     ];
 
-    // Crear filas CSV
     const csvRows = [];
     csvRows.push(headers.join(','));
 
