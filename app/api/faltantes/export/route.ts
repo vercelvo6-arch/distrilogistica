@@ -15,11 +15,9 @@ export async function GET(request: NextRequest) {
     const fecha_inicio = searchParams.get('fecha_inicio');
     const fecha_fin = searchParams.get('fecha_fin');
 
-    console.log('[EXPORT] Filtros:', { entregador, estado, fecha_inicio, fecha_fin });
-
     const sql = getDB();
 
-    // COPIAR LA MISMA LÓGICA QUE FUNCIONA EN GET /api/faltantes
+    // EXACTAMENTE igual que en /api/faltantes route.ts que SÍ FUNCIONA
     let conditions = [];
     
     if (entregador && entregador !== 'all') {
@@ -42,33 +40,33 @@ export async function GET(request: NextRequest) {
       ? 'WHERE ' + conditions.join(' AND ')
       : '';
 
-    console.log('[EXPORT] WHERE:', whereClause);
-
-    // Usar EXACTAMENTE la misma forma que en /api/faltantes
     const faltantes = await sql.unsafe(`
       SELECT 
         f.*,
         u_marcado.nombre as marcado_por_nombre,
-        u_resuelto.nombre as resuelto_por_nombre
+        u_resuelto.nombre as resuelto_por_nombre,
+        pl.fecha as planilla_fecha
       FROM faltantes f
       LEFT JOIN usuarios u_marcado ON f.marcado_por = u_marcado.id
       LEFT JOIN usuarios u_resuelto ON f.resuelto_por = u_resuelto.id
+      LEFT JOIN planillas pl ON f.planilla_id = pl.id
       ${whereClause}
-      ORDER BY f.fecha_marcado DESC
+      ORDER BY 
+        CASE WHEN f.estado = 'pendiente' THEN 0 ELSE 1 END,
+        f.fecha_marcado DESC
+      LIMIT 500
     `);
 
-    console.log('[EXPORT] Tipo de dato:', typeof faltantes);
-    console.log('[EXPORT] Es array?:', Array.isArray(faltantes));
-    console.log('[EXPORT] Length:', faltantes?.length);
-    console.log('[EXPORT] Primer registro:', faltantes?.[0]);
+    // Convertir explícitamente a array
+    const data = Array.from(faltantes);
 
-    if (!faltantes || faltantes.length === 0) {
+    if (data.length === 0) {
       return NextResponse.json({ 
         error: 'No hay datos para exportar' 
       }, { status: 404 });
     }
 
-    // Headers
+    // Headers CSV
     const headers = [
       'Fecha',
       'Entregador',
@@ -81,34 +79,35 @@ export async function GET(request: NextRequest) {
       'Faltante',
       'Unidad Incompleta',
       'Observaciones',
-      'Estado'
+      'Estado',
+      'Marcado Por'
     ];
 
-    // Filas
-    const rows = faltantes.map((f: any) => [
-      f.fecha_marcado ? new Date(f.fecha_marcado).toLocaleString('es-CO') : '',
-      f.entregador || '',
-      f.ruta || '',
-      f.codigo || '',
-      f.descripcion || '',
-      f.categoria || '',
-      f.cantidad_solicitada || 0,
-      f.cantidad_disponible || 0,
-      f.cantidad_faltante || 0,
-      f.unidad_incompleta ? 'Sí' : 'No',
-      (f.observaciones || '').replace(/"/g, '""').replace(/\n/g, ' '),
-      f.estado === 'pendiente' ? 'PENDIENTE' : 'RESUELTO'
-    ]);
+    // Crear filas CSV
+    const csvRows = [];
+    csvRows.push(headers.join(','));
 
-    // CSV
-    const csvLines = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell)}"`).join(','))
-    ];
+    for (const f of data) {
+      const row = [
+        f.fecha_marcado ? new Date(f.fecha_marcado).toLocaleString('es-CO') : '',
+        f.entregador || '',
+        f.ruta || '',
+        f.codigo || '',
+        f.descripcion || '',
+        f.categoria || '',
+        f.cantidad_solicitada || 0,
+        f.cantidad_disponible || 0,
+        f.cantidad_faltante || 0,
+        f.unidad_incompleta ? 'Sí' : 'No',
+        (f.observaciones || '').replace(/"/g, '""').replace(/\n/g, ' '),
+        f.estado === 'pendiente' ? 'PENDIENTE' : 'RESUELTO',
+        f.marcado_por_nombre || ''
+      ];
+      
+      csvRows.push(row.map(cell => `"${String(cell)}"`).join(','));
+    }
 
-    const csvContent = '\uFEFF' + csvLines.join('\n');
-
-    console.log('[EXPORT] ✓ CSV generado con', rows.length, 'filas');
+    const csvContent = '\uFEFF' + csvRows.join('\n');
 
     return new NextResponse(csvContent, {
       headers: {
@@ -118,10 +117,9 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[EXPORT] ERROR completo:', error);
-    console.error('[EXPORT] Stack:', error instanceof Error ? error.stack : 'No stack');
+    console.error('[EXPORT] ERROR:', error);
     return NextResponse.json(
-      { error: 'Error al exportar', details: error instanceof Error ? error.message : String(error) },
+      { error: 'Error al exportar' },
       { status: 500 }
     );
   }
