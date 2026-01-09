@@ -67,9 +67,14 @@ export function ComisionesView({ onLogout, userRole, userId }: ComisionesViewPro
   })
 
   // Filtros
-  const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().split("T")[0])
-  const [fechaFin, setFechaFin] = useState(new Date().toISOString().split("T")[0])
-  const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
+  // Calcular primer y último día del mes actual
+const hoy = new Date()
+const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split("T")[0]
+const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split("T")[0]
+
+const [fechaInicio, setFechaInicio] = useState(primerDia)
+const [fechaFin, setFechaFin] = useState(ultimoDia)
+const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
 
   useEffect(() => {
     loadData()
