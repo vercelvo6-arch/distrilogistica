@@ -14,9 +14,11 @@ export interface OrderItem {
   cantidadFaltante?: number
   unidadIncompleta?: boolean
   observacionesFaltante?: string | null
-  estadoAlistamiento?: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado' // ✅ NUEVO
-  // Para entregas parciales
+  estadoAlistamiento?: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado'
+  // Campos para entregas parciales ✅ NUEVOS
   cantidadEntregada?: number | null
+  subtotalAjustado?: number | null
+  estadoProducto?: 'normal' | 'parcial' | 'agotado' | 'devuelto'
 }
 
 export interface Order {
@@ -211,7 +213,8 @@ export type EstadoUsuario = "activo" | "inactivo"
 export type EstadoComision = "pendiente" | "pagado"
 export type EstadoFiado = "fiado" | "pagado"
 export type EstadoRecepcion = "cuadrado" | "con_diferencia"
-export type EstadoAlistamiento = "pendiente" | "completo" | "incompleto" | "no_alistado" // ✅ NUEVO
+export type EstadoAlistamiento = "pendiente" | "completo" | "incompleto" | "no_alistado"
+export type EstadoProducto = "normal" | "parcial" | "agotado" | "devuelto" // ✅ NUEVO
 
 export interface DateRange {
   desde: string
@@ -225,6 +228,7 @@ export interface FilterOptions {
   fechaInicio?: string
   fechaFin?: string
 }
+
 // ==========================================
 // TIPOS PARA MÓDULO DE FALTANTES
 // ==========================================
@@ -257,24 +261,4 @@ export interface Faltante {
   marcado_por_nombre?: string
   resuelto_por_nombre?: string
   planilla_fecha?: string
-}
-export interface RecepcionCaja {
-  id: string
-  planilla_id: string
-  efectivo_esperado: number
-  efectivo_recibido: number
-  diferencia_efectivo: number
-  tiene_consignacion: boolean
-  numero_consignacion?: string
-  banco?: string
-  monto_consignacion?: number
-  fecha_consignacion?: string
-  observaciones?: string
-  recibido_por: string
-  estado: string
-  fecha_recepcion: string
-  entregador?: string
-  tipo_ruta?: string
-  fecha_planilla?: string
-  recibido_por_nombre?: string
 }
