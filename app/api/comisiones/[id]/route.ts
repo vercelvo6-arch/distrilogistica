@@ -21,14 +21,14 @@ export async function PATCH(
     const sql = getDB()
     const { id } = await context.params
     const body = await request.json()
-    const { porcentaje_ajustado, monto_ajustado, nota_ajuste, ajustado_por } = body
+    const { porcentaje_ajustado, monto_ajustado, nota_ajuste } = body
 
     console.log('[API PATCH comision] Ajustando comisión:', {
       id,
       porcentaje_ajustado,
       monto_ajustado,
       nota_ajuste,
-      ajustado_por
+      ajustado_por: session.user.id
     })
 
     // Verificar que la comisión existe y está en estado pendiente
@@ -52,7 +52,7 @@ export async function PATCH(
       SET porcentaje_ajustado = ${porcentaje_ajustado},
           monto_ajustado = ${monto_ajustado},
           nota_ajuste = ${nota_ajuste || null},
-          ajustado_por = ${ajustado_por || null},
+          ajustado_por = ${session.user.id},
           ajustado_en = NOW(),
           updated_at = NOW()
       WHERE id = ${id}
