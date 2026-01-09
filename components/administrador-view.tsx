@@ -9,7 +9,7 @@ import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { UserManagement } from "@/components/user-management"
-import { ComisionesView } from "@/components/comisiones-view"
+import ComisionesView from "@/components/comisiones-view"
 import { DashboardOverview } from "@/components/dashboard-overview"
 import { FiadosView } from "@/components/fiados-view"
 
@@ -205,3 +205,4 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
     </div>
   )
 }
+export default ComisionesView
