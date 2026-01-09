@@ -12,6 +12,7 @@ import {
   updatePedidoEstado,
   updateProductoDevuelto,
   completarPlanilla,
+  updateCantidadEntregada,
 } from "@/lib/actions/planillas"
 import { useToast } from "@/hooks/use-toast"
 
@@ -79,6 +80,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             valorUnidad: Number(prod.precio_unitario) || 0,
             subtotal: Number(prod.total) || 0,
             devuelto: prod.devuelto || false,
+            cantidadEntregada: prod.cantidad_entregada,
+            subtotalAjustado: prod.subtotal_ajustado,
+            estadoProducto: prod.estado_producto || 'normal',
           })),
         })),
         cuentasPorCobrar: [],
@@ -103,7 +107,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
   }
 
-  // ARREGLADO: Cambiar "alistado" por "alistada"
   const myRoutes = routeSheets.filter((s) => 
     s.entregador === deliveryPerson && s.estado === "alistado"
   )
@@ -124,6 +127,40 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       toast({
         title: "Error",
         description: "No se pudo actualizar el producto",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCantidadChange = async (orderId: string, codigo: string, cantidad: number, cantidadOriginal: number) => {
+    if (cantidad < 0 || cantidad > cantidadOriginal) {
+      toast({
+        title: "Error",
+        description: `La cantidad debe estar entre 0 y ${cantidadOriginal}`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const result = await updateCantidadEntregada(orderId, codigo, cantidad)
+      await loadData()
+      
+      const estadoMsg = result.estadoProducto === 'agotado' 
+        ? '🚫 Marcado como Agotado' 
+        : result.estadoProducto === 'parcial'
+          ? '📦 Entrega Parcial'
+          : '✓ Entrega Completa'
+      
+      toast({
+        title: "Cantidad actualizada",
+        description: estadoMsg,
+      })
+    } catch (err) {
+      console.error("[ENTREGADOR] Error updating quantity:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la cantidad",
         variant: "destructive",
       })
     }
@@ -183,7 +220,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   const activeRoute = myRoutes.find((r) => r.id === selectedRoute)
 
-  // MEJORADO: Verificar que todos los pedidos están procesados
   const allOrdersProcessed = activeRoute 
     ? activeRoute.orders.every((o) => o.estado !== "pendiente")
     : false
@@ -245,7 +281,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
               </div>
             </div>
 
-            {/* MEJORADO: Banner de completar ruta más prominente */}
             {allOrdersProcessed ? (
               <Card className="p-4 md:p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-green-300">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -322,7 +357,16 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 const isExpanded = expandedOrders.has(order.id)
                 const effectiveTotal = order.items
                   .filter((item) => !item.devuelto)
-                  .reduce((sum, item) => sum + item.subtotal, 0)
+                  .reduce((sum, item) => {
+                    if (item.estadoProducto === 'agotado') return sum
+                    if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+                      return sum + item.subtotalAjustado
+                    }
+                    if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
+                      return sum + (item.cantidadEntregada * item.valorUnidad)
+                    }
+                    return sum + item.subtotal
+                  }, 0)
                 const returnedTotal = order.items
                   .filter((item) => item.devuelto)
                   .reduce((sum, item) => sum + item.subtotal, 0)
@@ -351,7 +395,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                             </span>
                           </div>
                           
-                          {/* INFORMACIÓN DE CONTACTO */}
                           <div className="space-y-1 mb-2">
                             {order.direccion && (
                               <div className="flex items-start gap-2 text-xs md:text-sm text-muted-foreground">
@@ -398,38 +441,86 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                 <th className="text-left py-2 w-10">Dev.</th>
                                 <th className="text-left py-2">Código</th>
                                 <th className="text-left py-2">Descripción</th>
-                                <th className="text-right py-2">Cant.</th>
+                                <th className="text-right py-2">Cant. Original</th>
+                                <th className="text-right py-2">Cant. Entregada</th>
                                 <th className="text-right py-2">Subtotal</th>
+                                <th className="text-center py-2">Estado</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {order.items.map((item, idx) => (
-                                <tr
-                                  key={idx}
-                                  className={`border-b ${item.devuelto ? "bg-red-50 line-through opacity-60" : ""}`}
-                                >
-                                  <td className="py-2">
-                                    <Checkbox
-                                      checked={item.devuelto || false}
-                                      onCheckedChange={() =>
-                                        handleItemReturn(activeRoute.id, order.id, item.codigo, item.devuelto || false)
-                                      }
-                                      disabled={order.estado !== "pendiente"}
-                                    />
-                                  </td>
-                                  <td className="py-2 font-mono">{item.codigo}</td>
-                                  <td className="py-2">{item.descripcion}</td>
-                                  <td className="text-right py-2">{item.cantidad}</td>
-                                  <td className="text-right py-2 font-medium">{formatCOP(item.subtotal)}</td>
-                                </tr>
-                              ))}
+                              {order.items.map((item, idx) => {
+                                const cantidadEntregada = item.cantidadEntregada ?? item.cantidad
+                                const subtotalFinal = item.subtotalAjustado ?? (cantidadEntregada * item.valorUnidad)
+                                const estadoProducto = item.estadoProducto || 'normal'
+                                
+                                return (
+                                  <tr
+                                    key={idx}
+                                    className={`border-b ${item.devuelto ? "bg-red-50 line-through opacity-60" : ""}`}
+                                  >
+                                    <td className="py-2">
+                                      <Checkbox
+                                        checked={item.devuelto || false}
+                                        onCheckedChange={() =>
+                                          handleItemReturn(activeRoute.id, order.id, item.codigo, item.devuelto || false)
+                                        }
+                                        disabled={order.estado !== "pendiente"}
+                                      />
+                                    </td>
+                                    <td className="py-2 font-mono">{item.codigo}</td>
+                                    <td className="py-2">{item.descripcion}</td>
+                                    <td className="text-right py-2">{item.cantidad}</td>
+                                    <td className="text-right py-2">
+                                      {order.estado === "pendiente" && !item.devuelto ? (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max={item.cantidad}
+                                          value={cantidadEntregada}
+                                          onChange={(e) => {
+                                            const newCant = parseInt(e.target.value) || 0
+                                            handleCantidadChange(order.id, item.codigo, newCant, item.cantidad)
+                                          }}
+                                          className="w-16 px-2 py-1 border rounded text-center"
+                                        />
+                                      ) : (
+                                        <span className="font-medium">{cantidadEntregada}</span>
+                                      )}
+                                    </td>
+                                    <td className="text-right py-2 font-medium">{formatCOP(subtotalFinal)}</td>
+                                    <td className="text-center py-2">
+                                      {estadoProducto === 'agotado' && (
+                                        <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                                          🚫 Agotado
+                                        </span>
+                                      )}
+                                      {estadoProducto === 'parcial' && (
+                                        <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                                          📦 Parcial
+                                        </span>
+                                      )}
+                                      {estadoProducto === 'normal' && !item.devuelto && (
+                                        <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                                          ✓ Normal
+                                        </span>
+                                      )}
+                                      {item.devuelto && (
+                                        <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+                                          ❌ Devuelto
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
                             </tbody>
                             <tfoot>
                               <tr className="font-semibold">
-                                <td colSpan={4} className="text-right py-3 text-xs md:text-sm">
+                                <td colSpan={5} className="text-right py-3 text-xs md:text-sm">
                                   Total:
                                 </td>
                                 <td className="text-right py-3">{formatCOP(effectiveTotal)}</td>
+                                <td></td>
                               </tr>
                             </tfoot>
                           </table>
