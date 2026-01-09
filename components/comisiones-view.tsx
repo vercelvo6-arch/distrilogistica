@@ -251,7 +251,9 @@ export function ComisionesView({ onLogout, userRole, userId }: ComisionesViewPro
     setSelectedComisiones(newSet)
   }
 
-  const entregadores = Array.from(new Set(comisiones.map((c) => c.entregador)))
+  const entregadores = comisiones.length > 0 
+    ? [...new Set(comisiones.map((c) => c.entregador))]
+    : []
 
   const totales = comisiones.reduce(
     (acc, c) => ({
