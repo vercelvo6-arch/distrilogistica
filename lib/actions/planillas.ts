@@ -249,3 +249,81 @@ export async function completarPlanilla(planillaId: string) {
     throw new Error(error.message || "Error al completar la planilla")
   }
 }
+export async function updateCantidadEntregada(
+  pedidoId: string, 
+  codigo: string, 
+  cantidadEntregada: number
+) {
+  const sql = getDB()
+  try {
+    // Obtener cantidad original y precio
+    const producto = await sql`
+      SELECT cantidad, precio_unitario 
+      FROM pedido_productos 
+      WHERE pedido_id = ${pedidoId} AND codigo = ${codigo}
+    `
+    
+    if (producto.length === 0) {
+      throw new Error('Producto no encontrado')
+    }
+
+    const cantidadOriginal = Number(producto[0].cantidad)
+    const precioUnitario = Number(producto[0].precio_unitario)
+    
+    // Calcular nuevo subtotal
+    const nuevoSubtotal = cantidadEntregada * precioUnitario
+    
+    // Determinar estado del producto
+    let estadoProducto = 'normal'
+    if (cantidadEntregada === 0) {
+      estadoProducto = 'agotado'
+    } else if (cantidadEntregada < cantidadOriginal) {
+      estadoProducto = 'parcial'
+    }
+
+    // Actualizar producto
+    await sql`
+      UPDATE pedido_productos 
+      SET cantidad_entregada = ${cantidadEntregada},
+          subtotal_ajustado = ${nuevoSubtotal},
+          estado_producto = ${estadoProducto},
+          devuelto = false
+      WHERE pedido_id = ${pedidoId} AND codigo = ${codigo}
+    `
+
+    // Recalcular totales del pedido
+    const pedido = await sql`SELECT planilla_id FROM pedidos WHERE id = ${pedidoId}`
+    
+    if (pedido.length > 0) {
+      const planillaId = pedido[0].planilla_id
+
+      // Recalcular totales de la planilla
+      const totales = await sql`
+        SELECT 
+          COALESCE(SUM(CASE WHEN p.estado = 'entregado' THEN p.total ELSE 0 END), 0) as total_entregado,
+          COALESCE(SUM(CASE WHEN p.estado = 'fiado' THEN p.total ELSE 0 END), 0) as total_fiado,
+          COALESCE(SUM(CASE WHEN p.estado = 'repaso' THEN p.total ELSE 0 END), 0) as total_repaso,
+          COALESCE(SUM(CASE WHEN p.estado = 'devolucion' THEN p.total ELSE 0 END), 0) as total_devolucion
+        FROM pedidos p
+        WHERE p.planilla_id = ${planillaId}
+      `
+
+      await sql`
+        UPDATE planillas 
+        SET total_entregado = ${totales[0].total_entregado},
+            total_fiado = ${totales[0].total_fiado},
+            total_repaso = ${totales[0].total_repaso},
+            total_devolucion = ${totales[0].total_devolucion},
+            updated_at = NOW()
+        WHERE id = ${planillaId}
+      `
+    }
+
+    revalidatePath("/")
+    return { success: true, nuevoSubtotal, estadoProducto }
+    
+  } catch (error) {
+    console.error("[updateCantidadEntregada] ❌ ERROR:", error)
+    throw error
+  }
+}
