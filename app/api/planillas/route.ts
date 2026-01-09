@@ -248,23 +248,26 @@ export async function GET() {
         const pedidosConProductos = await Promise.all(
           pedidos.map(async (pedido) => {
             const productos = await sql`
-              SELECT 
-                codigo,
-                nombre,
-                categoria,
-                cantidad,
-                precio_unitario,
-                total,
-                devuelto,
-                estado_alistamiento,
-                cantidad_disponible,
-                cantidad_faltante,
-                unidad_incompleta,
-                observaciones_faltante
-              FROM pedido_productos
-              WHERE pedido_id = ${pedido.id}
-              ORDER BY codigo
-            `;
+  SELECT 
+    codigo,
+    nombre,
+    categoria,
+    cantidad,
+    precio_unitario,
+    total,
+    devuelto,
+    estado_alistamiento,
+    cantidad_disponible,
+    cantidad_faltante,
+    unidad_incompleta,
+    observaciones_faltante,
+    cantidad_entregada,
+    subtotal_ajustado,
+    estado_producto
+  FROM pedido_productos
+  WHERE pedido_id = ${pedido.id}
+  ORDER BY codigo
+`;
 
             return {
               ...pedido,
