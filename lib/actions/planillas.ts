@@ -153,7 +153,6 @@ export async function updateEstadoAlistamiento(
 export async function completarPlanilla(planillaId: string) {
   const sql = getDB()
   try {
-    // Obtener planilla con configuración de comisión
     const planilla = await sql`
       SELECT 
         p.*,
@@ -169,7 +168,6 @@ export async function completarPlanilla(planillaId: string) {
 
     const p = planilla[0]
     
-    // Verificar que existe configuración de comisión
     if (!p.porcentaje_comision || p.porcentaje_comision === 0) {
       throw new Error(`No hay configuración de comisión activa para ${p.entregador}. Configure el porcentaje en Admin > Comisiones > Configuración`)
     }
@@ -179,25 +177,100 @@ export async function completarPlanilla(planillaId: string) {
       entregador: p.entregador,
       tipo_ruta: p.tipo_ruta,
       fecha: p.fecha,
-      total_entregado: p.total_entregado,
-      total_devolucion: p.total_devolucion,
       porcentaje: p.porcentaje_comision
     })
     
-    const totalEntregas = Number(p.total_entregado) || 0
-    const totalDevoluciones = Number(p.total_devolucion) || 0
-    const baseComisionable = totalEntregas - totalDevoluciones
+    const pedidos = await sql`
+      SELECT 
+        ped.id,
+        ped.estado,
+        ped.total
+      FROM pedidos ped
+      WHERE ped.planilla_id = ${planillaId}
+    `
+
+    let totalEntregado = 0
+    let totalFiado = 0
+    let totalRepaso = 0
+    let totalDevolucion = 0
+
+    for (const pedido of pedidos) {
+      const productos = await sql`
+        SELECT 
+          cantidad,
+          precio_unitario,
+          total,
+          devuelto,
+          cantidad_entregada,
+          subtotal_ajustado,
+          estado_producto
+        FROM pedido_productos
+        WHERE pedido_id = ${pedido.id}
+      `
+
+      let totalPedidoEntregado = 0
+      let totalPedidoDevuelto = 0
+
+      for (const prod of productos) {
+        const estadoProd = prod.estado_producto || 'normal'
+        
+        // 🚫 AGOTADOS no suman ni restan (neutral)
+        if (estadoProd === 'agotado') continue
+        
+        // ❌ DEVUELTOS van a devolución
+        if (prod.devuelto) {
+          totalPedidoDevuelto += Number(prod.total)
+          continue
+        }
+
+        // ✅ ENTREGADOS: Usar subtotal_ajustado si existe, sino calcular con cantidad_entregada
+        if (prod.subtotal_ajustado !== null && prod.subtotal_ajustado !== undefined) {
+          totalPedidoEntregado += Number(prod.subtotal_ajustado)
+        } else if (prod.cantidad_entregada !== null && prod.cantidad_entregada !== undefined) {
+          totalPedidoEntregado += Number(prod.cantidad_entregada) * Number(prod.precio_unitario)
+        } else {
+          totalPedidoEntregado += Number(prod.total)
+        }
+      }
+
+      // Sumar según estado del pedido
+      if (pedido.estado === 'entregado') {
+        totalEntregado += totalPedidoEntregado
+        totalDevolucion += totalPedidoDevuelto
+      } else if (pedido.estado === 'fiado') {
+        totalFiado += totalPedidoEntregado
+        totalDevolucion += totalPedidoDevuelto
+      } else if (pedido.estado === 'repaso') {
+        totalRepaso += totalPedidoEntregado
+      } else if (pedido.estado === 'devolucion') {
+        // Pedido completo devuelto
+        totalDevolucion += totalPedidoEntregado + totalPedidoDevuelto
+      }
+    }
+
+    await sql`
+      UPDATE planillas 
+      SET total_entregado = ${totalEntregado},
+          total_fiado = ${totalFiado},
+          total_repaso = ${totalRepaso},
+          total_devolucion = ${totalDevolucion},
+          updated_at = NOW()
+      WHERE id = ${planillaId}
+    `
+
+    // Calcular comisión: (Entregado + Fiado - Devoluciones) × %
+    const baseComisionable = (totalEntregado + totalFiado) - totalDevolucion
     const montoComision = baseComisionable * (Number(p.porcentaje_comision) / 100)
 
     console.log('[completarPlanilla] 💰 Calculando comisión:', {
-      entregas: totalEntregas,
-      devoluciones: totalDevoluciones,
+      entregado: totalEntregado,
+      fiado: totalFiado,
+      devoluciones: totalDevolucion,
       base: baseComisionable,
       porcentaje: p.porcentaje_comision,
       comision: montoComision
     })
 
-    // Insertar o actualizar comisión (SIN la columna ruta)
     await sql`
       INSERT INTO comisiones (
         planilla_id,
@@ -213,8 +286,8 @@ export async function completarPlanilla(planillaId: string) {
         ${planillaId},
         ${p.entregador},
         ${p.fecha},
-        ${totalEntregas},
-        ${totalDevoluciones},
+        ${totalEntregado + totalFiado},
+        ${totalDevolucion},
         ${baseComisionable},
         ${p.porcentaje_comision},
         ${montoComision},
@@ -230,7 +303,6 @@ export async function completarPlanilla(planillaId: string) {
         updated_at = NOW()
     `
 
-    // Actualizar estado de planilla a completado
     await sql`
       UPDATE planillas 
       SET estado = 'completado',
