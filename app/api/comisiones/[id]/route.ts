@@ -5,7 +5,7 @@ import { getSession } from "@/lib/session"
 // PATCH - Editar comisión (ajustar porcentaje/monto)
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getSession()
@@ -19,7 +19,7 @@ export async function PATCH(
     }
 
     const sql = getDB()
-    const { id } = params
+    const { id } = await context.params
     const body = await request.json()
     const { porcentaje_ajustado, monto_ajustado, nota_ajuste, ajustado_por } = body
 
