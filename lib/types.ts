@@ -258,3 +258,23 @@ export interface Faltante {
   resuelto_por_nombre?: string
   planilla_fecha?: string
 }
+export interface RecepcionCaja {
+  id: string
+  planilla_id: string
+  efectivo_esperado: number
+  efectivo_recibido: number
+  diferencia_efectivo: number
+  tiene_consignacion: boolean
+  numero_consignacion?: string
+  banco?: string
+  monto_consignacion?: number
+  fecha_consignacion?: string
+  observaciones?: string
+  recibido_por: string
+  estado: string
+  fecha_recepcion: string
+  entregador?: string
+  tipo_ruta?: string
+  fecha_planilla?: string
+  recibido_por_nombre?: string
+}
