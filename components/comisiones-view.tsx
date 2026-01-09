@@ -66,15 +66,10 @@ export function ComisionesView({ onLogout, userRole, userId }: ComisionesViewPro
     nota: ""
   })
 
-  // Filtros
-  // Calcular primer y último día del mes actual
-const hoy = new Date()
-const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split("T")[0]
-const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split("T")[0]
-
-const [fechaInicio, setFechaInicio] = useState(primerDia)
-const [fechaFin, setFechaFin] = useState(ultimoDia)
-const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
+  // Filtros - fechas fijas para enero 2026
+  const [fechaInicio, setFechaInicio] = useState("2026-01-01")
+  const [fechaFin, setFechaFin] = useState("2026-01-31")
+  const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
 
   useEffect(() => {
     loadData()
@@ -158,8 +153,8 @@ const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
   function openEditDialog(comision: Comision) {
     setEditingComision(comision)
     setEditForm({
-      porcentaje: comision.porcentaje_ajustado || comision.porcentaje_aplicado,
-      monto: comision.monto_ajustado || comision.monto_comision,
+      porcentaje: Number(comision.porcentaje_ajustado || comision.porcentaje_aplicado),
+      monto: Number(comision.monto_ajustado || comision.monto_comision),
       nota: comision.nota_ajuste || ""
     })
     setEditDialogOpen(true)
@@ -202,14 +197,14 @@ const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
 
   function handlePorcentajeChange(valor: string) {
     const porcentaje = parseFloat(valor) || 0
-    const base = editingComision?.base_comisionable || 0
+    const base = Number(editingComision?.base_comisionable) || 0
     const nuevoMonto = (base * porcentaje) / 100
     setEditForm({ ...editForm, porcentaje, monto: nuevoMonto })
   }
 
   function handleMontoChange(valor: string) {
     const monto = parseFloat(valor) || 0
-    const base = editingComision?.base_comisionable || 0
+    const base = Number(editingComision?.base_comisionable) || 0
     const nuevoPorcentaje = base > 0 ? (monto / base) * 100 : 0
     setEditForm({ ...editForm, monto, porcentaje: nuevoPorcentaje })
   }
@@ -370,8 +365,8 @@ const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
                     </tr>
                   ) : (
                     comisiones.map((c) => {
-                      const montoFinal = c.monto_ajustado || c.monto_comision
-                      const porcentajeFinal = c.porcentaje_ajustado || c.porcentaje_aplicado
+                      const montoFinal = Number(c.monto_ajustado || c.monto_comision)
+                      const porcentajeFinal = Number(c.porcentaje_ajustado || c.porcentaje_aplicado)
                       const fueAjustado = !!c.monto_ajustado
 
                       return (
@@ -387,18 +382,18 @@ const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
                           <td className="p-3 text-sm font-medium">{c.entregador}</td>
                           <td className="p-3 text-sm">{new Date(c.fecha).toLocaleDateString()}</td>
                           <td className="p-3 text-sm text-right">
-                            {formatCOP(c.total_entregas_efectivas)}
+                            {formatCOP(Number(c.total_entregas_efectivas))}
                           </td>
                           <td className="p-3 text-sm text-right text-red-600">
-                            {formatCOP(c.total_devoluciones)}
+                            {formatCOP(Number(c.total_devoluciones))}
                           </td>
                           <td className="p-3 text-sm text-right font-medium">
-                            {formatCOP(c.base_comisionable)}
+                            {formatCOP(Number(c.base_comisionable))}
                           </td>
                           <td className="p-3 text-sm text-right">
                             {fueAjustado && (
                               <span className="line-through text-muted-foreground mr-1">
-                                {c.porcentaje_aplicado.toFixed(2)}%
+                                {Number(c.porcentaje_aplicado).toFixed(2)}%
                               </span>
                             )}
                             <span className={fueAjustado ? "text-orange-600 font-semibold" : ""}>
@@ -408,7 +403,7 @@ const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
                           <td className="p-3 text-sm text-right font-bold text-green-600">
                             {fueAjustado && (
                               <span className="line-through text-muted-foreground mr-1">
-                                {formatCOP(c.monto_comision)}
+                                {formatCOP(Number(c.monto_comision))}
                               </span>
                             )}
                             <span className={fueAjustado ? "text-orange-600" : ""}>
@@ -529,16 +524,16 @@ const [entregadorFiltro, setEntregadorFiltro] = useState<string>("all")
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Base comisionable:</span>
                   <span className="font-semibold">
-                    {formatCOP(editingComision.base_comisionable)}
+                    {formatCOP(Number(editingComision.base_comisionable))}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Porcentaje original:</span>
-                  <span>{editingComision.porcentaje_aplicado.toFixed(2)}%</span>
+                  <span>{Number(editingComision.porcentaje_aplicado).toFixed(2)}%</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Monto original:</span>
-                  <span>{formatCOP(editingComision.monto_comision)}</span>
+                  <span>{formatCOP(Number(editingComision.monto_comision))}</span>
                 </div>
               </div>
 
