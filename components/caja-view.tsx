@@ -334,8 +334,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     totalRepasos += totals.repasos
   })
 
+  // ARREGLADO: Calcular diferencia sumando efectivo + consignación
+  const totalRecibido = selectedPlanilla 
+    ? (Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0))
+    : 0
+  
   const diferencia = selectedPlanilla 
-    ? Math.round((Number(formData.efectivoRecibido || 0) - calculateRouteTotals(selectedPlanilla).entregado) * 100) / 100
+    ? Math.round((totalRecibido - calculateRouteTotals(selectedPlanilla).entregado) * 100) / 100
     : 0
 
   return (
@@ -723,22 +728,38 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                   />
                 </div>
 
-                {formData.efectivoRecibido && (
+                {(formData.efectivoRecibido || formData.montoConsignacion) && (
                   <div className={`p-3 rounded-lg ${
                     diferencia === 0 
                       ? 'bg-green-50 border border-green-200' 
                       : 'bg-amber-50 border border-amber-200'
                   }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-medium">Diferencia:</p>
-                      <p className={`text-xl font-bold ${
-                        diferencia === 0 ? 'text-green-600' : 'text-amber-600'
-                      }`}>
-                        {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
-                      </p>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Efectivo:</span>
+                        <span className="font-medium">{formatCOP(Number(formData.efectivoRecibido || 0))}</span>
+                      </div>
+                      {formData.tieneConsignacion && formData.montoConsignacion && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Consignación:</span>
+                          <span className="font-medium">{formatCOP(Number(formData.montoConsignacion))}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-sm pt-2 border-t">
+                        <span className="text-muted-foreground">Total Recibido:</span>
+                        <span className="font-semibold">{formatCOP(totalRecibido)}</span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <p className="text-sm font-medium">Diferencia:</p>
+                        <p className={`text-xl font-bold ${
+                          diferencia === 0 ? 'text-green-600' : 'text-amber-600'
+                        }`}>
+                          {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
+                        </p>
+                      </div>
                     </div>
                     {diferencia !== 0 && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground mt-2">
                         {diferencia > 0 ? 'Sobrante (se registra para auditoría)' : 'Faltante (se registra para auditoría)'}
                       </p>
                     )}
