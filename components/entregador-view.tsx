@@ -561,16 +561,25 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                                 e.currentTarget.blur()
                                               }
                                             }}
-                                            className={`w-24 px-2 py-1 border rounded text-right font-medium ${
+                                            placeholder={formatCOP(subtotalFinal)}
+                                            className={`w-28 px-2 py-1 border rounded text-right font-medium ${
                                               tieneAjusteManual ? 'border-orange-400 bg-orange-50' : ''
                                             }`}
                                           />
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs text-muted-foreground">{formatCOP(subtotalFinal)}</span>
+                                            {tieneAjusteManual && (
+                                              <span className="text-xs text-orange-600">✏️ Ajustado</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="flex flex-col items-end">
+                                          <span className="font-medium">{formatCOP(subtotalFinal)}</span>
                                           {tieneAjusteManual && (
                                             <span className="text-xs text-orange-600">✏️ Ajustado</span>
                                           )}
                                         </div>
-                                      ) : (
-                                        <span className="font-medium">{formatCOP(subtotalFinal)}</span>
                                       )}
                                     </td>
                                     <td className="text-center py-2">
