@@ -384,21 +384,32 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             <div className="space-y-3">
               {activeRoute.orders.map((order) => {
                 const isExpanded = expandedOrders.has(order.id)
-                const effectiveTotal = order.items
-                  .filter((item) => !item.devuelto)
-                  .reduce((sum, item) => {
-                    if (item.estadoProducto === 'agotado') return sum
+                
+                // Calcular totales correctamente
+                let effectiveTotal = 0
+                let returnedTotal = 0
+                
+                order.items.forEach((item) => {
+                  if (item.devuelto) {
+                    // Producto devuelto
+                    returnedTotal += Number(item.subtotal) || 0
+                  } else {
+                    // Producto entregado
+                    const estadoProd = item.estadoProducto || 'normal'
+                    
+                    // Agotados no suman
+                    if (estadoProd === 'agotado') return
+                    
+                    // Usar subtotal ajustado si existe, sino calcular
                     if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-                      return sum + item.subtotalAjustado
+                      effectiveTotal += Number(item.subtotalAjustado) || 0
+                    } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
+                      effectiveTotal += (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
+                    } else {
+                      effectiveTotal += Number(item.subtotal) || 0
                     }
-                    if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
-                      return sum + (item.cantidadEntregada * item.valorUnidad)
-                    }
-                    return sum + item.subtotal
-                  }, 0)
-                const returnedTotal = order.items
-                  .filter((item) => item.devuelto)
-                  .reduce((sum, item) => sum + item.subtotal, 0)
+                  }
+                })
 
                 return (
                   <Card key={order.id} className="overflow-hidden">
@@ -482,9 +493,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                             </thead>
                             <tbody>
                               {order.items.map((item, idx) => {
-                                const cantidadEntregada = item.cantidadEntregada ?? item.cantidad
-                                const subtotalCalculado = cantidadEntregada * item.valorUnidad
-                                const subtotalFinal = item.subtotalAjustado ?? subtotalCalculado
+                                const cantidadEntregada = Number(item.cantidadEntregada) || Number(item.cantidad) || 0
+                                const subtotalCalculado = cantidadEntregada * (Number(item.valorUnidad) || 0)
+                                const subtotalFinal = (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) 
+                                  ? Number(item.subtotalAjustado) 
+                                  : subtotalCalculado
                                 const estadoProducto = item.estadoProducto || 'normal'
                                 const tieneAjusteManual = item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
                                 
