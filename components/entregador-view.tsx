@@ -13,6 +13,7 @@ import {
   updateProductoDevuelto,
   completarPlanilla,
   updateCantidadEntregada,
+  updateSubtotalAjustado,
 } from "@/lib/actions/planillas"
 import { useToast } from "@/hooks/use-toast"
 
@@ -161,6 +162,34 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       toast({
         title: "Error",
         description: "No se pudo actualizar la cantidad",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSubtotalChange = async (orderId: string, codigo: string, nuevoSubtotal: number) => {
+    if (nuevoSubtotal < 0) {
+      toast({
+        title: "Error",
+        description: "El subtotal no puede ser negativo",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      await updateSubtotalAjustado(orderId, codigo, nuevoSubtotal)
+      await loadData()
+      
+      toast({
+        title: "💰 Subtotal ajustado",
+        description: "El valor ha sido actualizado manualmente",
+      })
+    } catch (err) {
+      console.error("[ENTREGADOR] Error updating subtotal:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el subtotal",
         variant: "destructive",
       })
     }
@@ -434,6 +463,10 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
                     {isExpanded && (
                       <div className="p-3 md:p-4 space-y-4">
+                        <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-700">
+                          💡 <strong>Ajustes manuales:</strong> Edita "Cant. Entregada" para entregas parciales. Para promociones con precios especiales, ajusta el "Subtotal" directamente.
+                        </div>
+                        
                         <div className="overflow-x-auto">
                           <table className="w-full text-xs md:text-sm">
                             <thead>
@@ -450,8 +483,10 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                             <tbody>
                               {order.items.map((item, idx) => {
                                 const cantidadEntregada = item.cantidadEntregada ?? item.cantidad
-                                const subtotalFinal = item.subtotalAjustado ?? (cantidadEntregada * item.valorUnidad)
+                                const subtotalCalculado = cantidadEntregada * item.valorUnidad
+                                const subtotalFinal = item.subtotalAjustado ?? subtotalCalculado
                                 const estadoProducto = item.estadoProducto || 'normal'
+                                const tieneAjusteManual = item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
                                 
                                 return (
                                   <tr
@@ -476,10 +511,17 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                           type="number"
                                           min="0"
                                           max={item.cantidad}
-                                          value={cantidadEntregada}
-                                          onChange={(e) => {
+                                          defaultValue={cantidadEntregada}
+                                          onBlur={(e) => {
                                             const newCant = parseInt(e.target.value) || 0
-                                            handleCantidadChange(order.id, item.codigo, newCant, item.cantidad)
+                                            if (newCant !== cantidadEntregada) {
+                                              handleCantidadChange(order.id, item.codigo, newCant, item.cantidad)
+                                            }
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.currentTarget.blur()
+                                            }
                                           }}
                                           className="w-16 px-2 py-1 border rounded text-center"
                                         />
@@ -487,7 +529,37 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                         <span className="font-medium">{cantidadEntregada}</span>
                                       )}
                                     </td>
-                                    <td className="text-right py-2 font-medium">{formatCOP(subtotalFinal)}</td>
+                                    <td className="text-right py-2">
+                                      {order.estado === "pendiente" && !item.devuelto ? (
+                                        <div className="flex flex-col items-end gap-1">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="100"
+                                            defaultValue={subtotalFinal}
+                                            onBlur={(e) => {
+                                              const newSubtotal = parseFloat(e.target.value) || 0
+                                              if (newSubtotal !== subtotalFinal) {
+                                                handleSubtotalChange(order.id, item.codigo, newSubtotal)
+                                              }
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.currentTarget.blur()
+                                              }
+                                            }}
+                                            className={`w-24 px-2 py-1 border rounded text-right font-medium ${
+                                              tieneAjusteManual ? 'border-orange-400 bg-orange-50' : ''
+                                            }`}
+                                          />
+                                          {tieneAjusteManual && (
+                                            <span className="text-xs text-orange-600">✏️ Ajustado</span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="font-medium">{formatCOP(subtotalFinal)}</span>
+                                      )}
+                                    </td>
                                     <td className="text-center py-2">
                                       {estadoProducto === 'agotado' && (
                                         <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
