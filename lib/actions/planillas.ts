@@ -399,3 +399,21 @@ export async function updateCantidadEntregada(
     throw error
   }
 }
+export async function updateSubtotalAjustado(pedidoId: string, codigo: string, subtotalAjustado: number) {
+  const sql = getDB()
+  try {
+    await sql`
+      UPDATE pedido_productos 
+      SET subtotal_ajustado = ${subtotalAjustado},
+          updated_at = NOW()
+      WHERE pedido_id = ${pedidoId} AND codigo = ${codigo}
+    `
+
+    revalidatePath("/")
+    return { success: true, subtotalAjustado }
+    
+  } catch (error) {
+    console.error("[updateSubtotalAjustado] ❌ ERROR:", error)
+    throw error
+  }
+}
