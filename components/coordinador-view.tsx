@@ -391,20 +391,24 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
 
       <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-5xl">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3 mb-6">
-            <TabsTrigger value="generar">
-              <Upload className="h-4 w-4 mr-2" />
-              Generar Hoy
-            </TabsTrigger>
-            <TabsTrigger value="asignar">
-              <Truck className="h-4 w-4 mr-2" />
-              Asignar ({unassignedSheets.length})
-            </TabsTrigger>
-            <TabsTrigger value="historial">
-              <Calendar className="h-4 w-4 mr-2" />
-              Historial
-            </TabsTrigger>
-          </TabsList>
+          <TabsList className="grid w-full grid-cols-4 mb-6">
+  <TabsTrigger value="generar">
+    <Upload className="h-4 w-4 mr-2" />
+    Generar Hoy
+  </TabsTrigger>
+  <TabsTrigger value="asignar">
+    <Truck className="h-4 w-4 mr-2" />
+    Asignar ({unassignedSheets.length})
+  </TabsTrigger>
+  <TabsTrigger value="supervision">
+    <FileSpreadsheet className="h-4 w-4 mr-2" />
+    Supervisión
+  </TabsTrigger>
+  <TabsTrigger value="historial">
+    <Calendar className="h-4 w-4 mr-2" />
+    Historial
+  </TabsTrigger>
+</TabsList>
 
           {/* PESTAÑA 1: GENERAR HOY */}
           <TabsContent value="generar" className="space-y-4">
