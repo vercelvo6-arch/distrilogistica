@@ -98,6 +98,22 @@ export async function POST(request: NextRequest) {
       WHERE p.planilla_id = ${planilla_id}
         AND pp.codigo = ${codigo}
     `;
+    // 2️⃣ 🔥 ACTUALIZAR ESTADO EN PEDIDO_PRODUCTOS (SIEMPRE)
+    const pedidosAfectados = await sql`
+      SELECT DISTINCT pedido_id 
+      FROM pedido_productos pp
+      JOIN pedidos p ON pp.pedido_id = p.id
+      WHERE p.planilla_id = ${planilla_id}
+        AND pp.codigo = ${codigo}
+    `;
+
+    // 🔍 DEBUG - AGREGAR ESTAS LÍNEAS AQUÍ
+    console.log('[FALTANTES] 🔍 Query result:', {
+      planilla_id,
+      codigo,
+      pedidosEncontrados: pedidosAfectados.length,
+      pedidosIds: pedidosAfectados.map(p => p.pedido_id)
+    });
 
     console.log('[FALTANTES] Actualizando', pedidosAfectados.length, 'productos');
 
