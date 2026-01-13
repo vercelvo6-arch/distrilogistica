@@ -260,27 +260,26 @@ console.log('🔍 DEBUG - Datos del producto:', {
     // Actualizar el estado inmediatamente para feedback visual
     setRouteSheets(updatedSheets)
 
-    // Guardar en el backend en segundo plano (opcional)
-    if (estadoSeleccionado === 'incompleto' || estadoSeleccionado === 'no_alistado') {
-      fetch('/api/faltantes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          planilla_id: sheetForEntregador.id,
-          codigo: editingProduct.product.codigo,
-          descripcion: editingProduct.product.descripcion,
-          categoria: editingProduct.product.categoria,
-          entregador: editingProduct.entregador,
-          ruta: sheetForEntregador.ruta,
-          cantidadSolicitada: editingProduct.product.cantidadTotal,
-          cantidadDisponible: disponible,
-          cantidadFaltante: faltante,
-          unidadIncompleta: estadoSeleccionado === 'incompleto',
-          observaciones: observaciones.trim(),
-          marcadoPor: user.id,
-        }),
-      }).catch(err => console.error('Error guardando faltante:', err))
-    }
+    // Guardar en el backend SIEMPRE
+fetch('/api/faltantes', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    planilla_id: sheetForEntregador.id,
+    codigo: editingProduct.product.codigo,
+    descripcion: editingProduct.product.descripcion,
+    categoria: editingProduct.product.categoria,
+    entregador: editingProduct.entregador,
+    ruta: sheetForEntregador.ruta,
+    cantidadSolicitada: editingProduct.product.cantidadTotal,
+    cantidadDisponible: disponible,
+    cantidadFaltante: faltante,
+    unidadIncompleta: estadoSeleccionado === 'incompleto',
+    observaciones: observaciones.trim(),
+    marcadoPor: user.id,
+    estadoAlistamiento: estadoSeleccionado,
+  }),
+}).catch(err => console.error('Error guardando estado:', err))
 
     setEditingProduct(null)
     setDisponibleInput("")
