@@ -210,6 +210,15 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
     const faltante = editingProduct.product.cantidadTotal - disponible
 
+console.log('🔍 DEBUG - Datos del producto:', {
+  codigo: editingProduct.product.codigo,
+  entregador: editingProduct.entregador,
+  planilla_id: sheetForEntregador.id,
+  ruta: sheetForEntregador.ruta,
+  estadoSeleccionado
+})
+
+// 🔥 ACTUALIZAR EL ESTADO LOCAL INMEDIATAMENTE
     // 🔥 ACTUALIZAR EL ESTADO LOCAL INMEDIATAMENTE
     const updatedSheets = routeSheets.map(sheet => {
       if (sheet.entregador === editingProduct.entregador) {
