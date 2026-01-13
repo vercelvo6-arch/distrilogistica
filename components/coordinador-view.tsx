@@ -421,7 +421,6 @@ const [filterDate, setFilterDate] = useState("")
     setFilterEntregador("todos")
     setFilterEstado("todos")
     setHasActiveFilter(false)
-  }
 
   if (loading) {
     return (
