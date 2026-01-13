@@ -26,7 +26,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [loading, setLoading] = useState(true)
   const [entregadores, setEntregadores] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState("generar")
-  const [activeTab, setActiveTab] = useState("generar")
 
 // Estados para supervisión
 const [supervisionSheets, setSupervisionSheets] = useState<RouteSheet[]>([])
@@ -35,8 +34,6 @@ const [faltantes, setFaltantes] = useState<any[]>([])
 
 // Filtros para historial
 const [filterDate, setFilterDate] = useState("")
-  // Filtros para historial
-  const [filterDate, setFilterDate] = useState("")
   const [filterEntregador, setFilterEntregador] = useState<string>("todos")
   const [filterEstado, setFilterEstado] = useState<string>("todos")
   const [hasActiveFilter, setHasActiveFilter] = useState(false)
@@ -184,7 +181,6 @@ const [filterDate, setFilterDate] = useState("")
     }
   }
 
-  const handleNurturingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
   const handleNurturingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       setNurturingFile(e.target.files[0])
