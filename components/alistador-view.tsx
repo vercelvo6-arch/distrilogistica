@@ -71,7 +71,6 @@ routeSheets.forEach(sheet => {
   })
 })
 
-const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
       const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
