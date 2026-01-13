@@ -24,12 +24,11 @@ export async function POST(request: NextRequest) {
       unidadIncompleta,
       observaciones,
       marcadoPor,
-      estadoAlistamiento // 🔥 NUEVO: recibir el estado del frontend
+      estadoAlistamiento
     } = body;
 
     const sql = getDB();
 
-    // 🔥 Usar el estado que viene del frontend, o calcularlo si no viene
     const estadoFinal = estadoAlistamiento || 
       (cantidadDisponible === 0 || cantidadDisponible === null ? 'no_alistado' : 
        (unidadIncompleta || cantidadDisponible < cantidadSolicitada ? 'incompleto' : 'completo'));
@@ -81,7 +80,6 @@ export async function POST(request: NextRequest) {
       
       console.log('[FALTANTES] ✓ Faltante guardado');
     } else {
-      // 🔥 Si es completo, eliminar el faltante si existía
       await sql`
         DELETE FROM faltantes 
         WHERE planilla_id = ${planilla_id} 
@@ -90,15 +88,7 @@ export async function POST(request: NextRequest) {
       console.log('[FALTANTES] ✓ Faltante eliminado (producto completo)');
     }
 
-    // 2️⃣ 🔥 ACTUALIZAR ESTADO EN PEDIDO_PRODUCTOS (SIEMPRE)
-    const pedidosAfectados = await sql`
-      SELECT DISTINCT pedido_id 
-      FROM pedido_productos pp
-      JOIN pedidos p ON pp.pedido_id = p.id
-      WHERE p.planilla_id = ${planilla_id}
-        AND pp.codigo = ${codigo}
-    `;
-    // 2️⃣ 🔥 ACTUALIZAR ESTADO EN PEDIDO_PRODUCTOS (SIEMPRE)
+    // 2️⃣ ACTUALIZAR ESTADO EN PEDIDO_PRODUCTOS
     const pedidosAfectados = await sql`
       SELECT DISTINCT pedido_id 
       FROM pedido_productos pp
@@ -107,7 +97,6 @@ export async function POST(request: NextRequest) {
         AND pp.codigo = ${codigo}
     `;
 
-    // 🔍 DEBUG - AGREGAR ESTAS LÍNEAS AQUÍ
     console.log('[FALTANTES] 🔍 Query result:', {
       planilla_id,
       codigo,
@@ -117,7 +106,6 @@ export async function POST(request: NextRequest) {
 
     console.log('[FALTANTES] Actualizando', pedidosAfectados.length, 'productos');
 
-    // Actualizar el estado en cada producto
     for (const pedido of pedidosAfectados) {
       await sql`
         UPDATE pedido_productos
@@ -148,7 +136,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET - Ver faltantes (sin cambios)
+// GET - Ver faltantes
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
