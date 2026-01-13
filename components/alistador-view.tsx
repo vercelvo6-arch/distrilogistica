@@ -210,6 +210,17 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
     const faltante = editingProduct.product.cantidadTotal - disponible
 
+console.log('🔍 DEBUG - Datos del producto:', {
+  codigo: editingProduct.product.codigo,
+  entregador: editingProduct.entregador,
+  planilla_id: sheetForEntregador.id,
+  ruta: sheetForEntregador.ruta,
+  estadoSeleccionado
+})
+
+// 🔥 SIEMPRE llamar a la API, independientemente del estado
+const response = await fetch('/api/faltantes', {
+
     // 🔥 SIEMPRE llamar a la API, independientemente del estado
     const response = await fetch('/api/faltantes', {
       method: 'POST',
