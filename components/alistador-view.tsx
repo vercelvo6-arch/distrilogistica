@@ -185,66 +185,73 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   }
 
   const handleSaveEstadoAlistamiento = async () => {
-    if (!editingProduct) return
+  if (!editingProduct) return
 
-    const disponible = Number(disponibleInput) || 0
+  const disponible = Number(disponibleInput) || 0
 
-    if (estadoSeleccionado === 'no_alistado' && !observaciones.trim()) {
-      alert('Por favor agregue observaciones para productos no alistados')
-      return
-    }
-
-    if (estadoSeleccionado === 'incompleto' && !observaciones.trim()) {
-      alert('Por favor agregue observaciones para productos incompletos')
-      return
-    }
-
-    try {
-      setSaving(true)
-
-      const sheetForEntregador = routeSheets.find(s => s.entregador === editingProduct.entregador)
-      
-      if (!sheetForEntregador) {
-        throw new Error('No se encontró planilla para el entregador')
-      }
-
-      if (estadoSeleccionado === 'incompleto' || estadoSeleccionado === 'no_alistado') {
-        const faltante = editingProduct.product.cantidadTotal - disponible
-
-        await fetch('/api/faltantes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            planilla_id: sheetForEntregador.id,
-            codigo: editingProduct.product.codigo,
-            descripcion: editingProduct.product.descripcion,
-            categoria: editingProduct.product.categoria,
-            entregador: editingProduct.entregador,
-            ruta: sheetForEntregador.ruta,
-            cantidadSolicitada: editingProduct.product.cantidadTotal,
-            cantidadDisponible: disponible,
-            cantidadFaltante: faltante,
-            unidadIncompleta: estadoSeleccionado === 'incompleto',
-            observaciones: observaciones.trim(),
-            marcadoPor: user.id,
-          }),
-        })
-      }
-
-      setEditingProduct(null)
-      setDisponibleInput("")
-      setEstadoSeleccionado("completo")
-      setObservaciones("")
-      
-      await loadData()
-
-    } catch (err) {
-      console.error("[ALISTADOR] Error saving estado:", err)
-      alert('Error al guardar estado de alistamiento')
-    } finally {
-      setSaving(false)
-    }
+  if (estadoSeleccionado === 'no_alistado' && !observaciones.trim()) {
+    alert('Por favor agregue observaciones para productos no alistados')
+    return
   }
+
+  if (estadoSeleccionado === 'incompleto' && !observaciones.trim()) {
+    alert('Por favor agregue observaciones para productos incompletos')
+    return
+  }
+
+  try {
+    setSaving(true)
+
+    const sheetForEntregador = routeSheets.find(s => s.entregador === editingProduct.entregador)
+    
+    if (!sheetForEntregador) {
+      throw new Error('No se encontró planilla para el entregador')
+    }
+
+    const faltante = editingProduct.product.cantidadTotal - disponible
+
+    // 🔥 SIEMPRE llamar a la API, independientemente del estado
+    const response = await fetch('/api/faltantes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        planilla_id: sheetForEntregador.id,
+        codigo: editingProduct.product.codigo,
+        descripcion: editingProduct.product.descripcion,
+        categoria: editingProduct.product.categoria,
+        entregador: editingProduct.entregador,
+        ruta: sheetForEntregador.ruta,
+        cantidadSolicitada: editingProduct.product.cantidadTotal,
+        cantidadDisponible: disponible,
+        cantidadFaltante: faltante,
+        unidadIncompleta: estadoSeleccionado === 'incompleto',
+        observaciones: observaciones.trim(),
+        marcadoPor: user.id,
+        estadoAlistamiento: estadoSeleccionado, // 🔥 Nuevo
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Error al guardar estado')
+    }
+
+    const result = await response.json()
+    console.log('Estado guardado:', result)
+
+    setEditingProduct(null)
+    setDisponibleInput("")
+    setEstadoSeleccionado("completo")
+    setObservaciones("")
+    
+    await loadData()
+
+  } catch (err) {
+    console.error("[ALISTADOR] Error saving estado:", err)
+    alert('Error al guardar estado de alistamiento')
+  } finally {
+    setSaving(false)
+  }
+}
 
   const handleStartPreparation = async (entregador: string) => {
     try {
