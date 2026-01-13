@@ -26,7 +26,15 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [loading, setLoading] = useState(true)
   const [entregadores, setEntregadores] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState("generar")
-  
+  const [activeTab, setActiveTab] = useState("generar")
+
+// Estados para supervisión
+const [supervisionSheets, setSupervisionSheets] = useState<RouteSheet[]>([])
+const [selectedEntregadorSupervision, setSelectedEntregadorSupervision] = useState<string>("todos")
+const [faltantes, setFaltantes] = useState<any[]>([])
+
+// Filtros para historial
+const [filterDate, setFilterDate] = useState("")
   // Filtros para historial
   const [filterDate, setFilterDate] = useState("")
   const [filterEntregador, setFilterEntregador] = useState<string>("todos")
@@ -37,6 +45,12 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     loadPlanillas()
     loadEntregadores()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === "supervision") {
+      loadSupervisionData()
+    }
+  }, [activeTab])
 
   async function loadEntregadores() {
     try {
@@ -114,7 +128,63 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       setLoading(false)
     }
   }
+}
 
+  async function loadSupervisionData() {
+    try {
+      const response = await fetch('/api/planillas', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (!response.ok) throw new Error('Error al cargar planillas')
+      
+      const data = await response.json()
+      
+      // Filtrar solo planillas alistadas
+      const planillasAlistadas = (data.planillas || [])
+        .filter((p: any) => p.estado === 'alistado' || p.estado === 'en_ruta' || p.estado === 'completado')
+        .map((p: any) => ({
+          id: p.id,
+          ruta: p.tipo_ruta,
+          fecha: p.fecha,
+          entregador: p.entregador,
+          estado: p.estado,
+          totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
+          totalAmount: Number(p.total_cargue) || 0,
+          orders: (p.pedidos || []).map((ped: any) => ({
+            id: ped.id,
+            cliente: ped.cliente,
+            items: (ped.productos || []).map((prod: any) => ({
+              codigo: prod.codigo,
+              descripcion: prod.nombre,
+              categoria: prod.categoria || '',
+              cantidad: Number(prod.cantidad) || 0,
+              valorUnidad: Number(prod.precio_unitario) || 0,
+              estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
+              cantidadDisponible: prod.cantidad_disponible,
+              cantidadFaltante: prod.cantidad_faltante || 0,
+              unidadIncompleta: prod.unidad_incompleta || false,
+              observacionesFaltante: prod.observaciones_faltante,
+            })),
+          })),
+        }))
+      
+      setSupervisionSheets(planillasAlistadas)
+      
+      // Cargar faltantes
+      const faltantesResponse = await fetch('/api/faltantes')
+      if (faltantesResponse.ok) {
+        const faltantesData = await faltantesResponse.json()
+        setFaltantes(faltantesData.faltantes || [])
+      }
+      
+    } catch (err) {
+      console.error("[COORD] Error loading supervision data:", err)
+    }
+  }
+
+  const handleNurturingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
   const handleNurturingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       setNurturingFile(e.target.files[0])
@@ -687,6 +757,150 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
               )}
             </Card>
             </TabsContent>
+          </Card>
+          </TabsContent>
+
+          {/* PESTAÑA 4: SUPERVISIÓN */}
+          <TabsContent value="supervision" className="space-y-4">
+            <Card className="p-4 md:p-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" />
+                Supervisión de Planillas Alistadas
+              </h2>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Filtrar por Entregador</label>
+                <Select 
+                  value={selectedEntregadorSupervision} 
+                  onValueChange={setSelectedEntregadorSupervision}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los entregadores</SelectItem>
+                    {entregadores.map((e) => (
+                      <SelectItem key={e} value={e}>{e}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {supervisionSheets.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
+                  <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-medium">No hay planillas alistadas</p>
+                  <p className="text-sm mt-1">Las planillas aparecerán aquí una vez que el alistador las complete</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {supervisionSheets
+                    .filter(s => selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision)
+                    .map((sheet) => {
+                      const productosConsolidados = new Map()
+                      
+                      sheet.orders.forEach(order => {
+                        order.items.forEach(item => {
+                          const existing = productosConsolidados.get(item.codigo)
+                          if (existing) {
+                            existing.cantidadTotal += item.cantidad
+                          } else {
+                            productosConsolidados.set(item.codigo, {
+                              ...item,
+                              cantidadTotal: item.cantidad
+                            })
+                          }
+                        })
+                      })
+
+                      const productos = Array.from(productosConsolidados.values())
+                      const totalCompletos = productos.filter(p => p.estadoAlistamiento === 'completo').length
+                      const totalIncompletos = productos.filter(p => p.estadoAlistamiento === 'incompleto').length
+                      const totalNoAlistados = productos.filter(p => p.estadoAlistamiento === 'no_alistado').length
+
+                      return (
+                        <Card key={sheet.id} className="p-4 border-2">
+                          <div className="mb-4 pb-4 border-b">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h3 className="font-bold text-lg">Ruta {sheet.ruta} - {sheet.entregador}</h3>
+                                <p className="text-sm text-muted-foreground">
+                                  {sheet.fecha} · {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
+                                </p>
+                              </div>
+                              <span className={`text-xs px-3 py-1 rounded-full ${
+                                sheet.estado === 'alistado' ? 'bg-blue-100 text-blue-700' :
+                                sheet.estado === 'en_ruta' ? 'bg-purple-100 text-purple-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {sheet.estado}
+                              </span>
+                            </div>
+                            
+                            <div className="flex gap-2 mt-3">
+                              {totalCompletos > 0 && (
+                                <span className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded-full">
+                                  ✅ {totalCompletos} completos
+                                </span>
+                              )}
+                              {totalIncompletos > 0 && (
+                                <span className="text-xs px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full">
+                                  ⚠️ {totalIncompletos} incompletos
+                                </span>
+                              )}
+                              {totalNoAlistados > 0 && (
+                                <span className="text-xs px-3 py-1 bg-red-100 text-red-700 rounded-full">
+                                  ❌ {totalNoAlistados} no alistados
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="text-left py-2 px-3">Código</th>
+                                  <th className="text-left py-2 px-3">Producto</th>
+                                  <th className="text-center py-2 px-3">Cantidad</th>
+                                  <th className="text-center py-2 px-3">Estado</th>
+                                  <th className="text-left py-2 px-3">Observaciones</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {productos.map((producto) => (
+                                  <tr key={producto.codigo} className="border-b">
+                                    <td className="py-2 px-3 font-mono text-xs">{producto.codigo}</td>
+                                    <td className="py-2 px-3">{producto.descripcion}</td>
+                                    <td className="text-center py-2 px-3 font-bold">{producto.cantidadTotal}</td>
+                                    <td className="text-center py-2 px-3">
+                                      <span className={`text-xs px-2 py-1 rounded-full ${
+                                        producto.estadoAlistamiento === 'completo' ? 'bg-green-100 text-green-700' :
+                                        producto.estadoAlistamiento === 'incompleto' ? 'bg-yellow-100 text-yellow-700' :
+                                        producto.estadoAlistamiento === 'no_alistado' ? 'bg-red-100 text-red-700' :
+                                        'bg-gray-100 text-gray-700'
+                                      }`}>
+                                        {producto.estadoAlistamiento === 'completo' ? '✅ Completo' :
+                                         producto.estadoAlistamiento === 'incompleto' ? '⚠️ Incompleto' :
+                                         producto.estadoAlistamiento === 'no_alistado' ? '❌ No alistado' :
+                                         '⏳ Pendiente'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 text-xs text-muted-foreground">
+                                      {producto.observacionesFaltante || '-'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </Card>
+                      )
+                    })}
+                </div>
+              )}
+            </Card>
+          </TabsContent>
         </Tabs>
       </main>
     </>
