@@ -59,7 +59,19 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       if (!response.ok) throw new Error('Error al cargar planillas')
       
       const data = await response.json()
-      
+      // 🔥 Crear un mapa de estados actuales ANTES de recargar
+const estadosActuales = new Map<string, string>()
+routeSheets.forEach(sheet => {
+  sheet.orders.forEach(order => {
+    order.items.forEach(item => {
+      if (item.estadoAlistamiento && item.estadoAlistamiento !== 'pendiente') {
+        estadosActuales.set(item.codigo, item.estadoAlistamiento)
+      }
+    })
+  })
+})
+
+const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
       const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
