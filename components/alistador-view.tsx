@@ -105,7 +105,7 @@ routeSheets.forEach(sheet => {
             cantidadFaltante: prod.cantidad_faltante || 0,
             unidadIncompleta: prod.unidad_incompleta || false,
             observacionesFaltante: prod.observaciones_faltante,
-            estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
+            estadoAlistamiento: estadosActuales.get(prod.codigo) || prod.estado_alistamiento || 'pendiente',
           })),
         })),
         cuentasPorCobrar: [],
@@ -219,6 +219,10 @@ routeSheets.forEach(sheet => {
     order.items.some(item => item.codigo === editingProduct.product.codigo)
   )
 )
+
+if (!sheetForEntregador) {
+  throw new Error('No se encontró planilla para el entregador')
+}
 
     const faltante = editingProduct.product.cantidadTotal - disponible
 
