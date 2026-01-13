@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, Edit, Loader2, FileText } from "lucide-react"
+import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, Edit, Loader2, FileText, Trash2 } from "lucide-react"
 import type { RouteSheet } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect } from "react"
@@ -274,6 +274,43 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     }
   }
 
+  const handleEliminarRutasEntregador = async (entregador: string) => {
+    const sheetsToDelete = routeSheets.filter((s) => s.entregador === entregador && s.estado === "pendiente")
+    
+    if (sheetsToDelete.length === 0) {
+      alert("No hay rutas pendientes para eliminar")
+      return
+    }
+
+    const totalRutas = sheetsToDelete.length
+    const rutasStr = sheetsToDelete.map(s => s.ruta).join(", ")
+    
+    if (!confirm(`¿ELIMINAR ${totalRutas} ruta(s) de ${entregador}?\n\nRutas: ${rutasStr}\n\nEl coordinador deberá regenerarlas.`)) {
+      return
+    }
+
+    try {
+      let eliminadas = 0
+      
+      for (const sheet of sheetsToDelete) {
+        const response = await fetch(`/api/planillas/${sheet.id}`, {
+          method: 'DELETE',
+        })
+
+        if (response.ok) {
+          eliminadas++
+        }
+      }
+
+      alert(`${eliminadas} ruta(s) eliminadas correctamente`)
+      await loadData()
+      
+    } catch (err) {
+      console.error("[ALISTADOR] Error eliminando rutas:", err)
+      alert("Error al eliminar las rutas")
+    }
+  }
+
   const toggleDeliveryPerson = (entregador: string) => {
     const newExpanded = new Set(expandedDeliveryPersons)
     if (newExpanded.has(entregador)) {
@@ -448,13 +485,24 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             </Button>
                             {allPending && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleStartPreparation(entregador)}
-                                className="bg-blue-600 text-xs md:text-sm"
-                              >
-                                Iniciar
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleEliminarRutasEntregador(entregador)}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-1" />
+                                  <span className="hidden md:inline">Eliminar</span>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleStartPreparation(entregador)}
+                                  className="bg-blue-600 text-xs md:text-sm"
+                                >
+                                  Iniciar
+                                </Button>
+                              </>
                             )}
                             {allReady && (
                               <Button
@@ -469,7 +517,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                           </div>
                         </div>
                       </div>
-
                       {isExpanded && (
                         <div className="p-3 md:p-5">
                           <div className="mb-4 md:mb-6">
