@@ -752,8 +752,6 @@ const [filterDate, setFilterDate] = useState("")
               )}
             </Card>
             </TabsContent>
-          </Card>
-          </TabsContent>
 
           {/* PESTAÑA 4: SUPERVISIÓN */}
           <TabsContent value="supervision" className="space-y-4">
