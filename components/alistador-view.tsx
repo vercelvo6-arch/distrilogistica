@@ -202,11 +202,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   try {
     setSaving(true)
 
-    const sheetForEntregador = routeSheets.find(s => s.entregador === editingProduct.entregador)
-    
-    if (!sheetForEntregador) {
-      throw new Error('No se encontró planilla para el entregador')
-    }
+    const sheetForEntregador = routeSheets.find(s => 
+  s.entregador === editingProduct.entregador &&
+  s.orders.some(order => 
+    order.items.some(item => item.codigo === editingProduct.product.codigo)
+  )
+)
 
     const faltante = editingProduct.product.cantidadTotal - disponible
 
