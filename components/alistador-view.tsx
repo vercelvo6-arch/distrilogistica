@@ -50,6 +50,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   }, [])
 
   // 🔥 FUNCIÓN CORREGIDA - Confiar 100% en la BD
+  // 🔥 FUNCIÓN CON FILTRO POR FECHA DE ALISTAMIENTO
   async function loadData() {
     try {
       const response = await fetch('/api/planillas', {
@@ -61,12 +62,48 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       
       const data = await response.json()
 
-      const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
+      // 🔥 OBTENER FECHA DE HOY
+      const hoy = new Date().toISOString().split('T')[0]
+      console.log('[ALISTADOR] 📅 Fecha actual:', hoy)
+
+      // 🔥 FILTRAR SOLO PLANILLAS QUE DEBEN ALISTARSE HOY O ANTES
+      const planillasFiltradas = (data.planillas || []).filter((p: any) => {
+        // Condiciones para mostrar la planilla:
+        // 1. Tiene entregador asignado
+        // 2. Está en estado pendiente o alistando
+        // 3. Su fecha_alistamiento es HOY o anterior (incluye rutas atrasadas)
+        
+        const fechaAlistamiento = p.fecha_alistamiento 
+          ? new Date(p.fecha_alistamiento).toISOString().split('T')[0]
+          : hoy // Si no tiene fecha, asumimos hoy
+
+        const debeAlistarse = (
+          p.entregador && 
+          (p.estado === 'pendiente' || p.estado === 'alistando') &&
+          fechaAlistamiento <= hoy
+        )
+
+        if (debeAlistarse) {
+          console.log('[ALISTADOR] ✅ Mostrar ruta:', {
+            ruta: p.tipo_ruta,
+            entregador: p.entregador,
+            fecha_alistamiento: fechaAlistamiento,
+            estado: p.estado
+          })
+        }
+
+        return debeAlistarse
+      })
+
+      console.log('[ALISTADOR] 📊 Total planillas filtradas:', planillasFiltradas.length)
+
+      const planillas: RouteSheet[] = planillasFiltradas.map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
         fecha: p.fecha,
         entregador: p.entregador,
         estado: p.estado,
+        fecha_alistamiento: p.fecha_alistamiento, // 🔥 AGREGAR
         totalOrders: (p.pedidos || []).filter((ped: any) => ped.id !== null).length,
         totalAmount: Number(p.total_cargue) || 0,
         montoCargue: Number(p.total_cargue) || 0,
@@ -91,7 +128,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
             cantidad: Number(prod.cantidad) || 0,
             valorUnidad: Number(prod.precio_unitario) || 0,
             subtotal: Number(prod.total) || 0,
-            // 🔥 CONFIAR 100% EN LA BASE DE DATOS
             cantidadDisponible: prod.cantidad_disponible,
             cantidadFaltante: prod.cantidad_faltante || 0,
             unidadIncompleta: prod.unidad_incompleta || false,
@@ -101,23 +137,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         })),
         cuentasPorCobrar: [],
       }))
-      
-      console.log('[ALISTADOR] ✓ Planillas cargadas:', planillas.length)
-      
-      // Log de estados para debug
-      planillas.forEach(planilla => {
-        planilla.orders.forEach(order => {
-          order.items.forEach(item => {
-            if (item.estadoAlistamiento !== 'pendiente') {
-              console.log('[ALISTADOR] 📦 Estado detectado:', {
-                codigo: item.codigo,
-                estado: item.estadoAlistamiento,
-                disponible: item.cantidadDisponible
-              })
-            }
-          })
-        })
-      })
       
       setRouteSheets(planillas)
       
