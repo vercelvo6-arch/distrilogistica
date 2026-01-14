@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { User, Upload, FileSpreadsheet, LogOut, Truck, Trash2, Clock, Calendar, Filter } from "lucide-react"
+import { User, Upload, FileSpreadsheet, LogOut, Truck, Trash2, Clock, Calendar, Filter, ChevronDown, ChevronUp, Package } from "lucide-react"
 import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateRouteSheets } from "@/lib/csv-parser"
 import type { RouteSheet, User as UserType } from "@/lib/types"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -755,145 +755,224 @@ const [filterDate, setFilterDate] = useState("")
 
           {/* PESTAÑA 4: SUPERVISIÓN */}
           <TabsContent value="supervision" className="space-y-4">
-            <Card className="p-4 md:p-6">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <FileSpreadsheet className="h-5 w-5" />
-                Supervisión de Planillas Alistadas
-              </h2>
+  <Card className="p-4 md:p-6">
+    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+      <FileSpreadsheet className="h-5 w-5" />
+      Supervisión de Planillas Alistadas
+    </h2>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Filtrar por Entregador</label>
-                <Select 
-                  value={selectedEntregadorSupervision} 
-                  onValueChange={setSelectedEntregadorSupervision}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos los entregadores</SelectItem>
-                    {entregadores.map((e) => (
-                      <SelectItem key={e} value={e}>{e}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+    <div className="mb-4">
+      <label className="block text-sm font-medium mb-2">Filtrar por Entregador</label>
+      <Select 
+        value={selectedEntregadorSupervision} 
+        onValueChange={setSelectedEntregadorSupervision}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Todos" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="todos">Todos los entregadores</SelectItem>
+          {entregadores.map((e) => (
+            <SelectItem key={e} value={e}>{e}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
 
-              {supervisionSheets.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-                  <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p className="font-medium">No hay planillas alistadas</p>
-                  <p className="text-sm mt-1">Las planillas aparecerán aquí una vez que el alistador las complete</p>
+    {supervisionSheets.length === 0 ? (
+      <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
+        <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-50" />
+        <p className="font-medium">No hay planillas alistadas</p>
+        <p className="text-sm mt-1">Las planillas aparecerán aquí una vez que el alistador las complete</p>
+      </div>
+    ) : (
+      <div className="space-y-4 md:space-y-6">
+        {(() => {
+          // Filtrar por entregador seleccionado
+          const filteredSheets = supervisionSheets.filter(s => 
+            selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision
+          )
+
+          // Agrupar por entregador
+          const groupedByEntregador = filteredSheets.reduce((acc, sheet) => {
+            const entregador = sheet.entregador || 'Sin asignar'
+            if (!acc[entregador]) {
+              acc[entregador] = []
+            }
+            acc[entregador].push(sheet)
+            return acc
+          }, {} as Record<string, typeof supervisionSheets>)
+
+          // Función para consolidar productos
+          const getConsolidatedProducts = (sheets: typeof supervisionSheets) => {
+            const productMap = new Map()
+            
+            sheets.forEach(sheet => {
+              sheet.orders.forEach(order => {
+                order.items.forEach(item => {
+                  const existing = productMap.get(item.codigo)
+                  if (existing) {
+                    existing.cantidadTotal += item.cantidad
+                    // Mantener el peor estado
+                    if (item.estadoAlistamiento === 'no_alistado') {
+                      existing.estadoAlistamiento = 'no_alistado'
+                    } else if (item.estadoAlistamiento === 'incompleto' && existing.estadoAlistamiento !== 'no_alistado') {
+                      existing.estadoAlistamiento = 'incompleto'
+                    }
+                    if (item.observacionesFaltante) {
+                      existing.observacionesFaltante = existing.observacionesFaltante 
+                        ? `${existing.observacionesFaltante}; ${item.observacionesFaltante}`
+                        : item.observacionesFaltante
+                    }
+                  } else {
+                    productMap.set(item.codigo, {
+                      ...item,
+                      cantidadTotal: item.cantidad
+                    })
+                  }
+                })
+              })
+            })
+
+            return Array.from(productMap.values()).sort((a, b) => {
+              const cat = (a.categoria || '').localeCompare(b.categoria || '')
+              return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
+            })
+          }
+
+          return Object.entries(groupedByEntregador).map(([entregador, sheets]) => {
+            const consolidatedProducts = getConsolidatedProducts(sheets)
+            const totalRoutes = sheets.length
+            const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
+            const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
+            
+            const totalCompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'completo').length
+            const totalIncompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'incompleto').length
+            const totalNoAlistados = consolidatedProducts.filter(p => p.estadoAlistamiento === 'no_alistado').length
+            const totalPendientes = consolidatedProducts.filter(p => p.estadoAlistamiento === 'pendiente').length
+
+            const [expanded, setExpanded] = useState(false)
+
+            return (
+              <Card key={entregador} className="overflow-hidden border-2">
+                <div className="p-4 md:p-5 bg-gradient-to-r from-blue-50 to-green-50">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 md:gap-3 mb-2">
+                        <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
+                          <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
+                        </div>
+                        <div>
+                          <h2 className="font-bold text-lg md:text-xl">{entregador}</h2>
+                          <p className="text-xs md:text-sm text-muted-foreground">
+                            {totalRoutes} ruta{totalRoutes > 1 ? 's' : ''} · {totalOrders} pedidos · {formatCOP(totalAmount)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                        <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-blue-700 rounded-full font-medium">
+                          {consolidatedProducts.length} productos
+                        </span>
+                        {totalCompletos > 0 && (
+                          <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                            ✅ {totalCompletos} completos
+                          </span>
+                        )}
+                        {totalIncompletos > 0 && (
+                          <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
+                            ⚠️ {totalIncompletos} incompletos
+                          </span>
+                        )}
+                        {totalNoAlistados > 0 && (
+                          <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium">
+                            ❌ {totalNoAlistados} no alistados
+                          </span>
+                        )}
+                        {totalPendientes > 0 && (
+                          <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
+                            ⏳ {totalPendientes} pendientes
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setExpanded(!expanded)}
+                    >
+                      {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
-              ) : (
-                <div className="space-y-6">
-                  {supervisionSheets
-                    .filter(s => selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision)
-                    .map((sheet) => {
-                      const productosConsolidados = new Map()
-                      
-                      sheet.orders.forEach(order => {
-                        order.items.forEach(item => {
-                          const existing = productosConsolidados.get(item.codigo)
-                          if (existing) {
-                            existing.cantidadTotal += item.cantidad
-                          } else {
-                            productosConsolidados.set(item.codigo, {
-                              ...item,
-                              cantidadTotal: item.cantidad
-                            })
-                          }
-                        })
-                      })
 
-                      const productos = Array.from(productosConsolidados.values())
-                      const totalCompletos = productos.filter(p => p.estadoAlistamiento === 'completo').length
-                      const totalIncompletos = productos.filter(p => p.estadoAlistamiento === 'incompleto').length
-                      const totalNoAlistados = productos.filter(p => p.estadoAlistamiento === 'no_alistado').length
+                {expanded && (
+                  <div className="p-3 md:p-5">
+                    <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
+                      <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
+                        <Package className="h-4 w-4 md:h-5 md:w-5" />
+                        Lista de Productos Consolidados
+                      </h3>
+                      <p className="text-xs md:text-sm text-blue-700">
+                        Estado de alistamiento de cada producto
+                      </p>
+                    </div>
 
-                      return (
-                        <Card key={sheet.id} className="p-4 border-2">
-                          <div className="mb-4 pb-4 border-b">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h3 className="font-bold text-lg">Ruta {sheet.ruta} - {sheet.entregador}</h3>
-                                <p className="text-sm text-muted-foreground">
-                                  {sheet.fecha} · {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
-                                </p>
-                              </div>
-                              <span className={`text-xs px-3 py-1 rounded-full ${
-                                sheet.estado === 'alistado' ? 'bg-blue-100 text-blue-700' :
-                                sheet.estado === 'en_ruta' ? 'bg-purple-100 text-purple-700' :
-                                'bg-green-100 text-green-700'
-                              }`}>
-                                {sheet.estado}
-                              </span>
-                            </div>
-                            
-                            <div className="flex gap-2 mt-3">
-                              {totalCompletos > 0 && (
-                                <span className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded-full">
-                                  ✅ {totalCompletos} completos
+                    <div className="overflow-x-auto border rounded-lg">
+                      <table className="w-full text-xs md:text-sm">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
+                            <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
+                            <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
+                            <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cantidad</th>
+                            <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
+                            <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Observaciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {consolidatedProducts.map((producto) => (
+                            <tr key={producto.codigo} className="border-b hover:bg-muted/50">
+                              <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{producto.codigo}</td>
+                              <td className="py-2 md:py-3 px-2 md:px-4">{producto.descripcion}</td>
+                              <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                  {producto.categoria || 'Sin categoría'}
                                 </span>
-                              )}
-                              {totalIncompletos > 0 && (
-                                <span className="text-xs px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full">
-                                  ⚠️ {totalIncompletos} incompletos
+                              </td>
+                              <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
+                                {producto.cantidadTotal}
+                              </td>
+                              <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
+                                  producto.estadoAlistamiento === 'completo' ? 'bg-green-100 text-green-800 border border-green-300' :
+                                  producto.estadoAlistamiento === 'incompleto' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                                  producto.estadoAlistamiento === 'no_alistado' ? 'bg-red-100 text-red-800 border border-red-300' :
+                                  'bg-gray-100 text-gray-700 border border-gray-300'
+                                }`}>
+                                  {producto.estadoAlistamiento === 'completo' ? '✅ Completo' :
+                                   producto.estadoAlistamiento === 'incompleto' ? '⚠️ Incompleto' :
+                                   producto.estadoAlistamiento === 'no_alistado' ? '❌ No alistado' :
+                                   '⏳ Pendiente'}
                                 </span>
-                              )}
-                              {totalNoAlistados > 0 && (
-                                <span className="text-xs px-3 py-1 bg-red-100 text-red-700 rounded-full">
-                                  ❌ {totalNoAlistados} no alistados
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead className="bg-muted">
-                                <tr>
-                                  <th className="text-left py-2 px-3">Código</th>
-                                  <th className="text-left py-2 px-3">Producto</th>
-                                  <th className="text-center py-2 px-3">Cantidad</th>
-                                  <th className="text-center py-2 px-3">Estado</th>
-                                  <th className="text-left py-2 px-3">Observaciones</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {productos.map((producto) => (
-                                  <tr key={producto.codigo} className="border-b">
-                                    <td className="py-2 px-3 font-mono text-xs">{producto.codigo}</td>
-                                    <td className="py-2 px-3">{producto.descripcion}</td>
-                                    <td className="text-center py-2 px-3 font-bold">{producto.cantidadTotal}</td>
-                                    <td className="text-center py-2 px-3">
-                                      <span className={`text-xs px-2 py-1 rounded-full ${
-                                        producto.estadoAlistamiento === 'completo' ? 'bg-green-100 text-green-700' :
-                                        producto.estadoAlistamiento === 'incompleto' ? 'bg-yellow-100 text-yellow-700' :
-                                        producto.estadoAlistamiento === 'no_alistado' ? 'bg-red-100 text-red-700' :
-                                        'bg-gray-100 text-gray-700'
-                                      }`}>
-                                        {producto.estadoAlistamiento === 'completo' ? '✅ Completo' :
-                                         producto.estadoAlistamiento === 'incompleto' ? '⚠️ Incompleto' :
-                                         producto.estadoAlistamiento === 'no_alistado' ? '❌ No alistado' :
-                                         '⏳ Pendiente'}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-3 text-xs text-muted-foreground">
-                                      {producto.observacionesFaltante || '-'}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </Card>
-                      )
-                    })}
-                </div>
-              )}
-            </Card>
-          </TabsContent>
+                              </td>
+                              <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
+                                {producto.observacionesFaltante || '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )
+          })
+        })()}
+      </div>
+    )}
+  </Card>
+</TabsContent>
         </Tabs>
       </main>
     </>
