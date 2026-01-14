@@ -5,16 +5,11 @@ import { getSession } from '@/lib/session'
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Verificar sesión y permisos
     const session = await getSession()
     if (!session?.user) {
-      return NextResponse.json(
-        { error: 'No autenticado' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    // Solo coordinadores y administradores pueden asignar entregadores
     if (session.user.rol !== 'coordinador' && session.user.rol !== 'administrador') {
       return NextResponse.json(
         { error: 'No tienes permisos para asignar entregadores' },
@@ -22,31 +17,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 2. Obtener datos del body
     const body = await request.json()
-    const { planillaId, entregador } = body
+    const { planillaId, entregador, fechaAlistamiento } = body
 
-    // Validar datos
+    // Validaciones
     if (!planillaId || typeof planillaId !== 'string') {
       return NextResponse.json(
-        { error: 'planillaId es requerido y debe ser string' },
+        { error: 'planillaId es requerido' },
         { status: 400 }
       )
     }
 
     if (!entregador || typeof entregador !== 'string') {
       return NextResponse.json(
-        { error: 'entregador es requerido y debe ser string' },
+        { error: 'entregador es requerido' },
         { status: 400 }
       )
     }
 
-    // 3. Conectar a la base de datos
+    if (!fechaAlistamiento || typeof fechaAlistamiento !== 'string') {
+      return NextResponse.json(
+        { error: 'fechaAlistamiento es requerida (formato: YYYY-MM-DD)' },
+        { status: 400 }
+      )
+    }
+
     const sql = getDB()
 
-    // 4. ✅ VALIDACIÓN DINÁMICA: Verificar que el entregador EXISTE en la BD
-    console.log('[API assign] Verificando entregador:', entregador)
-    
+    // Verificar entregador existe y está activo
     const entregadorExists = await sql`
       SELECT id, nombre, rol, estado 
       FROM usuarios 
@@ -56,35 +54,31 @@ export async function POST(request: NextRequest) {
     `
 
     if (entregadorExists.length === 0) {
-      console.error('[API assign] Entregador no encontrado:', entregador)
       return NextResponse.json(
         { error: `El entregador "${entregador}" no existe o no está activo` },
         { status: 400 }
       )
     }
 
-    console.log('[API assign] ✓ Entregador válido:', entregadorExists[0])
-
-    // 5. Verificar que la planilla existe
+    // Verificar planilla existe
     const planillaExists = await sql`
       SELECT id, estado FROM planillas WHERE id = ${planillaId}
     `
 
     if (planillaExists.length === 0) {
-      return NextResponse.json(
-        { error: 'Planilla no encontrada' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Planilla no encontrada' }, { status: 404 })
     }
 
-    // 6. Actualizar la planilla con el entregador asignado
+    // 🔥 ACTUALIZAR CON FECHA DE ALISTAMIENTO
     const result = await sql`
       UPDATE planillas 
       SET 
         entregador = ${entregador},
+        fecha_alistamiento = ${fechaAlistamiento},
+        estado = 'pendiente',
         updated_at = NOW()
       WHERE id = ${planillaId}
-      RETURNING id, entregador, tipo_ruta, fecha, estado
+      RETURNING id, entregador, fecha_alistamiento, tipo_ruta, fecha, estado
     `
 
     if (result.length === 0) {
@@ -94,12 +88,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('[API assign] ✓ Planilla actualizada:', result[0])
+    console.log('[API assign] ✓ Planilla asignada:', result[0])
 
-    // 7. Retornar éxito
     return NextResponse.json({
       success: true,
-      message: `Entregador ${entregador} asignado correctamente`,
+      message: `Entregador ${entregador} asignado para alistar el ${fechaAlistamiento}`,
       planilla: result[0]
     }, { status: 200 })
 
