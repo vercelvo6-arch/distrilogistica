@@ -74,8 +74,8 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         // 3. Su fecha_alistamiento es HOY o anterior (incluye rutas atrasadas)
         
         const fechaAlistamiento = p.fecha_alistamiento 
-          ? new Date(p.fecha_alistamiento).toISOString().split('T')[0]
-          : hoy // Si no tiene fecha, asumimos hoy
+        ? p.fecha_alistamiento.split('T')[0] // Solo extraer YYYY-MM-DD
+        : hoy
 
         const debeAlistarse = (
           p.entregador && 
