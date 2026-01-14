@@ -27,13 +27,14 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [entregadores, setEntregadores] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState("generar")
 
-// Estados para supervisión
-const [supervisionSheets, setSupervisionSheets] = useState<RouteSheet[]>([])
-const [selectedEntregadorSupervision, setSelectedEntregadorSupervision] = useState<string>("todos")
-const [faltantes, setFaltantes] = useState<any[]>([])
+  // Estados para supervisión
+  const [supervisionSheets, setSupervisionSheets] = useState<RouteSheet[]>([])
+  const [selectedEntregadorSupervision, setSelectedEntregadorSupervision] = useState<string>("todos")
+  const [faltantes, setFaltantes] = useState<any[]>([])
+  const [expandedEntregadores, setExpandedEntregadores] = useState<Set<string>>(new Set())
 
-// Filtros para historial
-const [filterDate, setFilterDate] = useState("")
+  // Filtros para historial
+  const [filterDate, setFilterDate] = useState("")
   const [filterEntregador, setFilterEntregador] = useState<string>("todos")
   const [filterEstado, setFilterEstado] = useState<string>("todos")
   const [hasActiveFilter, setHasActiveFilter] = useState(false)
@@ -137,7 +138,6 @@ const [filterDate, setFilterDate] = useState("")
       
       const data = await response.json()
       
-      // Filtrar solo planillas alistadas
       const planillasAlistadas = (data.planillas || [])
         .filter((p: any) => p.estado === 'alistado' || p.estado === 'en_ruta' || p.estado === 'completado')
         .map((p: any) => ({
@@ -168,7 +168,6 @@ const [filterDate, setFilterDate] = useState("")
       
       setSupervisionSheets(planillasAlistadas)
       
-      // Cargar faltantes
       const faltantesResponse = await fetch('/api/faltantes')
       if (faltantesResponse.ok) {
         const faltantesData = await faltantesResponse.json()
@@ -180,6 +179,17 @@ const [filterDate, setFilterDate] = useState("")
     }
   }
 
+  const toggleEntregador = (entregador: string) => {
+    const newExpanded = new Set(expandedEntregadores)
+    if (newExpanded.has(entregador)) {
+      newExpanded.delete(entregador)
+    } else {
+      newExpanded.add(entregador)
+    }
+    setExpandedEntregadores(newExpanded)
+  }
+
+  
   const handleNurturingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       setNurturingFile(e.target.files[0])
@@ -204,11 +214,9 @@ const [filterDate, setFilterDate] = useState("")
     setError(null)
 
     try {
-      console.log("[COORD] 📄 Leyendo archivos...")
       const nurturingText = await nurturingFile.text()
       const planillaText = await planillaFile.text()
 
-      console.log("[COORD] 🔍 Parseando CSV...")
       const sales = parseNurturingCSV(nurturingText)
       const products = parsePlanillaCSV(planillaText)
 
@@ -224,61 +232,28 @@ const [filterDate, setFilterDate] = useState("")
         return
       }
 
-      console.log("[COORD] 📦 Generando órdenes...")
       const fecha = new Date().toISOString().split("T")[0]
-      console.log("[COORD] Fecha de hoy:", fecha)
       const orders = generateOrdersFromSales(sales, products, fecha)
-      
-      console.log("[COORD] 📋 Generando planillas...")
       const sheets = generateRouteSheets(orders)
-
-      console.log("[COORD] 🚀 Enviando al servidor...")
-      console.log("[COORD] Planillas a enviar:", sheets.length)
-      console.log("[COORD] Primera planilla:", sheets[0])
-      console.log("[COORD] Tamaño del JSON:", JSON.stringify({ routeSheets: sheets }).length, "caracteres")
 
       const response = await fetch('/api/planillas', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ routeSheets: sheets })
       })
 
-      console.log("[COORD] 📡 Respuesta del servidor - Status:", response.status)
-      console.log("[COORD] 📡 Respuesta del servidor - OK:", response.ok)
-
       const result = await response.json()
-      console.log("[COORD] 📡 Resultado completo:", result)
 
       if (!response.ok) {
-        console.error("[COORD] ❌ Error del servidor:", result)
         throw new Error(result.error || `Error del servidor: ${response.status}`)
       }
 
-      console.log("[COORD] ✅ Planillas creadas exitosamente")
-      console.log("[COORD] 📊 Total insertadas:", result.count)
-      
-      if (result.errors && result.errors.length > 0) {
-        console.warn("[COORD] ⚠️ Errores durante inserción:", result.errors)
-      }
-
-      console.log("[COORD] ⏳ Esperando 2 segundos antes de recargar...")
       await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      console.log("[COORD] 🔄 Recargando planillas...")
       await loadPlanillas()
-      
-      console.log("[COORD] ✅ Cambiando a pestaña Asignar")
       setActiveTab("asignar")
-      
       setIsProcessing(false)
       
     } catch (err) {
-      console.error("[COORD] ❌ ERROR COMPLETO:", err)
-      console.error("[COORD] ❌ Tipo de error:", err instanceof Error ? err.constructor.name : typeof err)
-      console.error("[COORD] ❌ Mensaje:", err instanceof Error ? err.message : String(err))
-      console.error("[COORD] ❌ Stack trace:", err instanceof Error ? err.stack : 'No disponible')
       setError("Error al procesar los archivos: " + (err as Error).message)
       setIsProcessing(false)
     }
@@ -299,7 +274,6 @@ const [filterDate, setFilterDate] = useState("")
 
       await loadPlanillas()
     } catch (err) {
-      console.error("[COORD] Error asignando entregador:", err)
       setError("Error al asignar entregador: " + (err as Error).message)
     }
   }
@@ -320,7 +294,6 @@ const [filterDate, setFilterDate] = useState("")
 
       await loadPlanillas()
     } catch (err) {
-      console.error("[COORD] Error eliminando planilla:", err)
       setError("Error al eliminar planilla: " + (err as Error).message)
     }
   }
@@ -339,31 +312,25 @@ const [filterDate, setFilterDate] = useState("")
 
       await loadPlanillas()
     } catch (err) {
-      console.error("[COORD] Error posponiendo planilla:", err)
       setError("Error al posponer planilla: " + (err as Error).message)
     }
   }
 
-  // Filtrar planillas para cada pestaña
   const unassignedSheets = routeSheets.filter(s => !s.entregador && s.estado === 'pendiente')
   const assignedSheets = routeSheets.filter(s => s.entregador || s.estado !== 'pendiente')
   
-  // Aplicar filtros al historial
   let filteredHistorial: RouteSheet[] = []
   
   if (hasActiveFilter) {
     filteredHistorial = assignedSheets.filter(s => {
-      // Extraer solo la fecha YYYY-MM-DD de la BD (sin el timestamp)
       const sheetDateOnly = s.fecha.split('T')[0]
       
-      // Si filterDate es una fecha en formato YYYY-MM-DD
       if (filterDate && filterDate.length === 10 && filterDate.includes('-')) {
         return sheetDateOnly === filterDate && 
           (filterEntregador === "todos" || s.entregador === filterEntregador) &&
           (filterEstado === "todos" || s.estado === filterEstado)
       }
       
-      // Filtro "Últimos 7 días"
       if (filterDate === "last7days") {
         const sheetDate = new Date(s.fecha)
         const today = new Date()
@@ -375,7 +342,6 @@ const [filterDate, setFilterDate] = useState("")
           (filterEstado === "todos" || s.estado === filterEstado)
       }
       
-      // Filtro "Mes actual"
       if (filterDate === "currentMonth") {
         const sheetDate = new Date(s.fecha)
         const today = new Date()
@@ -386,13 +352,11 @@ const [filterDate, setFilterDate] = useState("")
           (filterEstado === "todos" || s.estado === filterEstado)
       }
       
-      // Si no hay filterDate pero hay otros filtros
       return (filterEntregador === "todos" || s.entregador === filterEntregador) &&
         (filterEstado === "todos" || s.estado === filterEstado)
     })
   }
 
-  // Funciones de filtros rápidos
   const applyTodayFilter = () => {
     const today = new Date().toISOString().split('T')[0]
     setFilterDate(today)
@@ -422,6 +386,42 @@ const [filterDate, setFilterDate] = useState("")
     setHasActiveFilter(false)
   }
 
+  // Función para consolidar productos (usada en supervisión)
+  const getConsolidatedProducts = (sheets: typeof supervisionSheets) => {
+    const productMap = new Map()
+    
+    sheets.forEach(sheet => {
+      sheet.orders.forEach(order => {
+        order.items.forEach((item: any) => {
+          const existing = productMap.get(item.codigo)
+          if (existing) {
+            existing.cantidadTotal += item.cantidad
+            if (item.estadoAlistamiento === 'no_alistado') {
+              existing.estadoAlistamiento = 'no_alistado'
+            } else if (item.estadoAlistamiento === 'incompleto' && existing.estadoAlistamiento !== 'no_alistado') {
+              existing.estadoAlistamiento = 'incompleto'
+            }
+            if (item.observacionesFaltante) {
+              existing.observacionesFaltante = existing.observacionesFaltante 
+                ? `${existing.observacionesFaltante}; ${item.observacionesFaltante}`
+                : item.observacionesFaltante
+            }
+          } else {
+            productMap.set(item.codigo, {
+              ...item,
+              cantidadTotal: item.cantidad
+            })
+          }
+        })
+      })
+    })
+
+    return Array.from(productMap.values()).sort((a: any, b: any) => {
+      const cat = (a.categoria || '').localeCompare(b.categoria || '')
+      return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
+    })
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -430,6 +430,8 @@ const [filterDate, setFilterDate] = useState("")
     )
   }
 
+ // ... continuación del return del componente
+  
   return (
     <>
       <header className="border-b bg-card">
@@ -457,23 +459,23 @@ const [filterDate, setFilterDate] = useState("")
       <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-5xl">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-4 mb-6">
-  <TabsTrigger value="generar">
-    <Upload className="h-4 w-4 mr-2" />
-    Generar Hoy
-  </TabsTrigger>
-  <TabsTrigger value="asignar">
-    <Truck className="h-4 w-4 mr-2" />
-    Asignar ({unassignedSheets.length})
-  </TabsTrigger>
-  <TabsTrigger value="supervision">
-    <FileSpreadsheet className="h-4 w-4 mr-2" />
-    Supervisión
-  </TabsTrigger>
-  <TabsTrigger value="historial">
-    <Calendar className="h-4 w-4 mr-2" />
-    Historial
-  </TabsTrigger>
-</TabsList>
+            <TabsTrigger value="generar">
+              <Upload className="h-4 w-4 mr-2" />
+              Generar Hoy
+            </TabsTrigger>
+            <TabsTrigger value="asignar">
+              <Truck className="h-4 w-4 mr-2" />
+              Asignar ({unassignedSheets.length})
+            </TabsTrigger>
+            <TabsTrigger value="supervision">
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Supervisión
+            </TabsTrigger>
+            <TabsTrigger value="historial">
+              <Calendar className="h-4 w-4 mr-2" />
+              Historial
+            </TabsTrigger>
+          </TabsList>
 
           {/* PESTAÑA 1: GENERAR HOY */}
           <TabsContent value="generar" className="space-y-4">
@@ -612,7 +614,189 @@ const [filterDate, setFilterDate] = useState("")
             )}
           </TabsContent>
 
-          {/* PESTAÑA 3: HISTORIAL */}
+          {/* PESTAÑA 3: SUPERVISIÓN - CORREGIDA */}
+          <TabsContent value="supervision" className="space-y-4">
+            <Card className="p-4 md:p-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" />
+                Supervisión de Planillas Alistadas
+              </h2>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Filtrar por Entregador</label>
+                <Select 
+                  value={selectedEntregadorSupervision} 
+                  onValueChange={setSelectedEntregadorSupervision}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los entregadores</SelectItem>
+                    {entregadores.map((e) => (
+                      <SelectItem key={e} value={e}>{e}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {supervisionSheets.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
+                  <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-medium">No hay planillas alistadas</p>
+                  <p className="text-sm mt-1">Las planillas aparecerán aquí una vez que el alistador las complete</p>
+                </div>
+              ) : (
+                <div className="space-y-4 md:space-y-6">
+                  {(() => {
+                    const filteredSheets = supervisionSheets.filter(s => 
+                      selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision
+                    )
+
+                    const groupedByEntregador = filteredSheets.reduce((acc, sheet) => {
+                      const entregador = sheet.entregador || 'Sin asignar'
+                      if (!acc[entregador]) {
+                        acc[entregador] = []
+                      }
+                      acc[entregador].push(sheet)
+                      return acc
+                    }, {} as Record<string, typeof supervisionSheets>)
+
+                    return Object.entries(groupedByEntregador).map(([entregador, sheets]) => {
+                      const consolidatedProducts = getConsolidatedProducts(sheets)
+                      const totalRoutes = sheets.length
+                      const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
+                      const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
+                      
+                      const totalCompletos = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'completo').length
+                      const totalIncompletos = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'incompleto').length
+                      const totalNoAlistados = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'no_alistado').length
+                      const totalPendientes = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'pendiente').length
+
+                      const expanded = expandedEntregadores.has(entregador)
+
+                      return (
+                        <Card key={entregador} className="overflow-hidden border-2">
+                          <div className="p-4 md:p-5 bg-gradient-to-r from-blue-50 to-green-50">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 md:gap-3 mb-2">
+                                  <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
+                                    <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
+                                  </div>
+                                  <div>
+                                    <h2 className="font-bold text-lg md:text-xl">{entregador}</h2>
+                                    <p className="text-xs md:text-sm text-muted-foreground">
+                                      {totalRoutes} ruta{totalRoutes > 1 ? 's' : ''} · {totalOrders} pedidos · {formatCOP(totalAmount)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 mt-3">
+                                  <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-blue-700 rounded-full font-medium">
+                                    {consolidatedProducts.length} productos
+                                  </span>
+                                  {totalCompletos > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                                      ✅ {totalCompletos} completos
+                                    </span>
+                                  )}
+                                  {totalIncompletos > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
+                                      ⚠️ {totalIncompletos} incompletos
+                                    </span>
+                                  )}
+                                  {totalNoAlistados > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium">
+                                      ❌ {totalNoAlistados} no alistados
+                                    </span>
+                                  )}
+                                  {totalPendientes > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
+                                      ⏳ {totalPendientes} pendientes
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => toggleEntregador(entregador)}
+                              >
+                                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {expanded && (
+                            <div className="p-3 md:p-5">
+                              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
+                                <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
+                                  <Package className="h-4 w-4 md:h-5 md:w-5" />
+                                  Lista de Productos Consolidados
+                                </h3>
+                                <p className="text-xs md:text-sm text-blue-700">
+                                  Estado de alistamiento de cada producto
+                                </p>
+                              </div>
+
+                              <div className="overflow-x-auto border rounded-lg">
+                                <table className="w-full text-xs md:text-sm">
+                                  <thead className="bg-muted">
+                                    <tr>
+                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
+                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
+                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
+                                      <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cantidad</th>
+                                      <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
+                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Observaciones</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {consolidatedProducts.map((producto: any) => (
+                                      <tr key={producto.codigo} className="border-b hover:bg-muted/50">
+                                        <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{producto.codigo}</td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4">{producto.descripcion}</td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                            {producto.categoria || 'Sin categoría'}
+                                          </span>
+                                        </td>
+                                        <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
+                                          {producto.cantidadTotal}
+                                        </td>
+                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                          <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
+                                            producto.estadoAlistamiento === 'completo' ? 'bg-green-100 text-green-800 border border-green-300' :
+                                            producto.estadoAlistamiento === 'incompleto' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                                            producto.estadoAlistamiento === 'no_alistado' ? 'bg-red-100 text-red-800 border border-red-300' :
+                                            'bg-gray-100 text-gray-700 border border-gray-300'
+                                          }`}>
+                                            {producto.estadoAlistamiento === 'completo' ? '✅ Completo' :
+                                             producto.estadoAlistamiento === 'incompleto' ? '⚠️ Incompleto' :
+                                             producto.estadoAlistamiento === 'no_alistado' ? '❌ No alistado' :
+                                             '⏳ Pendiente'}
+                                          </span>
+                                        </td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
+                                          {producto.observacionesFaltante || '-'}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </Card>
+                      )
+                    })
+                  })()}
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          {/* PESTAÑA 4: HISTORIAL */}
           <TabsContent value="historial" className="space-y-4">
             <Card className="p-4 md:p-6">
               <div className="flex items-center justify-between mb-4">
@@ -627,7 +811,6 @@ const [filterDate, setFilterDate] = useState("")
                 )}
               </div>
 
-              {/* Filtros rápidos */}
               <div className="flex flex-wrap gap-2 mb-4">
                 <Button
                   variant={filterDate === new Date().toISOString().split('T')[0] ? "default" : "outline"}
@@ -751,228 +934,7 @@ const [filterDate, setFilterDate] = useState("")
                 </div>
               )}
             </Card>
-            </TabsContent>
-
-          {/* PESTAÑA 4: SUPERVISIÓN */}
-          <TabsContent value="supervision" className="space-y-4">
-  <Card className="p-4 md:p-6">
-    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-      <FileSpreadsheet className="h-5 w-5" />
-      Supervisión de Planillas Alistadas
-    </h2>
-
-    <div className="mb-4">
-      <label className="block text-sm font-medium mb-2">Filtrar por Entregador</label>
-      <Select 
-        value={selectedEntregadorSupervision} 
-        onValueChange={setSelectedEntregadorSupervision}
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Todos" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="todos">Todos los entregadores</SelectItem>
-          {entregadores.map((e) => (
-            <SelectItem key={e} value={e}>{e}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-
-    {supervisionSheets.length === 0 ? (
-      <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-        <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-50" />
-        <p className="font-medium">No hay planillas alistadas</p>
-        <p className="text-sm mt-1">Las planillas aparecerán aquí una vez que el alistador las complete</p>
-      </div>
-    ) : (
-      <div className="space-y-4 md:space-y-6">
-        {(() => {
-          // Filtrar por entregador seleccionado
-          const filteredSheets = supervisionSheets.filter(s => 
-            selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision
-          )
-
-          // Agrupar por entregador
-          const groupedByEntregador = filteredSheets.reduce((acc, sheet) => {
-            const entregador = sheet.entregador || 'Sin asignar'
-            if (!acc[entregador]) {
-              acc[entregador] = []
-            }
-            acc[entregador].push(sheet)
-            return acc
-          }, {} as Record<string, typeof supervisionSheets>)
-
-          // Función para consolidar productos
-          const getConsolidatedProducts = (sheets: typeof supervisionSheets) => {
-            const productMap = new Map()
-            
-            sheets.forEach(sheet => {
-              sheet.orders.forEach(order => {
-                order.items.forEach(item => {
-                  const existing = productMap.get(item.codigo)
-                  if (existing) {
-                    existing.cantidadTotal += item.cantidad
-                    // Mantener el peor estado
-                    if (item.estadoAlistamiento === 'no_alistado') {
-                      existing.estadoAlistamiento = 'no_alistado'
-                    } else if (item.estadoAlistamiento === 'incompleto' && existing.estadoAlistamiento !== 'no_alistado') {
-                      existing.estadoAlistamiento = 'incompleto'
-                    }
-                    if (item.observacionesFaltante) {
-                      existing.observacionesFaltante = existing.observacionesFaltante 
-                        ? `${existing.observacionesFaltante}; ${item.observacionesFaltante}`
-                        : item.observacionesFaltante
-                    }
-                  } else {
-                    productMap.set(item.codigo, {
-                      ...item,
-                      cantidadTotal: item.cantidad
-                    })
-                  }
-                })
-              })
-            })
-
-            return Array.from(productMap.values()).sort((a, b) => {
-              const cat = (a.categoria || '').localeCompare(b.categoria || '')
-              return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
-            })
-          }
-
-          return Object.entries(groupedByEntregador).map(([entregador, sheets]) => {
-            const consolidatedProducts = getConsolidatedProducts(sheets)
-            const totalRoutes = sheets.length
-            const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
-            const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
-            
-            const totalCompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'completo').length
-            const totalIncompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'incompleto').length
-            const totalNoAlistados = consolidatedProducts.filter(p => p.estadoAlistamiento === 'no_alistado').length
-            const totalPendientes = consolidatedProducts.filter(p => p.estadoAlistamiento === 'pendiente').length
-
-            const [expanded, setExpanded] = useState(false)
-
-            return (
-              <Card key={entregador} className="overflow-hidden border-2">
-                <div className="p-4 md:p-5 bg-gradient-to-r from-blue-50 to-green-50">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 md:gap-3 mb-2">
-                        <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
-                          <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
-                        </div>
-                        <div>
-                          <h2 className="font-bold text-lg md:text-xl">{entregador}</h2>
-                          <p className="text-xs md:text-sm text-muted-foreground">
-                            {totalRoutes} ruta{totalRoutes > 1 ? 's' : ''} · {totalOrders} pedidos · {formatCOP(totalAmount)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-blue-700 rounded-full font-medium">
-                          {consolidatedProducts.length} productos
-                        </span>
-                        {totalCompletos > 0 && (
-                          <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
-                            ✅ {totalCompletos} completos
-                          </span>
-                        )}
-                        {totalIncompletos > 0 && (
-                          <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
-                            ⚠️ {totalIncompletos} incompletos
-                          </span>
-                        )}
-                        {totalNoAlistados > 0 && (
-                          <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium">
-                            ❌ {totalNoAlistados} no alistados
-                          </span>
-                        )}
-                        {totalPendientes > 0 && (
-                          <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
-                            ⏳ {totalPendientes} pendientes
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => setExpanded(!expanded)}
-                    >
-                      {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </div>
-
-                {expanded && (
-                  <div className="p-3 md:p-5">
-                    <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
-                      <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
-                        <Package className="h-4 w-4 md:h-5 md:w-5" />
-                        Lista de Productos Consolidados
-                      </h3>
-                      <p className="text-xs md:text-sm text-blue-700">
-                        Estado de alistamiento de cada producto
-                      </p>
-                    </div>
-
-                    <div className="overflow-x-auto border rounded-lg">
-                      <table className="w-full text-xs md:text-sm">
-                        <thead className="bg-muted">
-                          <tr>
-                            <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
-                            <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
-                            <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
-                            <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cantidad</th>
-                            <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
-                            <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Observaciones</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {consolidatedProducts.map((producto) => (
-                            <tr key={producto.codigo} className="border-b hover:bg-muted/50">
-                              <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{producto.codigo}</td>
-                              <td className="py-2 md:py-3 px-2 md:px-4">{producto.descripcion}</td>
-                              <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
-                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                  {producto.categoria || 'Sin categoría'}
-                                </span>
-                              </td>
-                              <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
-                                {producto.cantidadTotal}
-                              </td>
-                              <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
-                                  producto.estadoAlistamiento === 'completo' ? 'bg-green-100 text-green-800 border border-green-300' :
-                                  producto.estadoAlistamiento === 'incompleto' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
-                                  producto.estadoAlistamiento === 'no_alistado' ? 'bg-red-100 text-red-800 border border-red-300' :
-                                  'bg-gray-100 text-gray-700 border border-gray-300'
-                                }`}>
-                                  {producto.estadoAlistamiento === 'completo' ? '✅ Completo' :
-                                   producto.estadoAlistamiento === 'incompleto' ? '⚠️ Incompleto' :
-                                   producto.estadoAlistamiento === 'no_alistado' ? '❌ No alistado' :
-                                   '⏳ Pendiente'}
-                                </span>
-                              </td>
-                              <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
-                                {producto.observacionesFaltante || '-'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )
-          })
-        })()}
-      </div>
-    )}
-  </Card>
-</TabsContent>
+          </TabsContent>
         </Tabs>
       </main>
     </>
