@@ -10,7 +10,7 @@ import type { RouteSheet, User as UserType } from "@/lib/types"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 
 interface CoordinadorViewProps {
   onLogout: () => void
@@ -38,6 +38,12 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [filterEntregador, setFilterEntregador] = useState<string>("todos")
   const [filterEstado, setFilterEstado] = useState<string>("todos")
   const [hasActiveFilter, setHasActiveFilter] = useState(false)
+  const [assignmentModal, setAssignmentModal] = useState<{
+  sheetId: string
+  ruta: string
+  entregadorSeleccionado: string
+  fechaAlistamiento: string
+} | null>(null)
 
   useEffect(() => {
     loadPlanillas()
@@ -259,24 +265,44 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
   }
 
-  const handleAssignEntregador = async (sheetId: string, entregador: string) => {
-    try {
-      const response = await fetch('/api/assign-entregador', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planillaId: sheetId, entregador })
-      })
+  const handleOpenAssignModal = (sheetId: string, ruta: string) => {
+  const today = new Date().toISOString().split('T')[0]
+  setAssignmentModal({
+    sheetId,
+    ruta,
+    entregadorSeleccionado: '',
+    fechaAlistamiento: today
+  })
+}
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al asignar entregador')
-      }
-
-      await loadPlanillas()
-    } catch (err) {
-      setError("Error al asignar entregador: " + (err as Error).message)
-    }
+const handleConfirmAssignment = async () => {
+  if (!assignmentModal || !assignmentModal.entregadorSeleccionado) {
+    alert('Seleccione un entregador')
+    return
   }
+
+  try {
+    const response = await fetch('/api/assign-entregador', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        planillaId: assignmentModal.sheetId, 
+        entregador: assignmentModal.entregadorSeleccionado,
+        fechaAlistamiento: assignmentModal.fechaAlistamiento
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Error al asignar entregador')
+    }
+
+    setAssignmentModal(null)
+    await loadPlanillas()
+  } catch (err) {
+    setError("Error al asignar entregador: " + (err as Error).message)
+  }
+}
 
   const handleDeletePlanilla = async (sheetId: string) => {
     if (!confirm('¿Está seguro de eliminar esta planilla? Esta acción no se puede deshacer.')) {
@@ -567,25 +593,13 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                             {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Select
-                            value={sheet.entregador || ""}
-                            onValueChange={(value) => handleAssignEntregador(sheet.id, value)}
-                            disabled={entregadores.length === 0}
-                          >
-                            <SelectTrigger className="w-full sm:w-[180px]">
-                              <SelectValue placeholder={entregadores.length === 0 ? "Sin entregadores" : "Seleccionar"} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {entregadores.map((entregador) => (
-                                <SelectItem key={entregador} value={entregador}>
-                                  {entregador}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
+                        <Button
+                          onClick={() => handleOpenAssignModal(sheet.id, sheet.ruta)}
+                          disabled={entregadores.length === 0}
+                        >
+                          Asignar Entregador
+                         </Button>
+                         </div>
                       
                       <div className="flex gap-2 justify-end border-t pt-3">
                         <Button
@@ -937,6 +951,70 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           </TabsContent>
         </Tabs>
       </main>
+      {assignmentModal && (
+        <Dialog open={!!assignmentModal} onOpenChange={() => setAssignmentModal(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Asignar Entregador - Ruta {assignmentModal.ruta}</DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Entregador</label>
+                <Select
+                  value={assignmentModal.entregadorSeleccionado}
+                  onValueChange={(value) => setAssignmentModal({
+                    ...assignmentModal,
+                    entregadorSeleccionado: value
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar entregador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {entregadores.map((entregador) => (
+                      <SelectItem key={entregador} value={entregador}>
+                        {entregador}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Fecha de Alistamiento
+                </label>
+                <input
+                  type="date"
+                  value={assignmentModal.fechaAlistamiento}
+                  onChange={(e) => setAssignmentModal({
+                    ...assignmentModal,
+                    fechaAlistamiento: e.target.value
+                  })}
+                  className="w-full px-3 py-2 border rounded-md"
+                  min={new Date().toISOString().split('T')[0]}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  El alistador verá esta ruta en la fecha seleccionada
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignmentModal(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleConfirmAssignment}>
+                Confirmar Asignación
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
+}
     </>
   )
 }
