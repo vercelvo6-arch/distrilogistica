@@ -125,7 +125,6 @@ const [filterDate, setFilterDate] = useState("")
       setLoading(false)
     }
   }
-}
 
   async function loadSupervisionData() {
     try {
@@ -421,6 +420,7 @@ const [filterDate, setFilterDate] = useState("")
     setFilterEntregador("todos")
     setFilterEstado("todos")
     setHasActiveFilter(false)
+  }
 
   if (loading) {
     return (
