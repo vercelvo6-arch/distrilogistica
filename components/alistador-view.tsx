@@ -49,6 +49,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     loadData()
   }, [])
 
+  // 🔥 FUNCIÓN CORREGIDA - Confiar 100% en la BD
   async function loadData() {
     try {
       const response = await fetch('/api/planillas', {
@@ -59,17 +60,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       if (!response.ok) throw new Error('Error al cargar planillas')
       
       const data = await response.json()
-      // 🔥 Crear un mapa de estados actuales ANTES de recargar
-const estadosActuales = new Map<string, string>()
-routeSheets.forEach(sheet => {
-  sheet.orders.forEach(order => {
-    order.items.forEach(item => {
-      if (item.estadoAlistamiento && item.estadoAlistamiento !== 'pendiente') {
-        estadosActuales.set(item.codigo, item.estadoAlistamiento)
-      }
-    })
-  })
-})
 
       const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
         id: p.id,
@@ -101,15 +91,33 @@ routeSheets.forEach(sheet => {
             cantidad: Number(prod.cantidad) || 0,
             valorUnidad: Number(prod.precio_unitario) || 0,
             subtotal: Number(prod.total) || 0,
+            // 🔥 CONFIAR 100% EN LA BASE DE DATOS
             cantidadDisponible: prod.cantidad_disponible,
             cantidadFaltante: prod.cantidad_faltante || 0,
             unidadIncompleta: prod.unidad_incompleta || false,
             observacionesFaltante: prod.observaciones_faltante,
-            estadoAlistamiento: estadosActuales.get(prod.codigo) || prod.estado_alistamiento || 'pendiente',
+            estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
           })),
         })),
         cuentasPorCobrar: [],
       }))
+      
+      console.log('[ALISTADOR] ✓ Planillas cargadas:', planillas.length)
+      
+      // Log de estados para debug
+      planillas.forEach(planilla => {
+        planilla.orders.forEach(order => {
+          order.items.forEach(item => {
+            if (item.estadoAlistamiento !== 'pendiente') {
+              console.log('[ALISTADOR] 📦 Estado detectado:', {
+                codigo: item.codigo,
+                estado: item.estadoAlistamiento,
+                disponible: item.cantidadDisponible
+              })
+            }
+          })
+        })
+      })
       
       setRouteSheets(planillas)
       
@@ -195,108 +203,118 @@ routeSheets.forEach(sheet => {
     setObservaciones(product.observacionesFaltante || "")
   }
 
+  // 🔥 FUNCIÓN CORREGIDA - Guardar SIEMPRE en BD
   const handleSaveEstadoAlistamiento = async () => {
-  if (!editingProduct) return
+    if (!editingProduct) return
 
-  const disponible = Number(disponibleInput) || 0
+    const disponible = Number(disponibleInput) || 0
 
-  if (estadoSeleccionado === 'no_alistado' && !observaciones.trim()) {
-    alert('Por favor agregue observaciones para productos no alistados')
-    return
-  }
+    // Validaciones solo para estados que requieren observaciones
+    if (estadoSeleccionado === 'no_alistado' && !observaciones.trim()) {
+      alert('Por favor agregue observaciones para productos no alistados')
+      return
+    }
 
-  if (estadoSeleccionado === 'incompleto' && !observaciones.trim()) {
-    alert('Por favor agregue observaciones para productos incompletos')
-    return
-  }
+    if (estadoSeleccionado === 'incompleto' && !observaciones.trim()) {
+      alert('Por favor agregue observaciones para productos incompletos')
+      return
+    }
 
-  try {
-    setSaving(true)
+    try {
+      setSaving(true)
 
-    const sheetForEntregador = routeSheets.find(s => 
-  s.entregador === editingProduct.entregador &&
-  s.orders.some(order => 
-    order.items.some(item => item.codigo === editingProduct.product.codigo)
-  )
-)
+      const sheetForEntregador = routeSheets.find(s => 
+        s.entregador === editingProduct.entregador &&
+        s.orders.some(order => 
+          order.items.some(item => item.codigo === editingProduct.product.codigo)
+        )
+      )
 
-if (!sheetForEntregador) {
-  throw new Error('No se encontró planilla para el entregador')
-}
-
-    const faltante = editingProduct.product.cantidadTotal - disponible
-
-console.log('🔍 DEBUG - Datos del producto:', {
-  codigo: editingProduct.product.codigo,
-  entregador: editingProduct.entregador,
-  planilla_id: sheetForEntregador.id,
-  ruta: sheetForEntregador.ruta,
-  estadoSeleccionado
-})
-
-// 🔥 ACTUALIZAR EL ESTADO LOCAL INMEDIATAMENTE
-    // 🔥 ACTUALIZAR EL ESTADO LOCAL INMEDIATAMENTE
-    const updatedSheets = routeSheets.map(sheet => {
-      if (sheet.entregador === editingProduct.entregador) {
-        return {
-          ...sheet,
-          orders: sheet.orders.map(order => ({
-            ...order,
-            items: order.items.map(item => {
-              if (item.codigo === editingProduct.product.codigo) {
-                return {
-                  ...item,
-                  estadoAlistamiento: estadoSeleccionado,
-                  cantidadDisponible: disponible,
-                  cantidadFaltante: faltante,
-                  unidadIncompleta: estadoSeleccionado === 'incompleto',
-                  observacionesFaltante: observaciones.trim() || null
-                }
-              }
-              return item
-            })
-          }))
-        }
+      if (!sheetForEntregador) {
+        throw new Error('No se encontró planilla para el entregador')
       }
-      return sheet
-    })
 
-    // Actualizar el estado inmediatamente para feedback visual
-    setRouteSheets(updatedSheets)
+      const faltante = editingProduct.product.cantidadTotal - disponible
 
-    // Guardar en el backend SIEMPRE
-fetch('/api/faltantes', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    planilla_id: sheetForEntregador.id,
-    codigo: editingProduct.product.codigo,
-    descripcion: editingProduct.product.descripcion,
-    categoria: editingProduct.product.categoria,
-    entregador: editingProduct.entregador,
-    ruta: sheetForEntregador.ruta,
-    cantidadSolicitada: editingProduct.product.cantidadTotal,
-    cantidadDisponible: disponible,
-    cantidadFaltante: faltante,
-    unidadIncompleta: estadoSeleccionado === 'incompleto',
-    observaciones: observaciones.trim(),
-    marcadoPor: user.id,
-    estadoAlistamiento: estadoSeleccionado,
-  }),
-}).catch(err => console.error('Error guardando estado:', err))
+      console.log('🔍 DEBUG - Guardando estado:', {
+        codigo: editingProduct.product.codigo,
+        estadoSeleccionado,
+        disponible,
+        faltante,
+        planilla_id: sheetForEntregador.id
+      })
 
-    setEditingProduct(null)
-    setDisponibleInput("")
-    setEstadoSeleccionado("completo")
-    setObservaciones("")
+      // 🔥 SIEMPRE GUARDAR EN BASE DE DATOS - NO IMPORTA EL ESTADO
+      const saveResponse = await fetch('/api/faltantes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planilla_id: sheetForEntregador.id,
+          codigo: editingProduct.product.codigo,
+          descripcion: editingProduct.product.descripcion,
+          categoria: editingProduct.product.categoria,
+          entregador: editingProduct.entregador,
+          ruta: sheetForEntregador.ruta,
+          cantidadSolicitada: editingProduct.product.cantidadTotal,
+          cantidadDisponible: disponible,
+          cantidadFaltante: faltante,
+          unidadIncompleta: estadoSeleccionado === 'incompleto',
+          observaciones: observaciones.trim() || null,
+          marcadoPor: user.id,
+          estadoAlistamiento: estadoSeleccionado,
+        }),
+      })
 
-  } catch (err) {
-    console.error("[ALISTADOR] Error saving estado:", err)
-    alert('Error al guardar estado de alistamiento')
-  } finally {
-    setSaving(false)
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json()
+        throw new Error(errorData.error || 'Error al guardar estado')
+      }
+
+      console.log('✅ Estado guardado correctamente en BD')
+
+      // 🔥 ACTUALIZAR EL ESTADO LOCAL INMEDIATAMENTE
+      const updatedSheets = routeSheets.map(sheet => {
+        if (sheet.entregador === editingProduct.entregador) {
+          return {
+            ...sheet,
+            orders: sheet.orders.map(order => ({
+              ...order,
+              items: order.items.map(item => {
+                if (item.codigo === editingProduct.product.codigo) {
+                  return {
+                    ...item,
+                    estadoAlistamiento: estadoSeleccionado,
+                    cantidadDisponible: disponible,
+                    cantidadFaltante: faltante,
+                    unidadIncompleta: estadoSeleccionado === 'incompleto',
+                    observacionesFaltante: observaciones.trim() || null
+                  }
+                }
+                return item
+              })
+            }))
+          }
+        }
+        return sheet
+      })
+
+      // Actualizar el estado inmediatamente para feedback visual
+      setRouteSheets(updatedSheets)
+
+      setEditingProduct(null)
+      setDisponibleInput("")
+      setEstadoSeleccionado("completo")
+      setObservaciones("")
+
+    } catch (err) {
+      console.error("[ALISTADOR] Error saving estado:", err)
+      alert('Error al guardar estado de alistamiento: ' + (err as Error).message)
+    } finally {
+      setSaving(false)
+    }
   }
-}
+
+ // ... continuación de AlistadorView
 
   const handleStartPreparation = async (entregador: string) => {
     try {
