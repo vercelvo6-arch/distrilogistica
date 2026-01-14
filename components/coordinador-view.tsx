@@ -1015,6 +1015,3 @@ const handleConfirmAssignment = async () => {
     </>
   )
 }
-    </>
-  )
-}
