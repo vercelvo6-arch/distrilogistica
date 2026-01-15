@@ -4,7 +4,20 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { User, Upload, FileSpreadsheet, LogOut, Truck, Trash2, Clock, Calendar, Filter, ChevronDown, ChevronUp, Package } from "lucide-react"
+import {
+  User,
+  Upload,
+  FileSpreadsheet,
+  LogOut,
+  Truck,
+  Trash2,
+  Clock,
+  Calendar,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  Package,
+} from "lucide-react"
 import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateRouteSheets } from "@/lib/csv-parser"
 import type { RouteSheet, User as UserType } from "@/lib/types"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -42,11 +55,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [filterEstado, setFilterEstado] = useState<string>("todos")
   const [hasActiveFilter, setHasActiveFilter] = useState(false)
   const [assignmentModal, setAssignmentModal] = useState<{
-  sheetId: string
-  ruta: string
-  entregadorSeleccionado: string
-  fechaAlistamiento: string
-} | null>(null)
+    sheetId: string
+    ruta: string
+    entregadorSeleccionado: string
+    fechaAlistamiento: string
+  } | null>(null)
 
   useEffect(() => {
     loadPlanillas()
@@ -61,36 +74,36 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
 
   async function loadEntregadores() {
     try {
-      const response = await fetch('/api/entregadores')
-      if (!response.ok) throw new Error('Error al cargar entregadores')
-      
+      const response = await fetch("/api/entregadores")
+      if (!response.ok) throw new Error("Error al cargar entregadores")
+
       const data = await response.json()
       const nombresEntregadores = data.entregadores.map((e: any) => e.nombre)
-      
+
       setEntregadores(nombresEntregadores)
-      console.log('📦 [COORD] Entregadores cargados:', nombresEntregadores)
+      console.log("📦 [COORD] Entregadores cargados:", nombresEntregadores)
     } catch (err) {
-      console.error('❌ [COORD] Error cargando entregadores:', err)
-      setError('No se pudieron cargar los entregadores')
+      console.error("❌ [COORD] Error cargando entregadores:", err)
+      setError("No se pudieron cargar los entregadores")
     }
   }
 
   async function loadPlanillas() {
     console.log("[COORD-LOAD] Iniciando carga de planillas...")
     try {
-      const response = await fetch('/api/planillas', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+      const response = await fetch("/api/planillas", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json()
         console.error("[COORD-LOAD] Error response:", errorData)
-        throw new Error('Error al cargar planillas')
+        throw new Error("Error al cargar planillas")
       }
-      
+
       const data = await response.json()
-      
+
       const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
@@ -117,7 +130,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           items: (ped.productos || []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
-            categoria: prod.categoria || '',
+            categoria: prod.categoria || "",
             cantidad: Number(prod.cantidad) || 0,
             valorUnidad: Number(prod.precio_unitario) || 0,
             subtotal: Number(prod.total) || 0,
@@ -125,7 +138,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         })),
         cuentasPorCobrar: [],
       }))
-      
+
       console.log("[COORD-LOAD] ✓ Total planillas transformadas:", planillas.length)
       setRouteSheets(planillas)
     } catch (err) {
@@ -136,80 +149,80 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
   }
 
+  const handleSubsanarFaltante = async (data: SubsanacionData) => {
+    try {
+      const response = await fetch("/api/faltantes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Error al subsanar faltante")
+      }
+
+      const result = await response.json()
+      alert(result.mensaje || "Faltante subsanado correctamente")
+
+      await loadSupervisionData()
+    } catch (err) {
+      console.error("[SUBSANAR] ERROR:", err)
+      alert("Error: " + (err as Error).message)
+    }
+  }
+
   async function loadSupervisionData() {
-  try {
-    const response = await fetch('/api/planillas', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    })
-    
-    if (!response.ok) throw new Error('Error al cargar planillas')
-    
-    const data = await response.json()
-    
-    const planillasAlistadas = (data.planillas || [])
-      .filter((p: any) => p.estado === 'alistado' || p.estado === 'en_ruta' || p.estado === 'completado')
-      .map((p: any) => ({
-        id: p.id,
-        ruta: p.tipo_ruta,
-        fecha: p.fecha,
-        fecha_alistamiento: p.fecha_alistamiento, // 🔥 IMPORTANTE
-        entregador: p.entregador,
-        estado: p.estado,
-        totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
-        totalAmount: Number(p.total_cargue) || 0,
-        orders: (p.pedidos || []).map((ped: any) => ({
-          id: ped.id,
-          cliente: ped.cliente,
-          items: (ped.productos || []).map((prod: any) => ({
-            codigo: prod.codigo,
-            descripcion: prod.nombre,
-            categoria: prod.categoria || '',
-            cantidad: Number(prod.cantidad) || 0,
-            valorUnidad: Number(prod.precio_unitario) || 0,
-            estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
-            cantidadDisponible: prod.cantidad_disponible,
-            cantidadFaltante: prod.cantidad_faltante || 0,
-            unidadIncompleta: prod.unidad_incompleta || false,
-            observacionesFaltante: prod.observaciones_faltante,
+    try {
+      const response = await fetch("/api/planillas", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      if (!response.ok) throw new Error("Error al cargar planillas")
+
+      const data = await response.json()
+
+      const planillasAlistadas = (data.planillas || [])
+        .filter((p: any) => p.estado === "alistado" || p.estado === "en_ruta" || p.estado === "completado")
+        .map((p: any) => ({
+          id: p.id,
+          ruta: p.tipo_ruta,
+          fecha: p.fecha,
+          fecha_alistamiento: p.fecha_alistamiento,
+          entregador: p.entregador,
+          estado: p.estado,
+          totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
+          totalAmount: Number(p.total_cargue) || 0,
+          orders: (p.pedidos || []).map((ped: any) => ({
+            id: ped.id,
+            cliente: ped.cliente,
+            items: (ped.productos || []).map((prod: any) => ({
+              codigo: prod.codigo,
+              descripcion: prod.nombre,
+              categoria: prod.categoria || "",
+              cantidad: Number(prod.cantidad) || 0,
+              valorUnidad: Number(prod.precio_unitario) || 0,
+              estadoAlistamiento: prod.estado_alistamiento || "pendiente",
+              cantidadDisponible: prod.cantidad_disponible,
+              cantidadFaltante: prod.cantidad_faltante || 0,
+              unidadIncompleta: prod.unidad_incompleta || false,
+              observacionesFaltante: prod.observaciones_faltante,
+            })),
           })),
-        })),
-      }))
-    const handleSubsanarFaltante = async (data: SubsanacionData) => {
-  try {
-    const response = await fetch('/api/faltantes', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    })
+        }))
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || 'Error al subsanar faltante')
-    }
+      setSupervisionSheets(planillasAlistadas)
 
-    const result = await response.json()
-    alert(result.mensaje || 'Faltante subsanado correctamente')
-    
-    await loadSupervisionData()
-    
-  } catch (err) {
-    console.error('[SUBSANAR] ERROR:', err)
-    alert('Error: ' + (err as Error).message)
-  }
-}
-    setSupervisionSheets(planillasAlistadas)
-    
-    const faltantesResponse = await fetch('/api/faltantes')
-    if (faltantesResponse.ok) {
-      const faltantesData = await faltantesResponse.json()
-      setFaltantes(faltantesData.faltantes || [])
+      const faltantesResponse = await fetch("/api/faltantes")
+      if (faltantesResponse.ok) {
+        const faltantesData = await faltantesResponse.json()
+        setFaltantes(faltantesData.faltantes || [])
+      }
+    } catch (err) {
+      console.error("[COORD] Error loading supervision data:", err)
     }
-    
-  } catch (err) {
-    console.error("[COORD] Error loading supervision data:", err)
   }
-}
 
   const toggleEntregador = (entregador: string) => {
     const newExpanded = new Set(expandedEntregadores)
@@ -221,7 +234,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     setExpandedEntregadores(newExpanded)
   }
 
-  
   const handleNurturingUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       setNurturingFile(e.target.files[0])
@@ -268,10 +280,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       const orders = generateOrdersFromSales(sales, products, fecha)
       const sheets = generateRouteSheets(orders)
 
-      const response = await fetch('/api/planillas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ routeSheets: sheets })
+      const response = await fetch("/api/planillas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routeSheets: sheets }),
       })
 
       const result = await response.json()
@@ -280,11 +292,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         throw new Error(result.error || `Error del servidor: ${response.status}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, 2000))
       await loadPlanillas()
       setActiveTab("asignar")
       setIsProcessing(false)
-      
     } catch (err) {
       setError("Error al procesar los archivos: " + (err as Error).message)
       setIsProcessing(false)
@@ -292,56 +303,56 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   }
 
   const handleOpenAssignModal = (sheetId: string, ruta: string) => {
-  const today = new Date().toISOString().split('T')[0]
-  setAssignmentModal({
-    sheetId,
-    ruta,
-    entregadorSeleccionado: '',
-    fechaAlistamiento: today
-  })
-}
-
-const handleConfirmAssignment = async () => {
-  if (!assignmentModal || !assignmentModal.entregadorSeleccionado) {
-    alert('Seleccione un entregador')
-    return
+    const today = new Date().toISOString().split("T")[0]
+    setAssignmentModal({
+      sheetId,
+      ruta,
+      entregadorSeleccionado: "",
+      fechaAlistamiento: today,
+    })
   }
 
-  try {
-    const response = await fetch('/api/assign-entregador', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        planillaId: assignmentModal.sheetId, 
-        entregador: assignmentModal.entregadorSeleccionado,
-        fechaAlistamiento: assignmentModal.fechaAlistamiento
-      })
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || 'Error al asignar entregador')
+  const handleConfirmAssignment = async () => {
+    if (!assignmentModal || !assignmentModal.entregadorSeleccionado) {
+      alert("Seleccione un entregador")
+      return
     }
 
-    setAssignmentModal(null)
-    await loadPlanillas()
-  } catch (err) {
-    setError("Error al asignar entregador: " + (err as Error).message)
+    try {
+      const response = await fetch("/api/assign-entregador", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planillaId: assignmentModal.sheetId,
+          entregador: assignmentModal.entregadorSeleccionado,
+          fechaAlistamiento: assignmentModal.fechaAlistamiento,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Error al asignar entregador")
+      }
+
+      setAssignmentModal(null)
+      await loadPlanillas()
+    } catch (err) {
+      setError("Error al asignar entregador: " + (err as Error).message)
+    }
   }
-}
 
   const handleDeletePlanilla = async (sheetId: string) => {
-    if (!confirm('¿Está seguro de eliminar esta planilla? Esta acción no se puede deshacer.')) {
+    if (!confirm("¿Está seguro de eliminar esta planilla? Esta acción no se puede deshacer.")) {
       return
     }
 
     try {
       const response = await fetch(`/api/planillas/${sheetId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       })
 
       if (!response.ok) {
-        throw new Error('Error al eliminar planilla')
+        throw new Error("Error al eliminar planilla")
       }
 
       await loadPlanillas()
@@ -352,14 +363,14 @@ const handleConfirmAssignment = async () => {
 
   const handlePostponePlanilla = async (sheetId: string) => {
     try {
-      const response = await fetch('/api/planillas/postpone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planillaId: sheetId })
+      const response = await fetch("/api/planillas/postpone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planillaId: sheetId }),
       })
 
       if (!response.ok) {
-        throw new Error('Error al posponer planilla')
+        throw new Error("Error al posponer planilla")
       }
 
       await loadPlanillas()
@@ -368,49 +379,58 @@ const handleConfirmAssignment = async () => {
     }
   }
 
-  const unassignedSheets = routeSheets.filter(s => !s.entregador && s.estado === 'pendiente')
-  const assignedSheets = routeSheets.filter(s => s.entregador || s.estado !== 'pendiente')
-  
+  const unassignedSheets = routeSheets.filter((s) => !s.entregador && s.estado === "pendiente")
+  const assignedSheets = routeSheets.filter((s) => s.entregador || s.estado !== "pendiente")
+
   let filteredHistorial: RouteSheet[] = []
-  
+
   if (hasActiveFilter) {
-    filteredHistorial = assignedSheets.filter(s => {
-      const sheetDateOnly = s.fecha.split('T')[0]
-      
-      if (filterDate && filterDate.length === 10 && filterDate.includes('-')) {
-        return sheetDateOnly === filterDate && 
+    filteredHistorial = assignedSheets.filter((s) => {
+      const sheetDateOnly = s.fecha.split("T")[0]
+
+      if (filterDate && filterDate.length === 10 && filterDate.includes("-")) {
+        return (
+          sheetDateOnly === filterDate &&
           (filterEntregador === "todos" || s.entregador === filterEntregador) &&
           (filterEstado === "todos" || s.estado === filterEstado)
+        )
       }
-      
+
       if (filterDate === "last7days") {
         const sheetDate = new Date(s.fecha)
         const today = new Date()
         const sevenDaysAgo = new Date()
         sevenDaysAgo.setDate(today.getDate() - 7)
-        
-        return sheetDate >= sevenDaysAgo && sheetDate <= today &&
+
+        return (
+          sheetDate >= sevenDaysAgo &&
+          sheetDate <= today &&
           (filterEntregador === "todos" || s.entregador === filterEntregador) &&
           (filterEstado === "todos" || s.estado === filterEstado)
+        )
       }
-      
+
       if (filterDate === "currentMonth") {
         const sheetDate = new Date(s.fecha)
         const today = new Date()
-        
-        return sheetDate.getMonth() === today.getMonth() && 
+
+        return (
+          sheetDate.getMonth() === today.getMonth() &&
           sheetDate.getFullYear() === today.getFullYear() &&
           (filterEntregador === "todos" || s.entregador === filterEntregador) &&
           (filterEstado === "todos" || s.estado === filterEstado)
+        )
       }
-      
-      return (filterEntregador === "todos" || s.entregador === filterEntregador) &&
+
+      return (
+        (filterEntregador === "todos" || s.entregador === filterEntregador) &&
         (filterEstado === "todos" || s.estado === filterEstado)
+      )
     })
   }
 
   const applyTodayFilter = () => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toISOString().split("T")[0]
     setFilterDate(today)
     setFilterEntregador("todos")
     setFilterEstado("todos")
@@ -441,27 +461,27 @@ const handleConfirmAssignment = async () => {
   // Función para consolidar productos (usada en supervisión)
   const getConsolidatedProducts = (sheets: typeof supervisionSheets) => {
     const productMap = new Map()
-    
-    sheets.forEach(sheet => {
-      sheet.orders.forEach(order => {
+
+    sheets.forEach((sheet) => {
+      sheet.orders.forEach((order) => {
         order.items.forEach((item: any) => {
           const existing = productMap.get(item.codigo)
           if (existing) {
             existing.cantidadTotal += item.cantidad
-            if (item.estadoAlistamiento === 'no_alistado') {
-              existing.estadoAlistamiento = 'no_alistado'
-            } else if (item.estadoAlistamiento === 'incompleto' && existing.estadoAlistamiento !== 'no_alistado') {
-              existing.estadoAlistamiento = 'incompleto'
+            if (item.estadoAlistamiento === "no_alistado") {
+              existing.estadoAlistamiento = "no_alistado"
+            } else if (item.estadoAlistamiento === "incompleto" && existing.estadoAlistamiento !== "no_alistado") {
+              existing.estadoAlistamiento = "incompleto"
             }
             if (item.observacionesFaltante) {
-              existing.observacionesFaltante = existing.observacionesFaltante 
+              existing.observacionesFaltante = existing.observacionesFaltante
                 ? `${existing.observacionesFaltante}; ${item.observacionesFaltante}`
                 : item.observacionesFaltante
             }
           } else {
             productMap.set(item.codigo, {
               ...item,
-              cantidadTotal: item.cantidad
+              cantidadTotal: item.cantidad,
             })
           }
         })
@@ -469,7 +489,7 @@ const handleConfirmAssignment = async () => {
     })
 
     return Array.from(productMap.values()).sort((a: any, b: any) => {
-      const cat = (a.categoria || '').localeCompare(b.categoria || '')
+      const cat = (a.categoria || "").localeCompare(b.categoria || "")
       return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
     })
   }
@@ -482,8 +502,6 @@ const handleConfirmAssignment = async () => {
     )
   }
 
- // ... continuación del return del componente
-  
   return (
     <>
       <header className="border-b bg-card">
@@ -587,9 +605,7 @@ const handleConfirmAssignment = async () => {
               <Card className="p-8 text-center">
                 <Truck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No hay planillas pendientes</h3>
-                <p className="text-sm text-muted-foreground">
-                  Todas las planillas han sido asignadas
-                </p>
+                <p className="text-sm text-muted-foreground">Todas las planillas han sido asignadas</p>
               </Card>
             ) : (
               <Card className="p-4 md:p-6">
@@ -608,10 +624,7 @@ const handleConfirmAssignment = async () => {
 
                 <div className="space-y-3">
                   {unassignedSheets.map((sheet) => (
-                    <div
-                      key={sheet.id}
-                      className="flex flex-col gap-3 p-3 md:p-4 border rounded-lg bg-muted/50"
-                    >
+                    <div key={sheet.id} className="flex flex-col gap-3 p-3 md:p-4 border rounded-lg bg-muted/50">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="flex-1">
                           <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
@@ -624,9 +637,9 @@ const handleConfirmAssignment = async () => {
                           disabled={entregadores.length === 0}
                         >
                           Asignar Entregador
-                         </Button>
-                         </div>
-                      
+                        </Button>
+                      </div>
+
                       <div className="flex gap-2 justify-end border-t pt-3">
                         <Button
                           variant="outline"
@@ -654,7 +667,7 @@ const handleConfirmAssignment = async () => {
             )}
           </TabsContent>
 
-          {/* PESTAÑA 3: SUPERVISIÓN - CORREGIDA */}
+          {/* PESTAÑA 3: SUPERVISIÓN */}
           <TabsContent value="supervision" className="space-y-4">
             <Card className="p-4 md:p-6">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -664,17 +677,16 @@ const handleConfirmAssignment = async () => {
 
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">Filtrar por Entregador</label>
-                <Select 
-                  value={selectedEntregadorSupervision} 
-                  onValueChange={setSelectedEntregadorSupervision}
-                >
+                <Select value={selectedEntregadorSupervision} onValueChange={setSelectedEntregadorSupervision}>
                   <SelectTrigger>
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos los entregadores</SelectItem>
                     {entregadores.map((e) => (
-                      <SelectItem key={e} value={e}>{e}</SelectItem>
+                      <SelectItem key={e} value={e}>
+                        {e}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -689,198 +701,222 @@ const handleConfirmAssignment = async () => {
               ) : (
                 <div className="space-y-4 md:space-y-6">
                   {(() => {
-  const filteredSheets = supervisionSheets.filter(s => 
-    selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision
-  )
+                    const filteredSheets = supervisionSheets.filter(
+                      (s) =>
+                        selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision,
+                    )
 
-  // 🔥 AGRUPAR POR ENTREGADOR + FECHA_ALISTAMIENTO
-  const groupedByEntregadorYFecha = filteredSheets.reduce((acc, sheet) => {
-    const key = `${sheet.entregador}_${sheet.fecha_alistamiento || sheet.fecha}`
-    
-    if (!acc[key]) {
-      acc[key] = {
-        entregador: sheet.entregador,
-        fecha_alistamiento: sheet.fecha_alistamiento || sheet.fecha,
-        sheets: []
-      }
-    }
-    
-    acc[key].sheets.push(sheet)
-    return acc
-  }, {} as Record<string, { entregador: string; fecha_alistamiento: string; sheets: typeof supervisionSheets }>)
+                    const groupedByEntregadorYFecha = filteredSheets.reduce(
+                      (acc, sheet) => {
+                        const key = `${sheet.entregador}_${sheet.fecha_alistamiento || sheet.fecha}`
 
-  return Object.entries(groupedByEntregadorYFecha).map(([key, grupo]) => {
-    const { entregador, fecha_alistamiento, sheets } = grupo
-    const consolidatedProducts = getConsolidatedProducts(sheets)
-    const totalRoutes = sheets.length
-    const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
-    const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
-    
-    const totalCompletos = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'completo').length
-    const totalIncompletos = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'incompleto').length
-    const totalNoAlistados = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'no_alistado').length
-    const totalPendientes = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'pendiente').length
+                        if (!acc[key]) {
+                          acc[key] = {
+                            entregador: sheet.entregador,
+                            fecha_alistamiento: sheet.fecha_alistamiento || sheet.fecha,
+                            sheets: [],
+                          }
+                        }
 
-    const expanded = expandedEntregadores.has(key)
-    
-    // Formatear fecha para mostrar
-    const fechaMostrar = new Date(fecha_alistamiento).toLocaleDateString('es-CO', {
-      day: '2-digit',
-      month: 'short'
-    })
+                        acc[key].sheets.push(sheet)
+                        return acc
+                      },
+                      {} as Record<
+                        string,
+                        { entregador: string; fecha_alistamiento: string; sheets: typeof supervisionSheets }
+                      >,
+                    )
 
-    return (
-      <Card key={key} className="overflow-hidden border-2">
-        <div className="p-4 md:p-5 bg-gradient-to-r from-blue-50 to-green-50">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 md:gap-3 mb-2">
-                <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
-                  <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-lg md:text-xl">
-                    {entregador} - {fechaMostrar}
-                  </h2>
-                  <p className="text-xs md:text-sm text-muted-foreground">
-                    {totalRoutes} ruta{totalRoutes > 1 ? 's' : ''} · {totalOrders} pedidos · {formatCOP(totalAmount)}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 mt-3">
-                <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-blue-700 rounded-full font-medium">
-                  {consolidatedProducts.length} productos
-                </span>
-                {totalCompletos > 0 && (
-                  <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
-                    ✅ {totalCompletos} completos
-                  </span>
-                )}
-                {totalIncompletos > 0 && (
-                  <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
-                    ⚠️ {totalIncompletos} incompletos
-                  </span>
-                )}
-                {totalNoAlistados > 0 && (
-                  <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium">
-                    ❌ {totalNoAlistados} no alistados
-                  </span>
-                )}
-                {totalPendientes > 0 && (
-                  <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
-                    ⏳ {totalPendientes} pendientes
-                  </span>
-                )}
-              </div>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => toggleEntregador(key)}
-            >
-              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
+                    return Object.entries(groupedByEntregadorYFecha).map(([key, grupo]) => {
+                      const { entregador, fecha_alistamiento, sheets } = grupo
+                      const consolidatedProducts = getConsolidatedProducts(sheets)
+                      const totalRoutes = sheets.length
+                      const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
+                      const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
 
-        {expanded && (
-          <div className="p-3 md:p-5">
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
-              <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
-                <Package className="h-4 w-4 md:h-5 md:w-5" />
-                Lista de Productos Consolidados
-              </h3>
-              <p className="text-xs md:text-sm text-blue-700">
-                Estado de alistamiento de cada producto
-              </p>
-            </div>
+                      const totalCompletos = consolidatedProducts.filter(
+                        (p: any) => p.estadoAlistamiento === "completo",
+                      ).length
+                      const totalIncompletos = consolidatedProducts.filter(
+                        (p: any) => p.estadoAlistamiento === "incompleto",
+                      ).length
+                      const totalNoAlistados = consolidatedProducts.filter(
+                        (p: any) => p.estadoAlistamiento === "no_alistado",
+                      ).length
+                      const totalPendientes = consolidatedProducts.filter(
+                        (p: any) => p.estadoAlistamiento === "pendiente",
+                      ).length
 
-            <div className="overflow-x-auto border rounded-lg">
-              <table className="w-full text-xs md:text-sm">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
-                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
-                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
-                    <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cantidad</th>
-                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
-                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Observaciones</th>
-                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {consolidatedProducts.map((producto: any) => (
-                    <tr key={producto.codigo} className="border-b hover:bg-muted/50">
-                      <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{producto.codigo}</td>
-                      <td className="py-2 md:py-3 px-2 md:px-4">{producto.descripcion}</td>
-                      <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                          {producto.categoria || 'Sin categoría'}
-                        </span>
-                      </td>
-                      <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
-                        {producto.cantidadTotal}
-                      </td>
-                      <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                        <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
-                          producto.estadoAlistamiento === 'completo' ? 'bg-green-100 text-green-800 border border-green-300' :
-                          producto.estadoAlistamiento === 'incompleto' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
-                          producto.estadoAlistamiento === 'no_alistado' ? 'bg-red-100 text-red-800 border border-red-300' :
-                          'bg-gray-100 text-gray-700 border border-gray-300'
-                        }`}>
-                          {producto.estadoAlistamiento === 'completo' ? '✅ Completo' :
-                           producto.estadoAlistamiento === 'incompleto' ? '⚠️ Incompleto' :
-                           producto.estadoAlistamiento === 'no_alistado' ? '❌ No alistado' :
-                           '⏳ Pendiente'}
-                        </span>
-                      </td>
-                      <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
-                        {producto.observacionesFaltante || '-'}
-                      </td>
-                      <td className="text-center py-2 md:py-3 px-2 md:px-4">
-  <Button
-    variant="outline"
-    size="sm"
-    onClick={() => {
-      // Buscar el faltante en la BD para obtener el ID
-      const faltantesDelProducto = faltantes.filter(
-        f => f.codigo === producto.codigo && 
-             f.entregador === entregador &&
-             f.estado === 'pendiente'
-      )
-      
-      if (faltantesDelProducto.length > 0) {
-        setFaltanteParaSubsanar({
-          id: faltantesDelProducto[0].id,
-          codigo: producto.codigo,
-          descripcion: producto.descripcion,
-          categoria: producto.categoria,
-          cantidad_faltante: producto.cantidadFaltante || 0,
-          entregador: entregador,
-          ruta: sheets[0]?.ruta || '',
-          estado: producto.estadoAlistamiento,
-          observaciones: producto.observacionesFaltante
-        })
-      } else {
-        alert('No se encontró el faltante en la base de datos')
-      }
-    }}
-    disabled={producto.estadoAlistamiento === 'completo'}
-  >
-    Subsanar
-  </Button>
-</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </Card>
-    )
-  })
-})()}
+                      const expanded = expandedEntregadores.has(key)
+
+                      const fechaMostrar = new Date(fecha_alistamiento).toLocaleDateString("es-CO", {
+                        day: "2-digit",
+                        month: "short",
+                      })
+
+                      return (
+                        <Card key={key} className="overflow-hidden border-2">
+                          <div className="p-4 md:p-5 bg-gradient-to-r from-blue-50 to-green-50">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 md:gap-3 mb-2">
+                                  <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
+                                    <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
+                                  </div>
+                                  <div>
+                                    <h2 className="font-bold text-lg md:text-xl">
+                                      {entregador} - {fechaMostrar}
+                                    </h2>
+                                    <p className="text-xs md:text-sm text-muted-foreground">
+                                      {totalRoutes} ruta{totalRoutes > 1 ? "s" : ""} · {totalOrders} pedidos ·{" "}
+                                      {formatCOP(totalAmount)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 mt-3">
+                                  <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-blue-700 rounded-full font-medium">
+                                    {consolidatedProducts.length} productos
+                                  </span>
+                                  {totalCompletos > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                                      ✅ {totalCompletos} completos
+                                    </span>
+                                  )}
+                                  {totalIncompletos > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
+                                      ⚠️ {totalIncompletos} incompletos
+                                    </span>
+                                  )}
+                                  {totalNoAlistados > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium">
+                                      ❌ {totalNoAlistados} no alistados
+                                    </span>
+                                  )}
+                                  {totalPendientes > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
+                                      ⏳ {totalPendientes} pendientes
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <Button variant="outline" size="sm" onClick={() => toggleEntregador(key)}>
+                                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {expanded && (
+                            <div className="p-3 md:p-5">
+                              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
+                                <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
+                                  <Package className="h-4 w-4 md:h-5 md:w-5" />
+                                  Lista de Productos Consolidados
+                                </h3>
+                                <p className="text-xs md:text-sm text-blue-700">
+                                  Estado de alistamiento de cada producto
+                                </p>
+                              </div>
+
+                              <div className="overflow-x-auto border rounded-lg">
+                                <table className="w-full text-xs md:text-sm">
+                                  <thead className="bg-muted">
+                                    <tr>
+                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
+                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
+                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">
+                                        Categoría
+                                      </th>
+                                      <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cantidad</th>
+                                      <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
+                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">
+                                        Observaciones
+                                      </th>
+                                      <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {consolidatedProducts.map((producto: any) => (
+                                      <tr key={producto.codigo} className="border-b hover:bg-muted/50">
+                                        <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">
+                                          {producto.codigo}
+                                        </td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4">{producto.descripcion}</td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                            {producto.categoria || "Sin categoría"}
+                                          </span>
+                                        </td>
+                                        <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
+                                          {producto.cantidadTotal}
+                                        </td>
+                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                          <span
+                                            className={`text-xs px-3 py-1.5 rounded-full font-medium ${
+                                              producto.estadoAlistamiento === "completo"
+                                                ? "bg-green-100 text-green-800 border border-green-300"
+                                                : producto.estadoAlistamiento === "incompleto"
+                                                  ? "bg-yellow-100 text-yellow-800 border border-yellow-300"
+                                                  : producto.estadoAlistamiento === "no_alistado"
+                                                    ? "bg-red-100 text-red-800 border border-red-300"
+                                                    : "bg-gray-100 text-gray-700 border border-gray-300"
+                                            }`}
+                                          >
+                                            {producto.estadoAlistamiento === "completo"
+                                              ? "✅ Completo"
+                                              : producto.estadoAlistamiento === "incompleto"
+                                                ? "⚠️ Incompleto"
+                                                : producto.estadoAlistamiento === "no_alistado"
+                                                  ? "❌ No alistado"
+                                                  : "⏳ Pendiente"}
+                                          </span>
+                                        </td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
+                                          {producto.observacionesFaltante || "-"}
+                                        </td>
+                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              const faltantesDelProducto = faltantes.filter(
+                                                (f) =>
+                                                  f.codigo === producto.codigo &&
+                                                  f.entregador === entregador &&
+                                                  f.estado === "pendiente",
+                                              )
+
+                                              if (faltantesDelProducto.length > 0) {
+                                                setFaltanteParaSubsanar({
+                                                  id: faltantesDelProducto[0].id,
+                                                  codigo: producto.codigo,
+                                                  descripcion: producto.descripcion,
+                                                  categoria: producto.categoria,
+                                                  cantidad_faltante: producto.cantidadFaltante || 0,
+                                                  entregador: entregador,
+                                                  ruta: sheets[0]?.ruta || "",
+                                                  estado: producto.estadoAlistamiento,
+                                                  observaciones: producto.observacionesFaltante,
+                                                })
+                                              } else {
+                                                alert("No se encontró el faltante en la base de datos")
+                                              }
+                                            }}
+                                            disabled={producto.estadoAlistamiento === "completo"}
+                                          >
+                                            Subsanar
+                                          </Button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </Card>
+                      )
+                    })
+                  })()}
                 </div>
               )}
             </Card>
@@ -903,7 +939,7 @@ const handleConfirmAssignment = async () => {
 
               <div className="flex flex-wrap gap-2 mb-4">
                 <Button
-                  variant={filterDate === new Date().toISOString().split('T')[0] ? "default" : "outline"}
+                  variant={filterDate === new Date().toISOString().split("T")[0] ? "default" : "outline"}
                   size="sm"
                   onClick={applyTodayFilter}
                 >
@@ -924,13 +960,13 @@ const handleConfirmAssignment = async () => {
                   Mes actual
                 </Button>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium mb-2">Fecha</label>
                   <input
                     type="date"
-                    value={filterDate.startsWith('20') ? filterDate : ''}
+                    value={filterDate.startsWith("20") ? filterDate : ""}
                     onChange={(e) => {
                       setFilterDate(e.target.value)
                       setHasActiveFilter(true)
@@ -938,11 +974,11 @@ const handleConfirmAssignment = async () => {
                     className="w-full px-3 py-2 border rounded-md"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium mb-2">Entregador</label>
-                  <Select 
-                    value={filterEntregador} 
+                  <Select
+                    value={filterEntregador}
                     onValueChange={(val) => {
                       setFilterEntregador(val)
                       setHasActiveFilter(true)
@@ -954,16 +990,18 @@ const handleConfirmAssignment = async () => {
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
                       {entregadores.map((e) => (
-                        <SelectItem key={e} value={e}>{e}</SelectItem>
+                        <SelectItem key={e} value={e}>
+                          {e}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium mb-2">Estado</label>
-                  <Select 
-                    value={filterEstado} 
+                  <Select
+                    value={filterEstado}
                     onValueChange={(val) => {
                       setFilterEstado(val)
                       setHasActiveFilter(true)
@@ -1005,16 +1043,21 @@ const handleConfirmAssignment = async () => {
                       <div className="flex-1">
                         <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
                         <p className="text-xs md:text-sm text-muted-foreground">
-                          {sheet.fecha} · {sheet.entregador || 'Sin asignar'} · {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
+                          {sheet.fecha} · {sheet.entregador || "Sin asignar"} · {sheet.totalOrders} pedidos ·{" "}
+                          {formatCOP(sheet.totalAmount)}
                         </p>
                       </div>
                       <span
                         className={`text-xs px-3 py-1 rounded-full whitespace-nowrap ${
-                          sheet.estado === 'completado' ? 'bg-green-100 text-green-700' :
-                          sheet.estado === 'alistado' ? 'bg-blue-100 text-blue-700' :
-                          sheet.estado === 'alistando' ? 'bg-yellow-100 text-yellow-700' :
-                          sheet.estado === 'pospuesto' ? 'bg-orange-100 text-orange-700' :
-                          'bg-gray-100 text-gray-600'
+                          sheet.estado === "completado"
+                            ? "bg-green-100 text-green-700"
+                            : sheet.estado === "alistado"
+                              ? "bg-blue-100 text-blue-700"
+                              : sheet.estado === "alistando"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : sheet.estado === "pospuesto"
+                                  ? "bg-orange-100 text-orange-700"
+                                  : "bg-gray-100 text-gray-600"
                         }`}
                       >
                         {sheet.estado}
@@ -1033,16 +1076,18 @@ const handleConfirmAssignment = async () => {
             <DialogHeader>
               <DialogTitle>Asignar Entregador - Ruta {assignmentModal.ruta}</DialogTitle>
             </DialogHeader>
-            
+
             <div className="space-y-4 py-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Entregador</label>
                 <Select
                   value={assignmentModal.entregadorSeleccionado}
-                  onValueChange={(value) => setAssignmentModal({
-                    ...assignmentModal,
-                    entregadorSeleccionado: value
-                  })}
+                  onValueChange={(value) =>
+                    setAssignmentModal({
+                      ...assignmentModal,
+                      entregadorSeleccionado: value,
+                    })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar entregador" />
@@ -1058,18 +1103,18 @@ const handleConfirmAssignment = async () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  Fecha de Alistamiento
-                </label>
+                <label className="block text-sm font-medium mb-2">Fecha de Alistamiento</label>
                 <input
                   type="date"
                   value={assignmentModal.fechaAlistamiento}
-                  onChange={(e) => setAssignmentModal({
-                    ...assignmentModal,
-                    fechaAlistamiento: e.target.value
-                  })}
+                  onChange={(e) =>
+                    setAssignmentModal({
+                      ...assignmentModal,
+                      fechaAlistamiento: e.target.value,
+                    })
+                  }
                   className="w-full px-3 py-2 border rounded-md"
-                  min={new Date().toISOString().split('T')[0]}
+                  min={new Date().toISOString().split("T")[0]}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   El alistador verá esta ruta en la fecha seleccionada
@@ -1081,18 +1126,16 @@ const handleConfirmAssignment = async () => {
               <Button variant="outline" onClick={() => setAssignmentModal(null)}>
                 Cancelar
               </Button>
-              <Button onClick={handleConfirmAssignment}>
-                Confirmar Asignación
-              </Button>
+              <Button onClick={handleConfirmAssignment}>Confirmar Asignación</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
-             )}
-     </>
-    <SubsanarFaltantesModal
-      faltante={faltanteParaSubsanar}
-      onClose={() => setFaltanteParaSubsanar(null)}
-      onSubmit={handleSubsanarFaltante}
-    />
+      )}
+      <SubsanarFaltantesModal
+        faltante={faltanteParaSubsanar}
+        onClose={() => setFaltanteParaSubsanar(null)}
+        onSubmit={handleSubsanarFaltante}
+      />
+    </>
   )
 }
