@@ -12,6 +12,7 @@ import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
 
 interface CoordinadorViewProps {
   onLogout: () => void
@@ -33,6 +34,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [selectedEntregadorSupervision, setSelectedEntregadorSupervision] = useState<string>("todos")
   const [faltantes, setFaltantes] = useState<any[]>([])
   const [expandedEntregadores, setExpandedEntregadores] = useState<Set<string>>(new Set())
+  const [faltanteParaSubsanar, setFaltanteParaSubsanar] = useState<Faltante | null>(null)
 
   // Filtros para historial
   const [filterDate, setFilterDate] = useState("")
@@ -173,7 +175,29 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           })),
         })),
       }))
+    const handleSubsanarFaltante = async (data: SubsanacionData) => {
+  try {
+    const response = await fetch('/api/faltantes', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Error al subsanar faltante')
+    }
+
+    const result = await response.json()
+    alert(result.mensaje || 'Faltante subsanado correctamente')
     
+    await loadSupervisionData()
+    
+  } catch (err) {
+    console.error('[SUBSANAR] ERROR:', err)
+    alert('Error: ' + (err as Error).message)
+  }
+}
     setSupervisionSheets(planillasAlistadas)
     
     const faltantesResponse = await fetch('/api/faltantes')
@@ -781,6 +805,7 @@ const handleConfirmAssignment = async () => {
                     <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cantidad</th>
                     <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
                     <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Observaciones</th>
+                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -812,6 +837,39 @@ const handleConfirmAssignment = async () => {
                       <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
                         {producto.observacionesFaltante || '-'}
                       </td>
+                      <td className="text-center py-2 md:py-3 px-2 md:px-4">
+  <Button
+    variant="outline"
+    size="sm"
+    onClick={() => {
+      // Buscar el faltante en la BD para obtener el ID
+      const faltantesDelProducto = faltantes.filter(
+        f => f.codigo === producto.codigo && 
+             f.entregador === entregador &&
+             f.estado === 'pendiente'
+      )
+      
+      if (faltantesDelProducto.length > 0) {
+        setFaltanteParaSubsanar({
+          id: faltantesDelProducto[0].id,
+          codigo: producto.codigo,
+          descripcion: producto.descripcion,
+          categoria: producto.categoria,
+          cantidad_faltante: producto.cantidadFaltante || 0,
+          entregador: entregador,
+          ruta: sheets[0]?.ruta || '',
+          estado: producto.estadoAlistamiento,
+          observaciones: producto.observacionesFaltante
+        })
+      } else {
+        alert('No se encontró el faltante en la base de datos')
+      }
+    }}
+    disabled={producto.estadoAlistamiento === 'completo'}
+  >
+    Subsanar
+  </Button>
+</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1031,5 +1089,10 @@ const handleConfirmAssignment = async () => {
         </Dialog>
       )}
     </>
+    <SubsanarFaltantesModal
+  faltante={faltanteParaSubsanar}
+  onClose={() => setFaltanteParaSubsanar(null)}
+  onSubmit={handleSubsanarFaltante}
+/>
   )
 }
