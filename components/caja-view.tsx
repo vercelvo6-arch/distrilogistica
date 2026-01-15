@@ -778,8 +778,7 @@ const handleSubmitAgrupado = async () => {
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
+                      
                           <div className="mt-4 pt-4 border-t bg-white -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
                             <div className="flex items-center justify-between">
                               <p className="text-sm font-medium">💵 Efectivo Esperado:</p>
