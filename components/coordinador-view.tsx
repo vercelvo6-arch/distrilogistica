@@ -1089,10 +1089,10 @@ const handleConfirmAssignment = async () => {
         </Dialog>
       )}
     </>
-    <SubsanarFaltantesModal
-  faltante={faltanteParaSubsanar}
-  onClose={() => setFaltanteParaSubsanar(null)}
-  onSubmit={handleSubsanarFaltante}
-/>
+  <SubsanarFaltantesModal
+        faltante={faltanteParaSubsanar}
+        onClose={() => setFaltanteParaSubsanar(null)}
+        onSubmit={handleSubsanarFaltante}
+      />
   )
 }
