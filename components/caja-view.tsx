@@ -101,21 +101,21 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       const data = await response.json()
 
-      const planillas: RouteSheet[] = (data.planillas || []).map((p: any) => ({
+      const planillas: RouteSheet[] = (Array.isArray(data.planillas) ? data.planillas : []).map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
         fecha: p.fecha,
         entregador: p.entregador,
         estado: p.estado,
         cuadradoEnCaja: p.cuadrado_en_caja || false,
-        totalOrders: p.pedidos?.length || 0,
+        totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
         totalAmount: Number(p.total_cargue) || 0,
         montoCargue: Number(p.total_cargue) || 0,
         montoEntregado: Number(p.total_entregado) || 0,
         montoFiado: Number(p.total_fiado) || 0,
         montoDevoluciones: Number(p.total_devolucion) || 0,
         montoRepasos: Number(p.total_repaso) || 0,
-        orders: (p.pedidos || []).map((ped: any) => ({
+        orders: (Array.isArray(p.pedidos) ? p.pedidos : []).map((ped: any) => ({
           id: ped.id,
           cliente: ped.cliente,
           ruta: p.tipo_ruta,
@@ -125,7 +125,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           montoPagado: 0,
           saldoPendiente: Number(ped.total) || 0,
           comentarios: ped.observaciones,
-          items: (ped.productos || []).map((prod: any) => ({
+          items: (Array.isArray(ped.productos) ? ped.productos : []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
             categoria: "",
@@ -160,7 +160,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       if (!response.ok) throw new Error("Error al cargar historial")
 
       const data = await response.json()
-      setRecepciones(data.recepciones || [])
+      setRecepciones(Array.isArray(data.recepciones) ? data.recepciones : [])
     } catch (err) {
       console.error("[CAJA] Error loading historial:", err)
       toast({
@@ -188,17 +188,26 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     return true
   })
 
-  const calculateRouteTotals = (route: RouteSheet) => {
+  const calculateRouteTotals = (route: RouteSheet | null) => {
+    // Early return with safe defaults if route is null/undefined or has no orders
+    if (!route || !Array.isArray(route.orders)) {
+      return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0 }
+    }
+
     let entregado = 0
     let fiado = 0
     let devoluciones = 0
     let repasos = 0
 
     route.orders.forEach((order) => {
+      if (!order || !Array.isArray(order.items)) return
+
       let effectiveTotal = 0
       let returnedTotal = 0
 
       order.items.forEach((item) => {
+        if (!item) return
+
         if (item.devuelto) {
           returnedTotal += Number(item.subtotal) || 0
         } else {
@@ -599,13 +608,20 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     let totalRepasos = 0
 
     rutasSeleccionadas.forEach((route) => {
+      if (!route) return
+
       totalCargue += route.totalAmount
 
+      // Safe check for orders array
+      if (!Array.isArray(route.orders)) return
+
       route.orders.forEach((order) => {
+        if (!order || !Array.isArray(order.items)) return
+
         let effectiveTotal = 0
 
         order.items.forEach((item) => {
-          if (item.devuelto) return
+          if (!item || item.devuelto) return
 
           const estadoProd = item.estadoProducto || "normal"
           if (estadoProd === "agotado") return
@@ -804,7 +820,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
-  const totalCargue = filteredRoutes.reduce((sum, r) => sum + r.totalAmount, 0)
+  const totalCargue = filteredRoutes.reduce((sum, r) => sum + (r?.totalAmount || 0), 0)
 
   let totalEntregado = 0
   let totalFiado = 0
@@ -1177,37 +1193,43 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                             </div>
                           </div>
 
-                          {expandedRoutes.has(route.id) && (
+                          {expandedRoutes.has(route.id) && Array.isArray(route.orders) && (
                             <div className="mt-4 pt-4 border-t">
                               <h3 className="font-semibold mb-3">Clientes de la ruta:</h3>
 
                               <div className="space-y-3">
                                 {route.orders.map((order) => {
+                                  if (!order) return null
+
                                   const isExpanded = expandedOrders.has(order.id)
 
                                   let effectiveTotal = 0
                                   let returnedTotal = 0
 
-                                  order.items.forEach((item) => {
-                                    if (item.devuelto) {
-                                      returnedTotal += Number(item.subtotal) || 0
-                                    } else {
-                                      const estadoProd = item.estadoProducto || "normal"
-                                      if (estadoProd === "agotado") return
+                                  if (Array.isArray(order.items)) {
+                                    order.items.forEach((item) => {
+                                      if (!item) return
 
-                                      if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-                                        effectiveTotal += Number(item.subtotalAjustado) || 0
-                                      } else if (
-                                        item.cantidadEntregada !== null &&
-                                        item.cantidadEntregada !== undefined
-                                      ) {
-                                        effectiveTotal +=
-                                          (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
+                                      if (item.devuelto) {
+                                        returnedTotal += Number(item.subtotal) || 0
                                       } else {
-                                        effectiveTotal += Number(item.subtotal) || 0
+                                        const estadoProd = item.estadoProducto || "normal"
+                                        if (estadoProd === "agotado") return
+
+                                        if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+                                          effectiveTotal += Number(item.subtotalAjustado) || 0
+                                        } else if (
+                                          item.cantidadEntregada !== null &&
+                                          item.cantidadEntregada !== undefined
+                                        ) {
+                                          effectiveTotal +=
+                                            (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
+                                        } else {
+                                          effectiveTotal += Number(item.subtotal) || 0
+                                        }
                                       }
-                                    }
-                                  })
+                                    })
+                                  }
 
                                   return (
                                     <Card key={order.id} className="overflow-hidden">
@@ -1236,7 +1258,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                             </div>
 
                                             <p className="text-xs md:text-sm text-muted-foreground">
-                                              {order.items.length} productos · {formatCOP(effectiveTotal)}
+                                              {Array.isArray(order.items) ? order.items.length : 0} productos ·{" "}
+                                              {formatCOP(effectiveTotal)}
                                               {returnedTotal > 0 && (
                                                 <span className="text-red-600 ml-2">
                                                   · Dev: {formatCOP(returnedTotal)}
@@ -1266,7 +1289,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                         </div>
                                       </div>
 
-                                      {isExpanded && (
+                                      {isExpanded && Array.isArray(order.items) && (
                                         <div className="p-3 md:p-4 space-y-4">
                                           <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-700">
                                             💡 <strong>Ajustes manuales:</strong> Edita "Cant. Entregada" para entregas
@@ -1289,6 +1312,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                               </thead>
                                               <tbody>
                                                 {order.items.map((item, idx) => {
+                                                  if (!item) return null
+
                                                   const cantidadEntregada =
                                                     Number(item.cantidadEntregada) || Number(item.cantidad) || 0
                                                   const subtotalCalculado =
@@ -1606,67 +1631,69 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               />
             </div>
 
-            <div className="mt-4 pt-4 border-t flex flex-col gap-3">
-              <p className="text-sm font-medium">Resumen de la Ruta:</p>
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div>
-                  <p className="text-muted-foreground">Cargue</p>
-                  <p className="font-semibold">{formatCOP(selectedPlanilla?.montoCargue || 0)}</p>
+            {selectedPlanilla && (
+              <div className="mt-4 pt-4 border-t flex flex-col gap-3">
+                <p className="text-sm font-medium">Resumen de la Ruta:</p>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Cargue</p>
+                    <p className="font-semibold">{formatCOP(selectedPlanilla.montoCargue || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Entregado</p>
+                    <p className="font-semibold text-green-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).entregado)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Fiado</p>
+                    <p className="font-semibold text-yellow-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).fiado)}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Entregado</p>
-                  <p className="font-semibold text-green-600">
-                    {formatCOP(calculateRouteTotals(selectedPlanilla!).entregado)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Fiado</p>
-                  <p className="font-semibold text-yellow-600">
-                    {formatCOP(calculateRouteTotals(selectedPlanilla!).fiado)}
-                  </p>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Devoluciones</p>
+                    <p className="font-semibold text-red-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).devoluciones)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Repasos</p>
+                    <p className="font-semibold text-blue-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).repasos)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Diferencia Esperada</p>
+                    <p
+                      className={`font-semibold ${
+                        Math.round(
+                          (Number(formData.efectivoRecibido || 0) +
+                            (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
+                            calculateRouteTotals(selectedPlanilla).entregado) *
+                            100,
+                        ) /
+                          100 ===
+                        0
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {formatCOP(
+                        Math.round(
+                          (Number(formData.efectivoRecibido || 0) +
+                            (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
+                            calculateRouteTotals(selectedPlanilla).entregado) *
+                            100,
+                        ) / 100,
+                      )}
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div>
-                  <p className="text-muted-foreground">Devoluciones</p>
-                  <p className="font-semibold text-red-600">
-                    {formatCOP(calculateRouteTotals(selectedPlanilla!).devoluciones)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Repasos</p>
-                  <p className="font-semibold text-blue-600">
-                    {formatCOP(calculateRouteTotals(selectedPlanilla!).repasos)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Diferencia Esperada</p>
-                  <p
-                    className={`font-semibold ${
-                      Math.round(
-                        (Number(formData.efectivoRecibido || 0) +
-                          (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                          calculateRouteTotals(selectedPlanilla!).entregado) *
-                          100,
-                      ) /
-                        100 ===
-                      0
-                        ? "text-green-600"
-                        : "text-red-600"
-                    }`}
-                  >
-                    {formatCOP(
-                      Math.round(
-                        (Number(formData.efectivoRecibido || 0) +
-                          (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                          calculateRouteTotals(selectedPlanilla!).entregado) *
-                          100,
-                      ) / 100,
-                    )}
-                  </p>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
           <DialogFooter>
             <Button type="submit" onClick={handleSubmit} disabled={submitting}>
