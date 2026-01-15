@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp } from "lucide-react"
+import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X } from "lucide-react"
 import type { RouteSheet, User, RecepcionCaja, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import {
@@ -34,6 +34,14 @@ interface CajaViewProps {
   user: User
 }
 
+interface NuevoProducto {
+  codigo: string
+  descripcion: string
+  cantidad: number
+  precioUnitario: number
+  subtotal: number
+}
+
 export function CajaView({ onLogout, user }: CajaViewProps) {
   const { toast } = useToast()
   const [filterEntregador, setFilterEntregador] = useState<string>("all")
@@ -62,6 +70,17 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [agrupadoData, setAgrupadoData] = useState<any>(null)
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+
+  const [showNuevoPedidoModal, setShowNuevoPedidoModal] = useState(false)
+  const [rutaParaNuevoPedido, setRutaParaNuevoPedido] = useState<RouteSheet | null>(null)
+  const [nuevoPedidoData, setNuevoPedidoData] = useState({
+    cliente: "",
+    observaciones: "",
+  })
+  const [productosNuevoPedido, setProductosNuevoPedido] = useState<NuevoProducto[]>([
+    { codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
+  ])
+  const [submittingNuevoPedido, setSubmittingNuevoPedido] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -321,6 +340,128 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         description: "No se pudo actualizar el pedido",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleOpenNuevoPedidoModal = (ruta: RouteSheet) => {
+    setRutaParaNuevoPedido(ruta)
+    setNuevoPedidoData({ cliente: "", observaciones: "" })
+    setProductosNuevoPedido([{ codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }])
+    setShowNuevoPedidoModal(true)
+  }
+
+  const handleCloseNuevoPedidoModal = () => {
+    setShowNuevoPedidoModal(false)
+    setRutaParaNuevoPedido(null)
+    setNuevoPedidoData({ cliente: "", observaciones: "" })
+    setProductosNuevoPedido([{ codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }])
+  }
+
+  const agregarProducto = () => {
+    setProductosNuevoPedido([
+      ...productosNuevoPedido,
+      { codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
+    ])
+  }
+
+  const eliminarProducto = (index: number) => {
+    if (productosNuevoPedido.length > 1) {
+      setProductosNuevoPedido(productosNuevoPedido.filter((_, i) => i !== index))
+    }
+  }
+
+  const actualizarProducto = (index: number, field: keyof NuevoProducto, value: any) => {
+    const nuevosProductos = [...productosNuevoPedido]
+    nuevosProductos[index] = {
+      ...nuevosProductos[index],
+      [field]: value,
+    }
+
+    // Recalcular subtotal si cambia cantidad o precio
+    if (field === "cantidad" || field === "precioUnitario") {
+      const cantidad = field === "cantidad" ? Number(value) : nuevosProductos[index].cantidad
+      const precio = field === "precioUnitario" ? Number(value) : nuevosProductos[index].precioUnitario
+      nuevosProductos[index].subtotal = Math.round(cantidad * precio * 100) / 100
+    }
+
+    setProductosNuevoPedido(nuevosProductos)
+  }
+
+  const calcularTotalNuevoPedido = () => {
+    return productosNuevoPedido.reduce((total, prod) => total + prod.subtotal, 0)
+  }
+
+  const handleSubmitNuevoPedido = async () => {
+    if (!rutaParaNuevoPedido) return
+
+    // Validaciones
+    if (!nuevoPedidoData.cliente.trim()) {
+      toast({
+        title: "Error",
+        description: "Debes ingresar el nombre del cliente",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const productosValidos = productosNuevoPedido.filter(
+      (p) => p.codigo.trim() && p.descripcion.trim() && p.cantidad > 0 && p.precioUnitario >= 0,
+    )
+
+    if (productosValidos.length === 0) {
+      toast({
+        title: "Error",
+        description: "Debes agregar al menos un producto válido",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setSubmittingNuevoPedido(true)
+
+      const totalPedido = calcularTotalNuevoPedido()
+
+      const response = await fetch("/api/planillas/crear-pedido", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planillaId: rutaParaNuevoPedido.id,
+          cliente: nuevoPedidoData.cliente,
+          observaciones: nuevoPedidoData.observaciones || null,
+          productos: productosValidos.map((p) => ({
+            codigo: p.codigo,
+            nombre: p.descripcion,
+            cantidad: p.cantidad,
+            precio_unitario: p.precioUnitario,
+            total: p.subtotal,
+          })),
+          total: totalPedido,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al crear pedido")
+      }
+
+      toast({
+        title: "✅ Pedido Creado",
+        description: `Pedido agregado exitosamente a la ruta ${rutaParaNuevoPedido.ruta}`,
+      })
+
+      handleCloseNuevoPedidoModal()
+      await loadData()
+    } catch (error) {
+      console.error("Error al crear pedido:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al crear pedido",
+        variant: "destructive",
+      })
+    } finally {
+      setSubmittingNuevoPedido(false)
     }
   }
 
@@ -924,6 +1065,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                     </>
                                   )}
                                 </Button>
+                                <Button
+                                  onClick={() => handleOpenNuevoPedidoModal(route)}
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-green-300 text-green-700 hover:bg-green-50"
+                                >
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Nuevo Pedido
+                                </Button>
                                 <Button onClick={() => handleOpenModal(route)} size="sm">
                                   <DollarSign className="h-4 w-4 mr-2" />
                                   Recibir Efectivo
@@ -1286,6 +1436,145 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           )}
         </div>
       </main>
+
+      <Dialog open={showNuevoPedidoModal} onOpenChange={setShowNuevoPedidoModal}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Crear Nuevo Pedido</DialogTitle>
+            <DialogDescription>
+              {rutaParaNuevoPedido?.entregador} - Ruta {rutaParaNuevoPedido?.ruta} ·{" "}
+              {rutaParaNuevoPedido && new Date(rutaParaNuevoPedido.fecha).toLocaleDateString("es-CO")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="cliente">Cliente *</Label>
+              <Input
+                id="cliente"
+                placeholder="Nombre del cliente"
+                value={nuevoPedidoData.cliente}
+                onChange={(e) => setNuevoPedidoData({ ...nuevoPedidoData, cliente: e.target.value })}
+                disabled={submittingNuevoPedido}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Productos *</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={agregarProducto}
+                  disabled={submittingNuevoPedido}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Agregar Producto
+                </Button>
+              </div>
+
+              <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+                {productosNuevoPedido.map((producto, index) => (
+                  <div key={index} className="space-y-2 p-3 border rounded-lg bg-white">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">Producto {index + 1}</span>
+                      {productosNuevoPedido.length > 1 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => eliminarProducto(index)}
+                          disabled={submittingNuevoPedido}
+                        >
+                          <X className="h-4 w-4 text-red-600" />
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Código *</Label>
+                        <Input
+                          placeholder="Ej: E18"
+                          value={producto.codigo}
+                          onChange={(e) => actualizarProducto(index, "codigo", e.target.value)}
+                          disabled={submittingNuevoPedido}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Descripción *</Label>
+                        <Input
+                          placeholder="Nombre del producto"
+                          value={producto.descripcion}
+                          onChange={(e) => actualizarProducto(index, "descripcion", e.target.value)}
+                          disabled={submittingNuevoPedido}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-xs">Cantidad *</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={producto.cantidad}
+                          onChange={(e) => actualizarProducto(index, "cantidad", e.target.value)}
+                          disabled={submittingNuevoPedido}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Precio Unit. *</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={producto.precioUnitario}
+                          onChange={(e) => actualizarProducto(index, "precioUnitario", e.target.value)}
+                          disabled={submittingNuevoPedido}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Subtotal</Label>
+                        <Input type="text" value={formatCOP(producto.subtotal)} disabled className="bg-gray-50" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="observaciones-nuevo">Observaciones (opcional)</Label>
+              <Textarea
+                id="observaciones-nuevo"
+                placeholder="Notas adicionales sobre el pedido..."
+                value={nuevoPedidoData.observaciones}
+                onChange={(e) => setNuevoPedidoData({ ...nuevoPedidoData, observaciones: e.target.value })}
+                disabled={submittingNuevoPedido}
+                rows={2}
+              />
+            </div>
+
+            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-green-700">Total del Pedido:</p>
+                <p className="text-xl font-bold text-green-900">{formatCOP(calcularTotalNuevoPedido())}</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseNuevoPedidoModal} disabled={submittingNuevoPedido}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmitNuevoPedido} disabled={submittingNuevoPedido}>
+              {submittingNuevoPedido ? "Creando..." : "Crear Pedido"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showAgrupadoModal} onOpenChange={setShowAgrupadoModal}>
         <DialogContent className="max-w-md">
