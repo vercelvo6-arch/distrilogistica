@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, Edit, Loader2, FileText, Trash2 } from "lucide-react"
+import { Package, LogOut, CheckCircle, ChevronDown, ChevronUp, User, Edit, Loader2, FileText, Trash2, Calendar } from "lucide-react"
 import type { RouteSheet } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect } from "react"
@@ -35,7 +35,7 @@ interface ConsolidatedProduct {
 }
 
 export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
-  const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
+  const [rutasProgramadas, setRutasProgramadas] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [expandedDeliveryPersons, setExpandedDeliveryPersons] = useState<Set<string>>(new Set())
@@ -52,100 +52,149 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   // 🔥 FUNCIÓN CORREGIDA - Confiar 100% en la BD
   // 🔥 FUNCIÓN CON FILTRO POR FECHA DE ALISTAMIENTO
   async function loadData() {
-    try {
-      const response = await fetch('/api/planillas', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      
-      if (!response.ok) throw new Error('Error al cargar planillas')
-      
-      const data = await response.json()
+  try {
+    const response = await fetch('/api/planillas', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    
+    if (!response.ok) throw new Error('Error al cargar planillas')
+    
+    const data = await response.json()
 
-      // 🔥 OBTENER FECHA DE HOY
-      const hoy = new Date().toISOString().split('T')[0]
-      console.log('[ALISTADOR] 📅 Fecha actual:', hoy)
+    // 🔥 OBTENER FECHA DE HOY (solo YYYY-MM-DD)
+    const hoy = new Date().toISOString().split('T')[0]
+    console.log('[ALISTADOR] 📅 Fecha actual:', hoy)
 
-      // 🔥 FILTRAR SOLO PLANILLAS QUE DEBEN ALISTARSE HOY O ANTES
-      const planillasFiltradas = (data.planillas || []).filter((p: any) => {
-        // Condiciones para mostrar la planilla:
-        // 1. Tiene entregador asignado
-        // 2. Está en estado pendiente o alistando
-        // 3. Su fecha_alistamiento es HOY o anterior (incluye rutas atrasadas)
-        
-        const fechaAlistamiento = p.fecha_alistamiento 
-        ? p.fecha_alistamiento.split('T')[0] // Solo extraer YYYY-MM-DD
+    // 🔥 SEPARAR: planillas para HOY vs FUTURAS
+    const planillasHoy: any[] = []
+    const planillasFuturas: any[] = []
+
+    ;(data.planillas || []).forEach((p: any) => {
+      const fechaAlistamiento = p.fecha_alistamiento 
+        ? p.fecha_alistamiento.split('T')[0] 
         : hoy
 
-        const debeAlistarse = (
-          p.entregador && 
-          (p.estado === 'pendiente' || p.estado === 'alistando') &&
-          fechaAlistamiento <= hoy
-        )
+      const tieneEntregador = p.entregador
+      const estaActiva = p.estado === 'pendiente' || p.estado === 'alistando'
 
-        if (debeAlistarse) {
-          console.log('[ALISTADOR] ✅ Mostrar ruta:', {
-            ruta: p.tipo_ruta,
-            entregador: p.entregador,
-            fecha_alistamiento: fechaAlistamiento,
-            estado: p.estado
-          })
-        }
+      if (!tieneEntregador || !estaActiva) return // Ignorar sin entregador o completadas
 
-        return debeAlistarse
-      })
+      if (fechaAlistamiento <= hoy) {
+        // ✅ Para alistar HOY o atrasadas
+        planillasHoy.push(p)
+        console.log('[ALISTADOR] ✅ Para alistar HOY:', {
+          ruta: p.tipo_ruta,
+          entregador: p.entregador,
+          fecha_alistamiento: fechaAlistamiento,
+        })
+      } else {
+        // 📅 Programadas para el FUTURO (solo lectura)
+        planillasFuturas.push(p)
+        console.log('[ALISTADOR] 📅 Programada (futuro):', {
+          ruta: p.tipo_ruta,
+          entregador: p.entregador,
+          fecha_alistamiento: fechaAlistamiento,
+        })
+      }
+    })
 
-      console.log('[ALISTADOR] 📊 Total planillas filtradas:', planillasFiltradas.length)
+    console.log('[ALISTADOR] 📊 Para alistar hoy:', planillasHoy.length)
+    console.log('[ALISTADOR] 📊 Programadas (futuro):', planillasFuturas.length)
 
-      const planillas: RouteSheet[] = planillasFiltradas.map((p: any) => ({
-        id: p.id,
+    // Mapear planillas HOY
+    const planillas: RouteSheet[] = planillasHoy.map((p: any) => ({
+      id: p.id,
+      ruta: p.tipo_ruta,
+      fecha: p.fecha,
+      entregador: p.entregador,
+      estado: p.estado,
+      fecha_alistamiento: p.fecha_alistamiento,
+      totalOrders: (p.pedidos || []).filter((ped: any) => ped.id !== null).length,
+      totalAmount: Number(p.total_cargue) || 0,
+      montoCargue: Number(p.total_cargue) || 0,
+      montoEntregado: Number(p.total_entregado) || 0,
+      montoFiado: Number(p.total_fiado) || 0,
+      montoDevoluciones: Number(p.total_devolucion) || 0,
+      montoRepasos: Number(p.total_repaso) || 0,
+      orders: (p.pedidos || []).filter((ped: any) => ped.id !== null).map((ped: any) => ({
+        id: ped.id,
+        cliente: ped.cliente,
         ruta: p.tipo_ruta,
         fecha: p.fecha,
-        entregador: p.entregador,
-        estado: p.estado,
-        fecha_alistamiento: p.fecha_alistamiento, // 🔥 AGREGAR
-        totalOrders: (p.pedidos || []).filter((ped: any) => ped.id !== null).length,
-        totalAmount: Number(p.total_cargue) || 0,
-        montoCargue: Number(p.total_cargue) || 0,
-        montoEntregado: Number(p.total_entregado) || 0,
-        montoFiado: Number(p.total_fiado) || 0,
-        montoDevoluciones: Number(p.total_devolucion) || 0,
-        montoRepasos: Number(p.total_repaso) || 0,
-        orders: (p.pedidos || []).filter((ped: any) => ped.id !== null).map((ped: any) => ({
-          id: ped.id,
-          cliente: ped.cliente,
-          ruta: p.tipo_ruta,
-          fecha: p.fecha,
-          estado: ped.estado,
-          total: Number(ped.total) || 0,
-          montoPagado: 0,
-          saldoPendiente: Number(ped.total) || 0,
-          comentarios: ped.observaciones,
-          items: (ped.productos || []).map((prod: any) => ({
-            codigo: prod.codigo,
-            descripcion: prod.nombre,
-            categoria: prod.categoria || '',
-            cantidad: Number(prod.cantidad) || 0,
-            valorUnidad: Number(prod.precio_unitario) || 0,
-            subtotal: Number(prod.total) || 0,
-            cantidadDisponible: prod.cantidad_disponible,
-            cantidadFaltante: prod.cantidad_faltante || 0,
-            unidadIncompleta: prod.unidad_incompleta || false,
-            observacionesFaltante: prod.observaciones_faltante,
-            estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
-          })),
+        estado: ped.estado,
+        total: Number(ped.total) || 0,
+        montoPagado: 0,
+        saldoPendiente: Number(ped.total) || 0,
+        comentarios: ped.observaciones,
+        items: (ped.productos || []).map((prod: any) => ({
+          codigo: prod.codigo,
+          descripcion: prod.nombre,
+          categoria: prod.categoria || '',
+          cantidad: Number(prod.cantidad) || 0,
+          valorUnidad: Number(prod.precio_unitario) || 0,
+          subtotal: Number(prod.total) || 0,
+          cantidadDisponible: prod.cantidad_disponible,
+          cantidadFaltante: prod.cantidad_faltante || 0,
+          unidadIncompleta: prod.unidad_incompleta || false,
+          observacionesFaltante: prod.observaciones_faltante,
+          estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
         })),
-        cuentasPorCobrar: [],
-      }))
-      
-      setRouteSheets(planillas)
-      
-    } catch (err) {
-      console.error("[ALISTADOR] Error loading planillas:", err)
-    } finally {
-      setLoading(false)
-    }
+      })),
+      cuentasPorCobrar: [],
+    }))
+
+    // Mapear planillas FUTURAS (mismo formato)
+    const programadas: RouteSheet[] = planillasFuturas.map((p: any) => ({
+      id: p.id,
+      ruta: p.tipo_ruta,
+      fecha: p.fecha,
+      entregador: p.entregador,
+      estado: p.estado,
+      fecha_alistamiento: p.fecha_alistamiento,
+      totalOrders: (p.pedidos || []).filter((ped: any) => ped.id !== null).length,
+      totalAmount: Number(p.total_cargue) || 0,
+      montoCargue: Number(p.total_cargue) || 0,
+      montoEntregado: 0,
+      montoFiado: 0,
+      montoDevoluciones: 0,
+      montoRepasos: 0,
+      orders: (p.pedidos || []).filter((ped: any) => ped.id !== null).map((ped: any) => ({
+        id: ped.id,
+        cliente: ped.cliente,
+        ruta: p.tipo_ruta,
+        fecha: p.fecha,
+        estado: ped.estado,
+        total: Number(ped.total) || 0,
+        montoPagado: 0,
+        saldoPendiente: Number(ped.total) || 0,
+        comentarios: ped.observaciones,
+        items: (ped.productos || []).map((prod: any) => ({
+          codigo: prod.codigo,
+          descripcion: prod.nombre,
+          categoria: prod.categoria || '',
+          cantidad: Number(prod.cantidad) || 0,
+          valorUnidad: Number(prod.precio_unitario) || 0,
+          subtotal: Number(prod.total) || 0,
+          cantidadDisponible: null,
+          cantidadFaltante: 0,
+          unidadIncompleta: false,
+          observacionesFaltante: null,
+          estadoAlistamiento: 'pendiente',
+        })),
+      })),
+      cuentasPorCobrar: [],
+    }))
+
+    setRouteSheets(planillas)
+    setRutasProgramadas(programadas) // 🔥 GUARDAR PROGRAMADAS
+    
+  } catch (err) {
+    console.error("[ALISTADOR] Error loading planillas:", err)
+  } finally {
+    setLoading(false)
   }
+}
 
   const pendingSheets = routeSheets.filter(
     (s) => s.entregador && (s.estado === "pendiente" || s.estado === "alistando"),
@@ -479,16 +528,20 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="alistamiento" className="text-sm md:text-base">
-              <Package className="h-4 w-4 mr-2" />
-              Alistamiento
-            </TabsTrigger>
-            <TabsTrigger value="novedades" className="text-sm md:text-base">
-              <FileText className="h-4 w-4 mr-2" />
-              Novedades Registradas
-            </TabsTrigger>
-          </TabsList>
+          <TabsList className="grid w-full grid-cols-3 mb-6">
+  <TabsTrigger value="alistamiento" className="text-sm md:text-base">
+    <Package className="h-4 w-4 mr-2" />
+    Alistamiento
+  </TabsTrigger>
+  <TabsTrigger value="programadas" className="text-sm md:text-base">
+    <Calendar className="h-4 w-4 mr-2" />
+    Programadas ({rutasProgramadas.length})
+  </TabsTrigger>
+  <TabsTrigger value="novedades" className="text-sm md:text-base">
+    <FileText className="h-4 w-4 mr-2" />
+    Novedades
+  </TabsTrigger>
+</TabsList>
 
           <TabsContent value="alistamiento">
             {pendingSheets.length === 0 ? (
@@ -688,6 +741,50 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               </div>
             )}
           </TabsContent>
+
+          <TabsContent value="programadas">
+  {rutasProgramadas.length === 0 ? (
+    <Card className="p-8 md:p-12 text-center">
+      <Calendar className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
+      <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas programadas</h3>
+      <p className="text-sm md:text-base text-muted-foreground">
+        Las rutas con fecha de alistamiento futura aparecerán aquí
+      </p>
+    </Card>
+  ) : (
+    <div className="space-y-3">
+      {rutasProgramadas.map((sheet) => {
+        const fechaAlistamiento = sheet.fecha_alistamiento 
+          ? new Date(sheet.fecha_alistamiento).toLocaleDateString('es-CO')
+          : 'Sin fecha'
+        
+        return (
+          <Card key={sheet.id} className="p-4 border-l-4 border-l-blue-500 bg-blue-50/50">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Calendar className="h-4 w-4 text-blue-600" />
+                  <p className="font-bold text-blue-900">
+                    Ruta {sheet.ruta} - {sheet.entregador}
+                  </p>
+                </div>
+                <p className="text-sm text-blue-700">
+                  📅 Programada para: <span className="font-semibold">{fechaAlistamiento}</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
+                </p>
+              </div>
+              <span className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full font-medium">
+                Programada
+              </span>
+            </div>
+          </Card>
+        )
+      })}
+    </div>
+  )}
+</TabsContent>
 
           <TabsContent value="novedades">
             <FaltantesHistorialView userId={user.id} userRole="alistador" />
