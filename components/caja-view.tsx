@@ -198,15 +198,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
-})
-
   const toggleRouteExpansion = (routeId: number) => {
     const newExpanded = new Set(expandedRoutes)
     if (newExpanded.has(routeId)) {
       newExpanded.delete(routeId)
     } else {
       newExpanded.add(routeId)
-    }
+    
     setExpandedRoutes(newExpanded)
   }
 }
