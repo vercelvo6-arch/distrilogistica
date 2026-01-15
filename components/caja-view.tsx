@@ -422,7 +422,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       const totalPedido = calcularTotalNuevoPedido()
 
-      const response = await fetch("/api/planillas", {
+      const response = await fetch("/api/pedidos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
