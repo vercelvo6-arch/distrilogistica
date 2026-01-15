@@ -767,7 +767,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     <div className="space-y-3">
       {rutasProgramadas.map((sheet) => {
         const fechaAlistamiento = sheet.fecha_alistamiento 
-          ? new Date(sheet.fecha_alistamiento).toLocaleDateString('es-CO')
+          ? sheet.fecha_alistamiento.split('T')[0].split('-').reverse().join('/')
           : 'Sin fecha'
         
         return (
