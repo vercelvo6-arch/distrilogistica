@@ -44,6 +44,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
+  const [selectedRoutes, setSelectedRoutes] = useState<number[]>([])
+  const [showAgrupadoModal, setShowAgrupadoModal] = useState(false)
+  const [agrupadoData, setAgrupadoData] = useState<any>(null)
 
   useEffect(() => {
     loadData()
@@ -243,7 +246,86 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       await validateConsignacion(formData.numeroConsignacion)
     }
   }
+const handleAgruparRutas = () => {
+    if (selectedRoutes.length === 0) {
+      toast({
+        title: "Error",
+        description: "Selecciona al menos una ruta para agrupar",
+        variant: "destructive"
+      })
+      return
+    }
 
+    // Obtener rutas seleccionadas
+    const rutasSeleccionadas = filteredRoutes.filter(r => selectedRoutes.includes(r.id))
+    
+    // Validar que todas sean del mismo entregador
+    const entregadores = new Set(rutasSeleccionadas.map(r => r.entregador))
+    
+    if (entregadores.size > 1) {
+      toast({
+        title: "Error",
+        description: "Solo puedes agrupar rutas del mismo entregador",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Calcular totales agrupados
+    let totalCargue = 0
+    let totalEntregado = 0
+    let totalFiado = 0
+    let totalDevoluciones = 0
+    let totalRepasos = 0
+
+    rutasSeleccionadas.forEach(route => {
+      const totals = calculateRouteTotals(route)
+      totalCargue += route.totalAmount
+      totalEntregado += totals.entregado
+      totalFiado += totals.fiado
+      totalDevoluciones += totals.devoluciones
+      totalRepasos += totals.repasos
+    })
+
+    // Crear objeto agrupado
+    const agrupado = {
+      entregador: rutasSeleccionadas[0].entregador,
+      planillas: rutasSeleccionadas,
+      planillaIds: selectedRoutes,
+      totalRutas: rutasSeleccionadas.length,
+      totales: {
+        cargue: totalCargue,
+        entregado: totalEntregado,
+        fiado: totalFiado,
+        devoluciones: totalDevoluciones,
+        repasos: totalRepasos
+      }
+    }
+
+    // Abrir modal agrupado
+    setAgrupadoData(agrupado)
+    setFormData({
+      efectivoRecibido: totalEntregado.toString(),
+      tieneConsignacion: false,
+      numeroConsignacion: '',
+      banco: '',
+      montoConsignacion: '',
+      fechaConsignacion: new Date().toISOString().split('T')[0],
+      observaciones: ''
+    })
+    setShowAgrupadoModal(true)
+  }
+```
+
+---
+
+**Quedaría así:**
+```
+248   }  // ← fin de handleSubmit
+249
+250   const handleAgruparRutas = () => {
+251     // ... código nuevo aquí
+...
   const handleSubmit = async () => {
     if (!selectedPlanilla) return
 
@@ -538,6 +620,41 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
               <Card className="p-6">
                 <h2 className="text-lg font-semibold mb-4">Entregas Pendientes de Cuadrar</h2>
+                {filteredRoutes.length > 0 && (
+                  <div className="flex items-center justify-between mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        checked={selectedRoutes.length === filteredRoutes.length && filteredRoutes.length > 0}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedRoutes(filteredRoutes.map(r => r.id))
+                          } else {
+                            setSelectedRoutes([])
+                          }
+                        }}
+                      />
+                      <span className="text-sm font-medium">
+                        Seleccionar todas ({filteredRoutes.length})
+                      </span>
+                    </div>
+
+                    {selectedRoutes.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">{selectedRoutes.length} seleccionadas</Badge>
+                        <Button size="sm" onClick={handleAgruparRutas}>
+                          Agrupar y Cuadrar ({selectedRoutes.length})
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => setSelectedRoutes([])}
+                        >
+                          Limpiar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {filteredRoutes.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
                     ✅ No hay entregas pendientes de cuadrar para la fecha seleccionada
@@ -545,12 +662,26 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                 ) : (
                   <div className="space-y-4">
                     {filteredRoutes.map((route) => {
-                      const totals = calculateRouteTotals(route)
+                  const totals = calculateRouteTotals(route)
+                  const isSelected = selectedRoutes.includes(route.id)
 
-                      return (
-                        <div key={route.id} className="border rounded-lg p-4 bg-amber-50 border-amber-200">
+                  return (
+                    <div key={route.id} className="border rounded-lg p-4 bg-amber-50 border-amber-200">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedRoutes([...selectedRoutes, route.id])
+                            } else {
+                              setSelectedRoutes(selectedRoutes.filter(id => id !== route.id))
+                            }
+                          }}
+                          className="mt-1"
+                        />
+                        
+                        <div className="flex-1">
                           <div className="flex items-center justify-between mb-4">
-                            <div>
                               <p className="font-semibold text-lg">
                                 {route.entregador} - Ruta {route.ruta}
                               </p>
@@ -586,7 +717,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                               <p className="font-semibold text-blue-600">{formatCOP(totals.repasos)}</p>
                             </div>
                           </div>
-
+                        </div>
+                      </div>
+                    </div>
                           <div className="mt-4 pt-4 border-t bg-white -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
                             <div className="flex items-center justify-between">
                               <p className="text-sm font-medium">💵 Efectivo Esperado:</p>
@@ -603,7 +736,130 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           )}
         </div>
       </main>
+<Dialog open={showAgrupadoModal} onOpenChange={setShowAgrupadoModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cuadre Agrupado</DialogTitle>
+            <DialogDescription>
+              {agrupadoData?.entregador} - {agrupadoData?.totalRutas} rutas agrupadas
+            </DialogDescription>
+          </DialogHeader>
 
+          <div className="space-y-4 py-4">
+            {agrupadoData && (
+              <>
+                <div className="bg-blue-50 p-3 rounded-lg space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Rutas:</span>
+                    <span className="font-medium">{agrupadoData.totalRutas}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Cargue:</span>
+                    <span className="font-semibold">{formatCOP(agrupadoData.totales.cargue)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm pt-2 border-t">
+                    <span className="text-blue-700">Efectivo Esperado:</span>
+                    <span className="text-xl font-bold text-blue-900">{formatCOP(agrupadoData.totales.entregado)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="efectivo-agrupado">💵 Efectivo Recibido *</Label>
+                  <Input
+                    id="efectivo-agrupado"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formData.efectivoRecibido}
+                    onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
+                    disabled={submitting}
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="consignacion-agrupado"
+                    checked={formData.tieneConsignacion}
+                    onCheckedChange={(checked) => 
+                      setFormData({ ...formData, tieneConsignacion: checked as boolean })
+                    }
+                    disabled={submitting}
+                  />
+                  <Label htmlFor="consignacion-agrupado" className="cursor-pointer">
+                    ¿Hay Consignación Bancaria?
+                  </Label>
+                </div>
+
+                {formData.tieneConsignacion && (
+                  <div className="space-y-3 p-3 border rounded-lg bg-gray-50">
+                    <div className="space-y-2">
+                      <Label>Número de Consignación *</Label>
+                      <Input
+                        placeholder="Ej: 123456789"
+                        value={formData.numeroConsignacion}
+                        onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
+                        onBlur={handleConsignacionBlur}
+                        disabled={submitting || validatingConsignacion}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Banco *</Label>
+                      <Select
+                        value={formData.banco}
+                        onValueChange={(value) => setFormData({ ...formData, banco: value })}
+                        disabled={submitting}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar banco" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Bancolombia">Bancolombia</SelectItem>
+                          <SelectItem value="Davivienda">Davivienda</SelectItem>
+                          <SelectItem value="BBVA">BBVA</SelectItem>
+                          <SelectItem value="Nequi">Nequi</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Monto *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={formData.montoConsignacion}
+                          onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+                          disabled={submitting}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fecha *</Label>
+                        <Input
+                          type="date"
+                          value={formData.fechaConsignacion}
+                          onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAgrupadoModal(false)} disabled={submitting}>
+              Cancelar
+            </Button>
+            <Button onClick={() => {/* TODO: handleSubmitAgrupado */}} disabled={submitting}>
+              Confirmar Cuadre Agrupado
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
