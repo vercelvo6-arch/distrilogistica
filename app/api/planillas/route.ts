@@ -207,6 +207,7 @@ export async function GET() {
       SELECT
         p.id,
         p.fecha,
+        p.fecha_alistamiento,
         p.tipo_ruta,
         p.entregador,
         p.estado,
