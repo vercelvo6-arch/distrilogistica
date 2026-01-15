@@ -61,13 +61,30 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     
     const data = await response.json()
 
+    // Validar que data sea un array
+    let planillasArray = data
+    
+    if (!Array.isArray(data)) {
+      console.log('Estructura de respuesta:', Object.keys(data))
+      
+      if (data.planillas && Array.isArray(data.planillas)) {
+        planillasArray = data.planillas
+      } else if (data.data && Array.isArray(data.data)) {
+        planillasArray = data.data
+      } else if (data.results && Array.isArray(data.results)) {
+        planillasArray = data.results
+      } else {
+        throw new Error('Formato de respuesta inválido')
+      }
+    }
+
     const hoy = new Date().toISOString().split('T')[0]
     console.log('[ALISTADOR] 📅 Fecha actual:', hoy)
 
     const planillasHoy: any[] = []
     const planillasFuturas: any[] = []
 
-    data.forEach((p: any) => {
+    planillasArray.forEach((p: any) => {
       const fechaAlistamiento = p.fecha_alistamiento 
         ? p.fecha_alistamiento.split('T')[0].trim()
         : hoy
@@ -195,7 +212,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     setLoading(false)
   }
 }
-
   const pendingSheets = routeSheets.filter(
     (s) => s.entregador && (s.estado === "pendiente" || s.estado === "alistando"),
   )
