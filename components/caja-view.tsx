@@ -951,6 +951,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                             </div>
                             </div>
               </div>
+                        </div>  
               {expandedRoutes.has(route.id) && (
                 <div className="mt-4 pt-4 border-t">
                   <h3 className="font-semibold mb-3">Clientes de la ruta:</h3>
