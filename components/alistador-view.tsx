@@ -104,7 +104,6 @@ console.log('[DEBUG] Comparando:', {
           fecha_alistamiento: fechaAlistamiento,
         })
       }
-    })
 
     console.log('[ALISTADOR] 📊 Para alistar hoy:', planillasHoy.length)
     console.log('[ALISTADOR] 📊 Programadas (futuro):', planillasFuturas.length)
