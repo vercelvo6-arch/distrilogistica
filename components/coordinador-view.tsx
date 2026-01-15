@@ -135,56 +135,57 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   }
 
   async function loadSupervisionData() {
-    try {
-      const response = await fetch('/api/planillas', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      
-      if (!response.ok) throw new Error('Error al cargar planillas')
-      
-      const data = await response.json()
-      
-      const planillasAlistadas = (data.planillas || [])
-        .filter((p: any) => p.estado === 'alistado' || p.estado === 'en_ruta' || p.estado === 'completado')
-        .map((p: any) => ({
-          id: p.id,
-          ruta: p.tipo_ruta,
-          fecha: p.fecha,
-          entregador: p.entregador,
-          estado: p.estado,
-          totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
-          totalAmount: Number(p.total_cargue) || 0,
-          orders: (p.pedidos || []).map((ped: any) => ({
-            id: ped.id,
-            cliente: ped.cliente,
-            items: (ped.productos || []).map((prod: any) => ({
-              codigo: prod.codigo,
-              descripcion: prod.nombre,
-              categoria: prod.categoria || '',
-              cantidad: Number(prod.cantidad) || 0,
-              valorUnidad: Number(prod.precio_unitario) || 0,
-              estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
-              cantidadDisponible: prod.cantidad_disponible,
-              cantidadFaltante: prod.cantidad_faltante || 0,
-              unidadIncompleta: prod.unidad_incompleta || false,
-              observacionesFaltante: prod.observaciones_faltante,
-            })),
+  try {
+    const response = await fetch('/api/planillas', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    })
+    
+    if (!response.ok) throw new Error('Error al cargar planillas')
+    
+    const data = await response.json()
+    
+    const planillasAlistadas = (data.planillas || [])
+      .filter((p: any) => p.estado === 'alistado' || p.estado === 'en_ruta' || p.estado === 'completado')
+      .map((p: any) => ({
+        id: p.id,
+        ruta: p.tipo_ruta,
+        fecha: p.fecha,
+        fecha_alistamiento: p.fecha_alistamiento, // 🔥 IMPORTANTE
+        entregador: p.entregador,
+        estado: p.estado,
+        totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
+        totalAmount: Number(p.total_cargue) || 0,
+        orders: (p.pedidos || []).map((ped: any) => ({
+          id: ped.id,
+          cliente: ped.cliente,
+          items: (ped.productos || []).map((prod: any) => ({
+            codigo: prod.codigo,
+            descripcion: prod.nombre,
+            categoria: prod.categoria || '',
+            cantidad: Number(prod.cantidad) || 0,
+            valorUnidad: Number(prod.precio_unitario) || 0,
+            estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
+            cantidadDisponible: prod.cantidad_disponible,
+            cantidadFaltante: prod.cantidad_faltante || 0,
+            unidadIncompleta: prod.unidad_incompleta || false,
+            observacionesFaltante: prod.observaciones_faltante,
           })),
-        }))
-      
-      setSupervisionSheets(planillasAlistadas)
-      
-      const faltantesResponse = await fetch('/api/faltantes')
-      if (faltantesResponse.ok) {
-        const faltantesData = await faltantesResponse.json()
-        setFaltantes(faltantesData.faltantes || [])
-      }
-      
-    } catch (err) {
-      console.error("[COORD] Error loading supervision data:", err)
+        })),
+      }))
+    
+    setSupervisionSheets(planillasAlistadas)
+    
+    const faltantesResponse = await fetch('/api/faltantes')
+    if (faltantesResponse.ok) {
+      const faltantesData = await faltantesResponse.json()
+      setFaltantes(faltantesData.faltantes || [])
     }
+    
+  } catch (err) {
+    console.error("[COORD] Error loading supervision data:", err)
   }
+}
 
   const toggleEntregador = (entregador: string) => {
     const newExpanded = new Set(expandedEntregadores)
@@ -663,149 +664,165 @@ const handleConfirmAssignment = async () => {
                 </div>
               ) : (
                 <div className="space-y-4 md:space-y-6">
-                  {(() => {
-                    const filteredSheets = supervisionSheets.filter(s => 
-                      selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision
-                    )
+                  {{(() => {
+  const filteredSheets = supervisionSheets.filter(s => 
+    selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision
+  )
 
-                    const groupedByEntregador = filteredSheets.reduce((acc, sheet) => {
-                      const entregador = sheet.entregador || 'Sin asignar'
-                      if (!acc[entregador]) {
-                        acc[entregador] = []
-                      }
-                      acc[entregador].push(sheet)
-                      return acc
-                    }, {} as Record<string, typeof supervisionSheets>)
+  // 🔥 AGRUPAR POR ENTREGADOR + FECHA_ALISTAMIENTO
+  const groupedByEntregadorYFecha = filteredSheets.reduce((acc, sheet) => {
+    const key = `${sheet.entregador}_${sheet.fecha_alistamiento || sheet.fecha}`
+    
+    if (!acc[key]) {
+      acc[key] = {
+        entregador: sheet.entregador,
+        fecha_alistamiento: sheet.fecha_alistamiento || sheet.fecha,
+        sheets: []
+      }
+    }
+    
+    acc[key].sheets.push(sheet)
+    return acc
+  }, {} as Record<string, { entregador: string; fecha_alistamiento: string; sheets: typeof supervisionSheets }>)
 
-                    return Object.entries(groupedByEntregador).map(([entregador, sheets]) => {
-                      const consolidatedProducts = getConsolidatedProducts(sheets)
-                      const totalRoutes = sheets.length
-                      const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
-                      const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
-                      
-                      const totalCompletos = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'completo').length
-                      const totalIncompletos = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'incompleto').length
-                      const totalNoAlistados = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'no_alistado').length
-                      const totalPendientes = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'pendiente').length
+  return Object.entries(groupedByEntregadorYFecha).map(([key, grupo]) => {
+    const { entregador, fecha_alistamiento, sheets } = grupo
+    const consolidatedProducts = getConsolidatedProducts(sheets)
+    const totalRoutes = sheets.length
+    const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
+    const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
+    
+    const totalCompletos = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'completo').length
+    const totalIncompletos = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'incompleto').length
+    const totalNoAlistados = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'no_alistado').length
+    const totalPendientes = consolidatedProducts.filter((p: any) => p.estadoAlistamiento === 'pendiente').length
 
-                      const expanded = expandedEntregadores.has(entregador)
+    const expanded = expandedEntregadores.has(key)
+    
+    // Formatear fecha para mostrar
+    const fechaMostrar = new Date(fecha_alistamiento).toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: 'short'
+    })
 
-                      return (
-                        <Card key={entregador} className="overflow-hidden border-2">
-                          <div className="p-4 md:p-5 bg-gradient-to-r from-blue-50 to-green-50">
-                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 md:gap-3 mb-2">
-                                  <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
-                                    <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
-                                  </div>
-                                  <div>
-                                    <h2 className="font-bold text-lg md:text-xl">{entregador}</h2>
-                                    <p className="text-xs md:text-sm text-muted-foreground">
-                                      {totalRoutes} ruta{totalRoutes > 1 ? 's' : ''} · {totalOrders} pedidos · {formatCOP(totalAmount)}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2 mt-3">
-                                  <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-blue-700 rounded-full font-medium">
-                                    {consolidatedProducts.length} productos
-                                  </span>
-                                  {totalCompletos > 0 && (
-                                    <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
-                                      ✅ {totalCompletos} completos
-                                    </span>
-                                  )}
-                                  {totalIncompletos > 0 && (
-                                    <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
-                                      ⚠️ {totalIncompletos} incompletos
-                                    </span>
-                                  )}
-                                  {totalNoAlistados > 0 && (
-                                    <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium">
-                                      ❌ {totalNoAlistados} no alistados
-                                    </span>
-                                  )}
-                                  {totalPendientes > 0 && (
-                                    <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
-                                      ⏳ {totalPendientes} pendientes
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => toggleEntregador(entregador)}
-                              >
-                                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                              </Button>
-                            </div>
-                          </div>
+    return (
+      <Card key={key} className="overflow-hidden border-2">
+        <div className="p-4 md:p-5 bg-gradient-to-r from-blue-50 to-green-50">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 md:gap-3 mb-2">
+                <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
+                  <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-lg md:text-xl">
+                    {entregador} - {fechaMostrar}
+                  </h2>
+                  <p className="text-xs md:text-sm text-muted-foreground">
+                    {totalRoutes} ruta{totalRoutes > 1 ? 's' : ''} · {totalOrders} pedidos · {formatCOP(totalAmount)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-blue-700 rounded-full font-medium">
+                  {consolidatedProducts.length} productos
+                </span>
+                {totalCompletos > 0 && (
+                  <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                    ✅ {totalCompletos} completos
+                  </span>
+                )}
+                {totalIncompletos > 0 && (
+                  <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
+                    ⚠️ {totalIncompletos} incompletos
+                  </span>
+                )}
+                {totalNoAlistados > 0 && (
+                  <span className="text-xs px-2 md:px-3 py-1 bg-red-100 text-red-700 rounded-full font-medium">
+                    ❌ {totalNoAlistados} no alistados
+                  </span>
+                )}
+                {totalPendientes > 0 && (
+                  <span className="text-xs px-2 md:px-3 py-1 bg-gray-100 text-gray-700 rounded-full font-medium">
+                    ⏳ {totalPendientes} pendientes
+                  </span>
+                )}
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => toggleEntregador(key)}
+            >
+              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
 
-                          {expanded && (
-                            <div className="p-3 md:p-5">
-                              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
-                                <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
-                                  <Package className="h-4 w-4 md:h-5 md:w-5" />
-                                  Lista de Productos Consolidados
-                                </h3>
-                                <p className="text-xs md:text-sm text-blue-700">
-                                  Estado de alistamiento de cada producto
-                                </p>
-                              </div>
+        {expanded && (
+          <div className="p-3 md:p-5">
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
+              <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
+                <Package className="h-4 w-4 md:h-5 md:w-5" />
+                Lista de Productos Consolidados
+              </h3>
+              <p className="text-xs md:text-sm text-blue-700">
+                Estado de alistamiento de cada producto
+              </p>
+            </div>
 
-                              <div className="overflow-x-auto border rounded-lg">
-                                <table className="w-full text-xs md:text-sm">
-                                  <thead className="bg-muted">
-                                    <tr>
-                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
-                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
-                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
-                                      <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cantidad</th>
-                                      <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
-                                      <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Observaciones</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {consolidatedProducts.map((producto: any) => (
-                                      <tr key={producto.codigo} className="border-b hover:bg-muted/50">
-                                        <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{producto.codigo}</td>
-                                        <td className="py-2 md:py-3 px-2 md:px-4">{producto.descripcion}</td>
-                                        <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
-                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                            {producto.categoria || 'Sin categoría'}
-                                          </span>
-                                        </td>
-                                        <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
-                                          {producto.cantidadTotal}
-                                        </td>
-                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
-                                            producto.estadoAlistamiento === 'completo' ? 'bg-green-100 text-green-800 border border-green-300' :
-                                            producto.estadoAlistamiento === 'incompleto' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
-                                            producto.estadoAlistamiento === 'no_alistado' ? 'bg-red-100 text-red-800 border border-red-300' :
-                                            'bg-gray-100 text-gray-700 border border-gray-300'
-                                          }`}>
-                                            {producto.estadoAlistamiento === 'completo' ? '✅ Completo' :
-                                             producto.estadoAlistamiento === 'incompleto' ? '⚠️ Incompleto' :
-                                             producto.estadoAlistamiento === 'no_alistado' ? '❌ No alistado' :
-                                             '⏳ Pendiente'}
-                                          </span>
-                                        </td>
-                                        <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
-                                          {producto.observacionesFaltante || '-'}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                        </Card>
-                      )
-                    })
-                  })()}
+            <div className="overflow-x-auto border rounded-lg">
+              <table className="w-full text-xs md:text-sm">
+                <thead className="bg-muted">
+                  <tr>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
+                    <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Cantidad</th>
+                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
+                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Observaciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {consolidatedProducts.map((producto: any) => (
+                    <tr key={producto.codigo} className="border-b hover:bg-muted/50">
+                      <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{producto.codigo}</td>
+                      <td className="py-2 md:py-3 px-2 md:px-4">{producto.descripcion}</td>
+                      <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                          {producto.categoria || 'Sin categoría'}
+                        </span>
+                      </td>
+                      <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
+                        {producto.cantidadTotal}
+                      </td>
+                      <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                        <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${
+                          producto.estadoAlistamiento === 'completo' ? 'bg-green-100 text-green-800 border border-green-300' :
+                          producto.estadoAlistamiento === 'incompleto' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                          producto.estadoAlistamiento === 'no_alistado' ? 'bg-red-100 text-red-800 border border-red-300' :
+                          'bg-gray-100 text-gray-700 border border-gray-300'
+                        }`}>
+                          {producto.estadoAlistamiento === 'completo' ? '✅ Completo' :
+                           producto.estadoAlistamiento === 'incompleto' ? '⚠️ Incompleto' :
+                           producto.estadoAlistamiento === 'no_alistado' ? '❌ No alistado' :
+                           '⏳ Pendiente'}
+                        </span>
+                      </td>
+                      <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
+                        {producto.observacionesFaltante || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Card>
+    )
+  })
+})()}
                 </div>
               )}
             </Card>
