@@ -13,7 +13,6 @@ import {
   updateSubtotalAjustado,
 } from "@/lib/actions/planillas"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
@@ -202,12 +201,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const newExpanded = new Set(expandedRoutes)
     if (newExpanded.has(routeId)) {
       newExpanded.delete(routeId)
-    } else {
+   } else {
       newExpanded.add(routeId)
-    
+    }
     setExpandedRoutes(newExpanded)
   }
-}
 
   const handleItemReturn = async (orderId: string, codigo: string, currentDevuelto: boolean) => {
     try {
@@ -309,7 +307,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
-  const handleOpenModal = (planilla: RouteSheet) => {
   const handleOpenModal = (planilla: RouteSheet) => {
   
   const handleOpenModal = (planilla: RouteSheet) => {
@@ -956,7 +953,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                             </div>
                             </div>
               </div>
-
+              </div>
               {expandedRoutes.has(route.id) && (
                 <div className="mt-4 pt-4 border-t">
                   <h3 className="font-semibold mb-3">Clientes de la ruta:</h3>
