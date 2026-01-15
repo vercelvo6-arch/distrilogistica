@@ -82,6 +82,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   ])
   const [submittingNuevoPedido, setSubmittingNuevoPedido] = useState(false)
 
+  const [reasignandoRuta, setReasignandoRuta] = useState<number | null>(null)
+
   useEffect(() => {
     loadData()
   }, [])
@@ -240,6 +242,43 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       newExpanded.add(routeId)
     }
     setExpandedRoutes(newExpanded)
+  }
+
+  const handleReasignarRuta = async (planillaId: number, nuevoEntregador: string) => {
+    try {
+      setReasignandoRuta(planillaId)
+
+      const response = await fetch("/api/planillas/reasignar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planillaId,
+          nuevoEntregador,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al reasignar ruta")
+      }
+
+      toast({
+        title: "Ruta Reasignada",
+        description: `La ruta ha sido reasignada a ${nuevoEntregador}`,
+      })
+
+      await loadData()
+    } catch (error) {
+      console.error("Error al reasignar ruta:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al reasignar ruta",
+        variant: "destructive",
+      })
+    } finally {
+      setReasignandoRuta(null)
+    }
   }
 
   const handleItemReturn = async (orderId: string, codigo: string, currentDevuelto: boolean) => {
@@ -1051,6 +1090,32 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                   {new Date(route.fecha).toLocaleDateString("es-CO")}
                                 </p>
                               </div>
+
+                              <div className="mb-3 p-3 bg-white rounded-lg border">
+                                <Label className="text-xs text-muted-foreground mb-2 block">Reasignar a:</Label>
+                                <Select
+                                  disabled={reasignandoRuta === route.id}
+                                  onValueChange={(value) => handleReasignarRuta(route.id, value)}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue
+                                      placeholder={
+                                        reasignandoRuta === route.id ? "Reasignando..." : "Seleccionar entregador"
+                                      }
+                                    />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {entregadores
+                                      .filter((e) => e !== route.entregador)
+                                      .map((entregador) => (
+                                        <SelectItem key={entregador} value={entregador}>
+                                          {entregador}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
                               <div className="flex gap-2">
                                 <Button onClick={() => toggleRouteExpansion(route.id)} variant="outline" size="sm">
                                   {expandedRoutes.has(route.id) ? (
@@ -1437,436 +1502,441 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         </div>
       </main>
 
-      <Dialog open={showNuevoPedidoModal} onOpenChange={setShowNuevoPedidoModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Crear Nuevo Pedido</DialogTitle>
-            <DialogDescription>
-              {rutaParaNuevoPedido?.entregador} - Ruta {rutaParaNuevoPedido?.ruta} ·{" "}
-              {rutaParaNuevoPedido && new Date(rutaParaNuevoPedido.fecha).toLocaleDateString("es-CO")}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="cliente">Cliente *</Label>
-              <Input
-                id="cliente"
-                placeholder="Nombre del cliente"
-                value={nuevoPedidoData.cliente}
-                onChange={(e) => setNuevoPedidoData({ ...nuevoPedidoData, cliente: e.target.value })}
-                disabled={submittingNuevoPedido}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Productos *</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={agregarProducto}
-                  disabled={submittingNuevoPedido}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar Producto
-                </Button>
-              </div>
-
-              <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
-                {productosNuevoPedido.map((producto, index) => (
-                  <div key={index} className="space-y-2 p-3 border rounded-lg bg-white">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Producto {index + 1}</span>
-                      {productosNuevoPedido.length > 1 && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => eliminarProducto(index)}
-                          disabled={submittingNuevoPedido}
-                        >
-                          <X className="h-4 w-4 text-red-600" />
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs">Código *</Label>
-                        <Input
-                          placeholder="Ej: E18"
-                          value={producto.codigo}
-                          onChange={(e) => actualizarProducto(index, "codigo", e.target.value)}
-                          disabled={submittingNuevoPedido}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Descripción *</Label>
-                        <Input
-                          placeholder="Nombre del producto"
-                          value={producto.descripcion}
-                          onChange={(e) => actualizarProducto(index, "descripcion", e.target.value)}
-                          disabled={submittingNuevoPedido}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-xs">Cantidad *</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={producto.cantidad}
-                          onChange={(e) => actualizarProducto(index, "cantidad", e.target.value)}
-                          disabled={submittingNuevoPedido}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Precio Unit. *</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={producto.precioUnitario}
-                          onChange={(e) => actualizarProducto(index, "precioUnitario", e.target.value)}
-                          disabled={submittingNuevoPedido}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Subtotal</Label>
-                        <Input type="text" value={formatCOP(producto.subtotal)} disabled className="bg-gray-50" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="observaciones-nuevo">Observaciones (opcional)</Label>
-              <Textarea
-                id="observaciones-nuevo"
-                placeholder="Notas adicionales sobre el pedido..."
-                value={nuevoPedidoData.observaciones}
-                onChange={(e) => setNuevoPedidoData({ ...nuevoPedidoData, observaciones: e.target.value })}
-                disabled={submittingNuevoPedido}
-                rows={2}
-              />
-            </div>
-
-            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-green-700">Total del Pedido:</p>
-                <p className="text-xl font-bold text-green-900">{formatCOP(calcularTotalNuevoPedido())}</p>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseNuevoPedidoModal} disabled={submittingNuevoPedido}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSubmitNuevoPedido} disabled={submittingNuevoPedido}>
-              {submittingNuevoPedido ? "Creando..." : "Crear Pedido"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showAgrupadoModal} onOpenChange={setShowAgrupadoModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Cuadre Agrupado</DialogTitle>
-            <DialogDescription>
-              {agrupadoData?.entregador} - {agrupadoData?.totalRutas} rutas agrupadas
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            {agrupadoData && (
-              <>
-                <div className="bg-blue-50 p-3 rounded-lg space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Rutas:</span>
-                    <span className="font-medium">{agrupadoData.totalRutas}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Total Cargue:</span>
-                    <span className="font-semibold">{formatCOP(agrupadoData.totales.cargue)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm pt-2 border-t">
-                    <span className="text-blue-700">Efectivo Esperado:</span>
-                    <span className="text-xl font-bold text-blue-900">{formatCOP(agrupadoData.totales.entregado)}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="efectivo-agrupado">💵 Efectivo Recibido *</Label>
-                  <Input
-                    id="efectivo-agrupado"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.efectivoRecibido}
-                    onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
-                    disabled={submitting}
-                  />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="consignacion-agrupado"
-                    checked={formData.tieneConsignacion}
-                    onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: checked as boolean })}
-                    disabled={submitting}
-                  />
-                  <Label htmlFor="consignacion-agrupado" className="cursor-pointer">
-                    ¿Hay Consignación Bancaria?
-                  </Label>
-                </div>
-
-                {formData.tieneConsignacion && (
-                  <div className="space-y-3 p-3 border rounded-lg bg-gray-50">
-                    <div className="space-y-2">
-                      <Label>Número de Consignación *</Label>
-                      <Input
-                        placeholder="Ej: 123456789"
-                        value={formData.numeroConsignacion}
-                        onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
-                        onBlur={handleConsignacionBlur}
-                        disabled={submitting || validatingConsignacion}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Banco *</Label>
-                      <Select
-                        value={formData.banco}
-                        onValueChange={(value) => setFormData({ ...formData, banco: value })}
-                        disabled={submitting}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar banco" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Bancolombia">Bancolombia</SelectItem>
-                          <SelectItem value="Davivienda">Davivienda</SelectItem>
-                          <SelectItem value="BBVA">BBVA</SelectItem>
-                          <SelectItem value="Nequi">Nequi</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label>Monto *</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={formData.montoConsignacion}
-                          onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                          disabled={submitting}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Fecha *</Label>
-                        <Input
-                          type="date"
-                          value={formData.fechaConsignacion}
-                          onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
-                          disabled={submitting}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAgrupadoModal(false)} disabled={submitting}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSubmitAgrupado} disabled={submitting}>
-              Confirmar Cuadre Agrupado
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-md">
+      {/* Modal para recibir efectivo */}
+      <Dialog open={showModal} onOpenChange={(open) => (open ? setShowModal(true) : handleCloseModal())}>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Recibir Efectivo</DialogTitle>
             <DialogDescription>
-              {selectedPlanilla?.entregador} - Ruta {selectedPlanilla?.ruta}
+              Ingresa los detalles de la recepción para la ruta: {selectedPlanilla?.ruta}
             </DialogDescription>
           </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="efectivoRecibido" className="text-right">
+                Efectivo Recibido
+              </Label>
+              <Input
+                id="efectivoRecibido"
+                value={formData.efectivoRecibido}
+                onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
+                type="number"
+                className="col-span-1"
+              />
+            </div>
 
-          <div className="space-y-4 py-4">
-            {selectedPlanilla && (
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="tieneConsignacion"
+                checked={formData.tieneConsignacion}
+                onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: !!checked })}
+              />
+              <label
+                htmlFor="tieneConsignacion"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                ¿Tiene consignación?
+              </label>
+            </div>
+
+            {formData.tieneConsignacion && (
               <>
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <p className="text-sm text-blue-700 mb-1">Efectivo Esperado</p>
-                  <p className="text-2xl font-bold text-blue-900">
-                    {formatCOP(calculateRouteTotals(selectedPlanilla).entregado)}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="efectivo">💵 Efectivo Recibido *</Label>
-                  <Input
-                    id="efectivo"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.efectivoRecibido}
-                    onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
-                    disabled={submitting}
-                  />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="consignacion"
-                    checked={formData.tieneConsignacion}
-                    onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: checked as boolean })}
-                    disabled={submitting}
-                  />
-                  <Label htmlFor="consignacion" className="cursor-pointer">
-                    ¿Hay Consignación Bancaria?
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="numeroConsignacion" className="text-right">
+                    Número Consignación
                   </Label>
-                </div>
-
-                {formData.tieneConsignacion && (
-                  <div className="space-y-3 p-3 border rounded-lg bg-gray-50">
-                    <div className="space-y-2">
-                      <Label htmlFor="numero">Número de Consignación *</Label>
-                      <Input
-                        id="numero"
-                        placeholder="Ej: 123456789"
-                        value={formData.numeroConsignacion}
-                        onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
-                        onBlur={handleConsignacionBlur}
-                        disabled={submitting || validatingConsignacion}
-                      />
-                      {validatingConsignacion && <p className="text-xs text-blue-600">Validando...</p>}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="banco">Banco *</Label>
-                      <Select
-                        value={formData.banco}
-                        onValueChange={(value) => setFormData({ ...formData, banco: value })}
-                        disabled={submitting}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar banco" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Bancolombia">Bancolombia</SelectItem>
-                          <SelectItem value="Davivienda">Davivienda</SelectItem>
-                          <SelectItem value="BBVA">BBVA</SelectItem>
-                          <SelectItem value="Banco de Bogotá">Banco de Bogotá</SelectItem>
-                          <SelectItem value="Nequi">Nequi</SelectItem>
-                          <SelectItem value="Daviplata">Daviplata</SelectItem>
-                          <SelectItem value="Otro">Otro</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="monto">Monto *</Label>
-                        <Input
-                          id="monto"
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={formData.montoConsignacion}
-                          onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                          disabled={submitting}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="fecha">Fecha *</Label>
-                        <Input
-                          id="fecha"
-                          type="date"
-                          value={formData.fechaConsignacion}
-                          onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
-                          disabled={submitting}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="obs">📝 Observaciones (opcional)</Label>
-                  <Textarea
-                    id="obs"
-                    placeholder="Notas adicionales..."
-                    value={formData.observaciones}
-                    onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                    disabled={submitting}
-                    rows={2}
+                  <Input
+                    id="numeroConsignacion"
+                    value={formData.numeroConsignacion}
+                    onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
+                    onBlur={handleConsignacionBlur}
+                    className="col-span-1"
+                    placeholder="Ej: 1234567890"
                   />
                 </div>
-
-                {(formData.efectivoRecibido || formData.montoConsignacion) && (
-                  <div
-                    className={`p-3 rounded-lg ${
-                      diferencia === 0 ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200"
-                    }`}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Efectivo:</span>
-                        <span className="font-medium">{formatCOP(Number(formData.efectivoRecibido || 0))}</span>
-                      </div>
-                      {formData.tieneConsignacion && formData.montoConsignacion && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Consignación:</span>
-                          <span className="font-medium">{formatCOP(Number(formData.montoConsignacion))}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between text-sm pt-2 border-t">
-                        <span className="text-muted-foreground">Total Recibido:</span>
-                        <span className="font-semibold">{formatCOP(totalRecibido)}</span>
-                      </div>
-                      <div className="flex items-center justify-between pt-2 border-t">
-                        <p className="text-sm font-medium">Diferencia:</p>
-                        <p className={`text-xl font-bold ${diferencia === 0 ? "text-green-600" : "text-amber-600"}`}>
-                          {diferencia > 0 ? "+" : ""}
-                          {formatCOP(diferencia)}
-                        </p>
-                      </div>
-                    </div>
-                    {diferencia !== 0 && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {diferencia > 0
-                          ? "Sobrante (se registra para auditoría)"
-                          : "Faltante (se registra para auditoría)"}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="banco" className="text-right">
+                    Banco
+                  </Label>
+                  <Input
+                    id="banco"
+                    value={formData.banco}
+                    onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
+                    className="col-span-1"
+                    placeholder="Ej: Bancolombia"
+                  />
+                </div>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="montoConsignacion" className="text-right">
+                    Monto Consignación
+                  </Label>
+                  <Input
+                    id="montoConsignacion"
+                    value={formData.montoConsignacion}
+                    onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+                    type="number"
+                    className="col-span-1"
+                  />
+                </div>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="fechaConsignacion" className="text-right">
+                    Fecha Consignación
+                  </Label>
+                  <Input
+                    id="fechaConsignacion"
+                    type="date"
+                    value={formData.fechaConsignacion}
+                    onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
+                    className="col-span-1"
+                  />
+                </div>
               </>
             )}
-          </div>
 
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="observaciones" className="text-right">
+                Observaciones
+              </Label>
+              <Textarea
+                id="observaciones"
+                value={formData.observaciones}
+                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                className="col-span-1"
+                rows={3}
+              />
+            </div>
+
+            <div className="mt-4 pt-4 border-t flex flex-col gap-3">
+              <p className="text-sm font-medium">Resumen de la Ruta:</p>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Cargue</p>
+                  <p className="font-semibold">{formatCOP(selectedPlanilla?.montoCargue || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Entregado</p>
+                  <p className="font-semibold text-green-600">
+                    {formatCOP(calculateRouteTotals(selectedPlanilla!).entregado)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Fiado</p>
+                  <p className="font-semibold text-yellow-600">
+                    {formatCOP(calculateRouteTotals(selectedPlanilla!).fiado)}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Devoluciones</p>
+                  <p className="font-semibold text-red-600">
+                    {formatCOP(calculateRouteTotals(selectedPlanilla!).devoluciones)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Repasos</p>
+                  <p className="font-semibold text-blue-600">
+                    {formatCOP(calculateRouteTotals(selectedPlanilla!).repasos)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Diferencia Esperada</p>
+                  <p
+                    className={`font-semibold ${
+                      Math.round(
+                        (Number(formData.efectivoRecibido || 0) +
+                          (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
+                          calculateRouteTotals(selectedPlanilla!).entregado) *
+                          100,
+                      ) /
+                        100 ===
+                      0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {formatCOP(
+                      Math.round(
+                        (Number(formData.efectivoRecibido || 0) +
+                          (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
+                          calculateRouteTotals(selectedPlanilla!).entregado) *
+                          100,
+                      ) / 100,
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseModal} disabled={submitting}>
-              Cancelar
+            <Button type="submit" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? "Guardando..." : "Confirmar Recepción"}
             </Button>
-            <Button onClick={handleSubmit} disabled={submitting || validatingConsignacion}>
-              {submitting ? "Registrando..." : "Confirmar Recepción"}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para agrupar rutas y cuadrar */}
+      <Dialog
+        open={showAgrupadoModal}
+        onOpenChange={(open) => (open ? setShowAgrupadoModal(true) : setShowAgrupadoModal(false))}
+      >
+        <DialogContent className="sm:max-w-[425px] lg:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Cuadre Agrupado</DialogTitle>
+            <DialogDescription>
+              Estás cuadrando {agrupadoData?.totalRutas} rutas para el entregador: {agrupadoData?.entregador}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="efectivoRecibidoAgrupado" className="text-right">
+                Efectivo Recibido
+              </Label>
+              <Input
+                id="efectivoRecibidoAgrupado"
+                value={formData.efectivoRecibido}
+                onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
+                type="number"
+                className="col-span-1"
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="tieneConsignacionAgrupado"
+                checked={formData.tieneConsignacion}
+                onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: !!checked })}
+              />
+              <label
+                htmlFor="tieneConsignacionAgrupado"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                ¿Tiene consignación?
+              </label>
+            </div>
+
+            {formData.tieneConsignacion && (
+              <>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="numeroConsignacionAgrupado" className="text-right">
+                    Número Consignación
+                  </Label>
+                  <Input
+                    id="numeroConsignacionAgrupado"
+                    value={formData.numeroConsignacion}
+                    onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
+                    onBlur={handleConsignacionBlur}
+                    className="col-span-1"
+                    placeholder="Ej: 1234567890"
+                  />
+                </div>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="bancoAgrupado" className="text-right">
+                    Banco
+                  </Label>
+                  <Input
+                    id="bancoAgrupado"
+                    value={formData.banco}
+                    onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
+                    className="col-span-1"
+                    placeholder="Ej: Bancolombia"
+                  />
+                </div>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="montoConsignacionAgrupado" className="text-right">
+                    Monto Consignación
+                  </Label>
+                  <Input
+                    id="montoConsignacionAgrupado"
+                    value={formData.montoConsignacion}
+                    onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+                    type="number"
+                    className="col-span-1"
+                  />
+                </div>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="fechaConsignacionAgrupado" className="text-right">
+                    Fecha Consignación
+                  </Label>
+                  <Input
+                    id="fechaConsignacionAgrupado"
+                    type="date"
+                    value={formData.fechaConsignacion}
+                    onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
+                    className="col-span-1"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="observacionesAgrupado" className="text-right">
+                Observaciones
+              </Label>
+              <Textarea
+                id="observacionesAgrupado"
+                value={formData.observaciones}
+                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                className="col-span-1"
+                rows={3}
+              />
+            </div>
+
+            <div className="mt-4 pt-4 border-t flex flex-col gap-3">
+              <p className="text-sm font-medium">Resumen del Cuadre Agrupado:</p>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Cargue Total</p>
+                  <p className="font-semibold">{formatCOP(agrupadoData?.totales.cargue || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Entregado Total</p>
+                  <p className="font-semibold text-green-600">{formatCOP(agrupadoData?.totales.entregado || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Fiado Total</p>
+                  <p className="font-semibold text-yellow-600">{formatCOP(agrupadoData?.totales.fiado || 0)}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Devoluciones</p>
+                  <p className="font-semibold text-red-600">{formatCOP(agrupadoData?.totales.devoluciones || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Repasos</p>
+                  <p className="font-semibold text-blue-600">{formatCOP(agrupadoData?.totales.repasos || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Diferencia Esperada</p>
+                  <p
+                    className={`font-semibold ${
+                      Math.round(
+                        (Number(formData.efectivoRecibido || 0) +
+                          (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
+                          (agrupadoData?.totales.entregado || 0)) *
+                          100,
+                      ) /
+                        100 ===
+                      0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {formatCOP(
+                      Math.round(
+                        (Number(formData.efectivoRecibido || 0) +
+                          (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
+                          (agrupadoData?.totales.entregado || 0)) *
+                          100,
+                      ) / 100,
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="submit" onClick={handleSubmitAgrupado} disabled={submitting}>
+              {submitting ? "Guardando..." : "Confirmar Cuadre Agrupado"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para agregar nuevo pedido */}
+      <Dialog
+        open={showNuevoPedidoModal}
+        onOpenChange={(open) => (open ? setShowNuevoPedidoModal(true) : handleCloseNuevoPedidoModal())}
+      >
+        <DialogContent className="sm:max-w-[425px] lg:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Nuevo Pedido</DialogTitle>
+            <DialogDescription>Agregar un nuevo pedido a la ruta: {rutaParaNuevoPedido?.ruta}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="clienteNuevoPedido" className="text-right">
+                Cliente
+              </Label>
+              <Input
+                id="clienteNuevoPedido"
+                value={nuevoPedidoData.cliente}
+                onChange={(e) => setNuevoPedidoData({ ...nuevoPedidoData, cliente: e.target.value })}
+                className="col-span-1"
+                placeholder="Nombre del cliente"
+              />
+            </div>
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="observacionesNuevoPedido" className="text-right">
+                Observaciones
+              </Label>
+              <Textarea
+                id="observacionesNuevoPedido"
+                value={nuevoPedidoData.observaciones}
+                onChange={(e) => setNuevoPedidoData({ ...nuevoPedidoData, observaciones: e.target.value })}
+                className="col-span-1"
+                rows={3}
+                placeholder="Notas adicionales sobre el pedido"
+              />
+            </div>
+
+            <h3 className="font-semibold mt-4">Productos del Pedido</h3>
+            <div className="space-y-4">
+              {productosNuevoPedido.map((producto, index) => (
+                <div key={index} className="grid grid-cols-6 gap-3 items-center border-b pb-3">
+                  <Input
+                    placeholder="Código"
+                    value={producto.codigo}
+                    onChange={(e) => actualizarProducto(index, "codigo", e.target.value)}
+                    className="col-span-1 text-xs"
+                  />
+                  <Input
+                    placeholder="Descripción"
+                    value={producto.descripcion}
+                    onChange={(e) => actualizarProducto(index, "descripcion", e.target.value)}
+                    className="col-span-2 text-xs"
+                  />
+                  <Input
+                    placeholder="Cantidad"
+                    type="number"
+                    min="1"
+                    value={producto.cantidad}
+                    onChange={(e) => actualizarProducto(index, "cantidad", Number.parseInt(e.target.value) || 1)}
+                    className="col-span-1 text-xs text-right"
+                  />
+                  <Input
+                    placeholder="Precio Unit."
+                    type="number"
+                    min="0"
+                    value={producto.precioUnitario}
+                    onChange={(e) =>
+                      actualizarProducto(index, "precioUnitario", Number.parseFloat(e.target.value) || 0)
+                    }
+                    className="col-span-1 text-xs text-right"
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <span className="font-medium text-sm">{formatCOP(producto.subtotal)}</span>
+                    <Button variant="ghost" size="icon" onClick={() => eliminarProducto(index)}>
+                      <X className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button variant="outline" onClick={agregarProducto} className="w-full mt-3 bg-transparent">
+              <Plus className="h-4 w-4 mr-2" />
+              Agregar Otro Producto
+            </Button>
+
+            <div className="mt-4 pt-4 border-t flex justify-end">
+              <p className="text-xl font-bold">Total Pedido: {formatCOP(calcularTotalNuevoPedido())}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="submit" onClick={handleSubmitNuevoPedido} disabled={submittingNuevoPedido}>
+              {submittingNuevoPedido ? "Creando..." : "Crear Pedido"}
             </Button>
           </DialogFooter>
         </DialogContent>
