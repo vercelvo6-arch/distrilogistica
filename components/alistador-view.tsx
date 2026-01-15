@@ -71,10 +71,16 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     const planillasHoy: any[] = []
     const planillasFuturas: any[] = []
 
-    ;(data.planillas || []).forEach((p: any) => {
-      const fechaAlistamiento = p.fecha_alistamiento 
-        ? p.fecha_alistamiento.split('T')[0] 
-        : hoy
+    const fechaAlistamiento = p.fecha_alistamiento 
+  ? p.fecha_alistamiento.split('T')[0].trim()
+  : hoy
+
+console.log('[DEBUG] Comparando:', { 
+  ruta: p.tipo_ruta, 
+  fechaAlistamiento, 
+  hoy, 
+  resultado: fechaAlistamiento > hoy ? 'FUTURA' : 'HOY' 
+})
 
       const tieneEntregador = p.entregador
       const estaActiva = p.estado === 'pendiente' || p.estado === 'alistando'
