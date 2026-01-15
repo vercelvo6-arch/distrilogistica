@@ -315,16 +315,6 @@ const handleAgruparRutas = () => {
     })
     setShowAgrupadoModal(true)
   }
-```
-
----
-
-**Quedaría así:**
-```
-248   }  // ← fin de handleSubmit
-249
-250   const handleAgruparRutas = () => {
-251     // ... código nuevo aquí
 ...
   const handleSubmit = async () => {
     if (!selectedPlanilla) return
@@ -353,7 +343,78 @@ const handleAgruparRutas = () => {
         return
       }
     }
+const handleSubmitAgrupado = async () => {
+    if (!agrupadoData) return
 
+    if (!formData.efectivoRecibido || Number(formData.efectivoRecibido) < 0) {
+      toast({
+        title: "Error",
+        description: "El efectivo recibido debe ser un valor válido",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (formData.tieneConsignacion) {
+      if (!formData.numeroConsignacion || !formData.banco || !formData.montoConsignacion) {
+        toast({
+          title: "Error",
+          description: "Complete todos los datos de la consignación",
+          variant: "destructive"
+        })
+        return
+      }
+
+      const existe = await validateConsignacion(formData.numeroConsignacion)
+      if (existe) return
+    }
+
+    try {
+      setSubmitting(true)
+
+      const response = await fetch('/api/cuadres-caja', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planillaIds: agrupadoData.planillaIds,
+          entregador: agrupadoData.entregador,
+          totalEsperado: agrupadoData.totales.entregado,
+          efectivoRecibido: Number(formData.efectivoRecibido),
+          tieneConsignacion: formData.tieneConsignacion,
+          numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
+          banco: formData.tieneConsignacion ? formData.banco : null,
+          montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
+          observaciones: formData.observaciones || null
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al registrar cuadre agrupado')
+      }
+
+      toast({
+        title: "✅ Cuadre Agrupado Registrado",
+        description: data.mensaje
+      })
+
+      setShowAgrupadoModal(false)
+      setSelectedRoutes([])
+      setAgrupadoData(null)
+      await loadData()
+
+    } catch (error) {
+      console.error('Error al registrar cuadre agrupado:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Error al registrar cuadre',
+        variant: "destructive"
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
     try {
       setSubmitting(true)
       
@@ -854,7 +915,7 @@ const handleAgruparRutas = () => {
             <Button variant="outline" onClick={() => setShowAgrupadoModal(false)} disabled={submitting}>
               Cancelar
             </Button>
-            <Button onClick={() => {/* TODO: handleSubmitAgrupado */}} disabled={submitting}>
+            <Button onClick={handleSubmitAgrupado} disabled={submitting}>
               Confirmar Cuadre Agrupado
             </Button>
           </DialogFooter>
