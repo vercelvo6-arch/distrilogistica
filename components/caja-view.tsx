@@ -306,8 +306,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       })
     }
   }
-
-  const handleOpenModal = (planilla: RouteSheet) => {
   
   const handleOpenModal = (planilla: RouteSheet) => {
     const totals = calculateRouteTotals(planilla)
