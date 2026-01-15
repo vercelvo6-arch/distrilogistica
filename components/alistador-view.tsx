@@ -78,8 +78,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       }
     }
 
-    const hoy = new Date().toISOString().split('T')[0]
-    console.log('[ALISTADOR] 📅 Fecha actual:', hoy)
+    // <CHANGE> Obtener fecha LOCAL en lugar de UTC
+    const ahora = new Date()
+    const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
+    console.log('[ALISTADOR] 📅 Fecha actual (LOCAL):', hoy)
 
     const planillasHoy: any[] = []
     const planillasFuturas: any[] = []
@@ -121,6 +123,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     console.log('[ALISTADOR] 📊 Para alistar hoy:', planillasHoy.length)
     console.log('[ALISTADOR] 📊 Programadas (futuro):', planillasFuturas.length)
 
+    // ... existing code ...
     const planillas: RouteSheet[] = planillasHoy.map((p: any) => ({
       id: p.id,
       ruta: p.tipo_ruta,
