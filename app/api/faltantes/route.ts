@@ -196,3 +196,173 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// PATCH - Subsanar faltante con los 3 estados posibles
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { 
+      faltanteId,
+      tipoResolucion, // 'completo' | 'parcial' | 'definitivo'
+      cantidadResuelta, // Solo requerido para 'parcial'
+      observaciones_resolucion
+    } = body;
+
+    // Validaciones
+    if (!faltanteId || !tipoResolucion) {
+      return NextResponse.json(
+        { error: 'Faltan datos requeridos: faltanteId y tipoResolucion' },
+        { status: 400 }
+      );
+    }
+
+    if (!['completo', 'parcial', 'definitivo'].includes(tipoResolucion)) {
+      return NextResponse.json(
+        { error: 'tipoResolucion debe ser: completo, parcial o definitivo' },
+        { status: 400 }
+      );
+    }
+
+    if (tipoResolucion === 'parcial' && (!cantidadResuelta || cantidadResuelta <= 0)) {
+      return NextResponse.json(
+        { error: 'Para resolución parcial debe especificar cantidadResuelta > 0' },
+        { status: 400 }
+      );
+    }
+
+    if (!observaciones_resolucion || observaciones_resolucion.trim() === '') {
+      return NextResponse.json(
+        { error: 'Las observaciones de resolución son obligatorias' },
+        { status: 400 }
+      );
+    }
+
+    const sql = getDB();
+
+    // Obtener el faltante actual
+    const faltanteActual = await sql`
+      SELECT * FROM faltantes WHERE id = ${faltanteId}
+    `;
+
+    if (faltanteActual.length === 0) {
+      return NextResponse.json(
+        { error: 'Faltante no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    const faltante = faltanteActual[0];
+
+    // Calcular valores según tipo de resolución
+    let nuevoEstado: string;
+    let cantidadResueltaFinal: number;
+    
+    switch (tipoResolucion) {
+      case 'completo':
+        nuevoEstado = 'resuelto';
+        cantidadResueltaFinal = faltante.cantidad_faltante;
+        break;
+      
+      case 'parcial':
+        nuevoEstado = 'parcial';
+        cantidadResueltaFinal = cantidadResuelta;
+        
+        if (cantidadResueltaFinal > faltante.cantidad_faltante) {
+          return NextResponse.json(
+            { error: `No puede resolver más de lo que falta (máximo: ${faltante.cantidad_faltante})` },
+            { status: 400 }
+          );
+        }
+        break;
+      
+      case 'definitivo':
+        nuevoEstado = 'definitivo';
+        cantidadResueltaFinal = 0;
+        break;
+      
+      default:
+        return NextResponse.json(
+          { error: 'Tipo de resolución inválido' },
+          { status: 400 }
+        );
+    }
+
+    // Actualizar el faltante
+    const resultado = await sql`
+      UPDATE faltantes
+      SET 
+        estado = ${nuevoEstado},
+        tipo_resolucion = ${tipoResolucion},
+        cantidad_resuelta = ${cantidadResueltaFinal},
+        resuelto_por = ${session.user.id},
+        fecha_resolucion = NOW(),
+        observaciones_resolucion = ${observaciones_resolucion}
+      WHERE id = ${faltanteId}
+      RETURNING *
+    `;
+
+    console.log(`[FALTANTES SUBSANAR] ✓ Faltante ${faltanteId} actualizado a estado: ${nuevoEstado}`);
+
+    // Si es resolución parcial, crear un nuevo registro para la cantidad pendiente
+    if (tipoResolucion === 'parcial') {
+      const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal;
+      
+      await sql`
+        INSERT INTO faltantes (
+          planilla_id,
+          entregador,
+          ruta,
+          codigo,
+          descripcion,
+          categoria,
+          cantidad_solicitada,
+          cantidad_disponible,
+          cantidad_faltante,
+          unidad_incompleta,
+          observaciones,
+          marcado_por,
+          estado,
+          fecha_marcado
+        ) VALUES (
+          ${faltante.planilla_id},
+          ${faltante.entregador},
+          ${faltante.ruta},
+          ${faltante.codigo},
+          ${faltante.descripcion},
+          ${faltante.categoria},
+          ${faltante.cantidad_solicitada},
+          ${cantidadResueltaFinal},
+          ${cantidadPendiente},
+          ${faltante.unidad_incompleta},
+          ${`PENDIENTE de subsanación parcial anterior: ${observaciones_resolucion}`},
+          ${faltante.marcado_por},
+          'pendiente',
+          NOW()
+        )
+      `;
+      
+      console.log(`[FALTANTES SUBSANAR] ✓ Nuevo faltante creado por cantidad pendiente: ${cantidadPendiente}`);
+    }
+
+    return NextResponse.json({
+      success: true,
+      faltante: resultado[0],
+      mensaje: 
+        tipoResolucion === 'completo' ? `Faltante resuelto completamente (${cantidadResueltaFinal} unidades)` :
+        tipoResolucion === 'parcial' ? `Resueltas ${cantidadResueltaFinal} de ${faltante.cantidad_faltante} unidades. Pendiente: ${faltante.cantidad_faltante - cantidadResueltaFinal}` :
+        'Faltante marcado como definitivo (no hay producto disponible)'
+    });
+
+  } catch (error) {
+    console.error('[FALTANTES SUBSANAR] ERROR:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Error al subsanar faltante' },
+      { status: 500 }
+    );
+  }
+}
