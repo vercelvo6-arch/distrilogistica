@@ -664,7 +664,7 @@ const handleConfirmAssignment = async () => {
                 </div>
               ) : (
                 <div className="space-y-4 md:space-y-6">
-                  {{(() => {
+                  {(() => {
   const filteredSheets = supervisionSheets.filter(s => 
     selectedEntregadorSupervision === "todos" || s.entregador === selectedEntregadorSupervision
   )
