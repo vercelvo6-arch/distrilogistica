@@ -315,7 +315,6 @@ const handleAgruparRutas = () => {
     })
     setShowAgrupadoModal(true)
   }
-...
   const handleSubmit = async () => {
     if (!selectedPlanilla) return
 
