@@ -35,6 +35,7 @@ interface ConsolidatedProduct {
 }
 
 export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
+  const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [rutasProgramadas, setRutasProgramadas] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
