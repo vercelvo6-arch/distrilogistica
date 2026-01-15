@@ -367,7 +367,82 @@ const handleSubmitAgrupado = async () => {
       const existe = await validateConsignacion(formData.numeroConsignacion)
       if (existe) return
     }
+}
 
+  const handleSubmit = async () => {
+    if (!selectedPlanilla) return
+
+    if (!formData.efectivoRecibido || Number(formData.efectivoRecibido) < 0) {
+      toast({
+        title: "Error",
+        description: "El efectivo recibido debe ser un valor válido",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (formData.tieneConsignacion) {
+      if (!formData.numeroConsignacion || !formData.banco || !formData.montoConsignacion) {
+        toast({
+          title: "Error",
+          description: "Complete todos los datos de la consignación",
+          variant: "destructive"
+        })
+        return
+      }
+
+      const existe = await validateConsignacion(formData.numeroConsignacion)
+      if (existe) {
+        return
+      }
+    }
+
+    try {
+      setSubmitting(true)
+      
+      const totals = calculateRouteTotals(selectedPlanilla)
+      
+      const response = await fetch('/api/caja/recibir-efectivo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planillaId: selectedPlanilla.id,
+          efectivoEsperado: totals.entregado,
+          efectivoRecibido: Number(formData.efectivoRecibido),
+          tieneConsignacion: formData.tieneConsignacion,
+          numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
+          banco: formData.tieneConsignacion ? formData.banco : null,
+          montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
+          fechaConsignacion: formData.tieneConsignacion ? formData.fechaConsignacion : null,
+          observaciones: formData.observaciones || null
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al registrar recepción')
+      }
+
+      toast({
+        title: "✅ Recepción Registrada",
+        description: data.mensaje
+      })
+
+      handleCloseModal()
+      await loadData()
+
+    } catch (error) {
+      console.error('Error al registrar recepción:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Error al registrar recepción',
+        variant: "destructive"
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
     try {
       setSubmitting(true)
 
