@@ -3,9 +3,16 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { DollarSign, LogOut, Filter, Wallet, History, Calendar } from "lucide-react"
+import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp } from "lucide-react"
 import type { RouteSheet, User, RecepcionCaja } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
+import {
+  updatePedidoEstado,
+  updateProductoDevuelto,
+  updateCantidadEntregada,
+  updateSubtotalAjustado,
+} from "@/lib/actions/planillas"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -54,6 +61,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [selectedRoutes, setSelectedRoutes] = useState<number[]>([])
   const [showAgrupadoModal, setShowAgrupadoModal] = useState(false)
   const [agrupadoData, setAgrupadoData] = useState<any>(null)
+  const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadData()
@@ -189,6 +198,122 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
+})
+
+  const toggleRouteExpansion = (routeId: number) => {
+    const newExpanded = new Set(expandedRoutes)
+    if (newExpanded.has(routeId)) {
+      newExpanded.delete(routeId)
+    } else {
+      newExpanded.add(routeId)
+    }
+    setExpandedRoutes(newExpanded)
+  }
+}
+
+  const handleItemReturn = async (orderId: string, codigo: string, currentDevuelto: boolean) => {
+    try {
+      await updateProductoDevuelto(orderId, codigo, !currentDevuelto)
+      await loadData()
+      
+      toast({
+        title: currentDevuelto ? "Producto activado" : "Producto devuelto",
+        description: `El producto ha sido marcado como ${!currentDevuelto ? "devuelto" : "activo"}`,
+      })
+    } catch (err) {
+      console.error("[CAJA] Error updating product return:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el producto",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCantidadChange = async (orderId: string, codigo: string, cantidad: number, cantidadOriginal: number) => {
+    if (cantidad < 0 || cantidad > cantidadOriginal) {
+      toast({
+        title: "Error",
+        description: `La cantidad debe estar entre 0 y ${cantidadOriginal}`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const result = await updateCantidadEntregada(orderId, codigo, cantidad)
+      await loadData()
+      
+      const estadoMsg = result.estadoProducto === 'agotado' 
+        ? '🚫 Marcado como Agotado' 
+        : result.estadoProducto === 'parcial'
+          ? '📦 Entrega Parcial'
+          : '✓ Entrega Completa'
+      
+      toast({
+        title: "Cantidad actualizada",
+        description: estadoMsg,
+      })
+    } catch (err) {
+      console.error("[CAJA] Error updating quantity:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la cantidad",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSubtotalChange = async (orderId: string, codigo: string, nuevoSubtotal: number) => {
+    if (nuevoSubtotal < 0) {
+      toast({
+        title: "Error",
+        description: "El subtotal no puede ser negativo",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      await updateSubtotalAjustado(orderId, codigo, nuevoSubtotal)
+      await loadData()
+      
+      toast({
+        title: "💰 Subtotal ajustado",
+        description: "El valor ha sido actualizado manualmente",
+      })
+    } catch (err) {
+      console.error("[CAJA] Error updating subtotal:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el subtotal",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleOrderStatusChange = async (orderId: string, newStatus: Order["estado"]) => {
+    try {
+      await updatePedidoEstado(orderId, newStatus)
+      await loadData()
+
+      toast({
+        title: "Actualizado",
+        description: `Pedido marcado como ${newStatus}`,
+      })
+    } catch (err) {
+      console.error("[CAJA] Error updating order status:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el pedido",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleOpenModal = (planilla: RouteSheet) => {
+  const handleOpenModal = (planilla: RouteSheet) => {
+  
   const handleOpenModal = (planilla: RouteSheet) => {
     const totals = calculateRouteTotals(planilla)
     setSelectedPlanilla(planilla)
@@ -284,12 +409,38 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     let totalRepasos = 0
 
     rutasSeleccionadas.forEach((route) => {
-      const totals = calculateRouteTotals(route)
       totalCargue += route.totalAmount
-      totalEntregado += totals.entregado
-      totalFiado += totals.fiado
-      totalDevoluciones += totals.devoluciones
-      totalRepasos += totals.repasos
+
+      route.orders.forEach((order) => {
+        let effectiveTotal = 0
+        
+        order.items.forEach((item) => {
+          if (item.devuelto) return // No cuenta
+          
+          const estadoProd = item.estadoProducto || 'normal'
+          if (estadoProd === 'agotado') return // Agotados no suman
+          
+          // Usar subtotal ajustado si existe, sino calcular basado en cantidad entregada
+          if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+            effectiveTotal += Number(item.subtotalAjustado)
+          } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
+            effectiveTotal += Number(item.cantidadEntregada) * Number(item.valorUnidad)
+          } else {
+            effectiveTotal += Number(item.subtotal)
+          }
+        })
+
+        // Clasificar por estado del pedido
+        if (order.estado === 'entregado') {
+          totalEntregado += effectiveTotal
+        } else if (order.estado === 'fiado') {
+          totalFiado += effectiveTotal
+        } else if (order.estado === 'devolucion') {
+          totalDevoluciones += effectiveTotal
+        } else if (order.estado === 'repaso') {
+          totalRepasos += effectiveTotal
+        }
+      })
     })
 
     const agrupado = {
@@ -751,10 +902,29 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                   {new Date(route.fecha).toLocaleDateString("es-CO")}
                                 </p>
                               </div>
-                              <Button onClick={() => handleOpenModal(route)} size="sm">
-                                <DollarSign className="h-4 w-4 mr-2" />
-                                Recibir Efectivo
-                              </Button>
+                              <div className="flex gap-2">
+  <Button 
+    onClick={() => toggleRouteExpansion(route.id)} 
+    variant="outline" 
+    size="sm"
+  >
+    {expandedRoutes.has(route.id) ? (
+      <>
+        <ChevronUp className="h-4 w-4 mr-2" />
+        Ocultar Clientes
+      </>
+    ) : (
+      <>
+        <ChevronDown className="h-4 w-4 mr-2" />
+        Ver Clientes
+      </>
+    )}
+  </Button>
+  <Button onClick={() => handleOpenModal(route)} size="sm">
+    <DollarSign className="h-4 w-4 mr-2" />
+    Recibir Efectivo
+  </Button>
+</div>
                             </div>
 
                             <div className="grid grid-cols-5 gap-3 text-sm">
@@ -786,6 +956,282 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                               <p className="text-sm font-medium">💵 Efectivo Esperado:</p>
                               <p className="text-xl font-bold text-green-600">{formatCOP(totals.entregado)}</p>
                             </div>
+                            </div>
+              </div>
+
+              {expandedRoutes.has(route.id) && (
+                <div className="mt-4 pt-4 border-t">
+                  <h3 className="font-semibold mb-3">Clientes de la ruta:</h3>
+                  
+                  <div className="space-y-3">
+                    {route.orders.map((order) => {
+                      const isExpanded = expandedOrders.has(order.id)
+                      
+                      // Calcular totales correctamente
+                      let effectiveTotal = 0
+                      let returnedTotal = 0
+                      
+                      order.items.forEach((item) => {
+                        if (item.devuelto) {
+                          returnedTotal += Number(item.subtotal) || 0
+                        } else {
+                          const estadoProd = item.estadoProducto || 'normal'
+                          if (estadoProd === 'agotado') return
+                          
+                          if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+                            effectiveTotal += Number(item.subtotalAjustado) || 0
+                          } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
+                            effectiveTotal += (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
+                          } else {
+                            effectiveTotal += Number(item.subtotal) || 0
+                          }
+                        }
+                      })
+
+                      return (
+                        <Card key={order.id} className="overflow-hidden">
+                          <div className="p-3 md:p-4 bg-muted/50">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                  <h3 className="font-semibold text-sm md:text-base truncate">{order.cliente}</h3>
+                                  <span
+                                    className={`text-xs px-2 py-1 rounded-full shrink-0 font-medium ${
+                                      order.estado === "pendiente"
+                                        ? "bg-yellow-100 text-yellow-700"
+                                        : order.estado === "entregado"
+                                          ? "bg-green-100 text-green-700"
+                                          : order.estado === "fiado"
+                                            ? "bg-orange-100 text-orange-700"
+                                            : order.estado === "repaso"
+                                              ? "bg-blue-100 text-blue-700"
+                                              : "bg-red-100 text-red-700"
+                                    }`}
+                                  >
+                                    {order.estado}
+                                  </span>
+                                </div>
+                                
+                                <p className="text-xs md:text-sm text-muted-foreground">
+                                  {order.items.length} productos · {formatCOP(effectiveTotal)}
+                                  {returnedTotal > 0 && (
+                                    <span className="text-red-600 ml-2">· Dev: {formatCOP(returnedTotal)}</span>
+                                  )}
+                                </p>
+                              </div>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => {
+                                  const newExpanded = new Set(expandedOrders)
+                                  if (newExpanded.has(order.id)) {
+                                    newExpanded.delete(order.id)
+                                  } else {
+                                    newExpanded.add(order.id)
+                                  }
+                                  setExpandedOrders(newExpanded)
+                                }}
+                              >
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="p-3 md:p-4 space-y-4">
+                              <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-700">
+                                💡 <strong>Ajustes manuales:</strong> Edita "Cant. Entregada" para entregas parciales. Para promociones con precios especiales, ajusta el "Subtotal" directamente.
+                              </div>
+                              
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs md:text-sm">
+                                  <thead>
+                                    <tr className="border-b">
+                                      <th className="text-left py-2 w-10">Dev.</th>
+                                      <th className="text-left py-2">Código</th>
+                                      <th className="text-left py-2">Descripción</th>
+                                      <th className="text-right py-2">Cant. Original</th>
+                                      <th className="text-right py-2">Cant. Entregada</th>
+                                      <th className="text-right py-2">Subtotal</th>
+                                      <th className="text-center py-2">Estado</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {order.items.map((item, idx) => {
+                                      const cantidadEntregada = Number(item.cantidadEntregada) || Number(item.cantidad) || 0
+                                      const subtotalCalculado = cantidadEntregada * (Number(item.valorUnidad) || 0)
+                                      const subtotalFinal = (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) 
+                                        ? Number(item.subtotalAjustado) 
+                                        : subtotalCalculado
+                                      const estadoProducto = item.estadoProducto || 'normal'
+                                      const tieneAjusteManual = item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+                                      
+                                      return (
+                                        <tr
+                                          key={idx}
+                                          className={`border-b ${item.devuelto ? "bg-red-50 line-through opacity-60" : ""}`}
+                                        >
+                                          <td className="py-2">
+                                            <Checkbox
+                                              checked={item.devuelto || false}
+                                              onCheckedChange={() =>
+                                                handleItemReturn(order.id, item.codigo, item.devuelto || false)
+                                              }
+                                              disabled={order.estado !== "pendiente"}
+                                            />
+                                          </td>
+                                          <td className="py-2 font-mono">{item.codigo}</td>
+                                          <td className="py-2">{item.descripcion}</td>
+                                          <td className="text-right py-2">{item.cantidad}</td>
+                                          <td className="text-right py-2">
+                                            {order.estado === "pendiente" && !item.devuelto ? (
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max={item.cantidad}
+                                                defaultValue={cantidadEntregada}
+                                                onBlur={(e) => {
+                                                  const newCant = parseInt(e.target.value) || 0
+                                                  if (newCant !== cantidadEntregada) {
+                                                    handleCantidadChange(order.id, item.codigo, newCant, item.cantidad)
+                                                  }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    e.currentTarget.blur()
+                                                  }
+                                                }}
+                                                className="w-16 px-2 py-1 border rounded text-center"
+                                              />
+                                            ) : (
+                                              <span className="font-medium">{cantidadEntregada}</span>
+                                            )}
+                                          </td>
+                                          <td className="text-right py-2">
+                                            {order.estado === "pendiente" && !item.devuelto ? (
+                                              <div className="flex flex-col items-end gap-1">
+                                                <input
+                                                  type="number"
+                                                  min="0"
+                                                  step="100"
+                                                  defaultValue={subtotalFinal}
+                                                  onBlur={(e) => {
+                                                    const newSubtotal = parseFloat(e.target.value) || 0
+                                                    if (newSubtotal !== subtotalFinal) {
+                                                      handleSubtotalChange(order.id, item.codigo, newSubtotal)
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      e.currentTarget.blur()
+                                                    }
+                                                  }}
+                                                  placeholder={formatCOP(subtotalFinal)}
+                                                  className={`w-28 px-2 py-1 border rounded text-right font-medium ${
+                                                    tieneAjusteManual ? 'border-orange-400 bg-orange-50' : ''
+                                                  }`}
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-xs text-muted-foreground">{formatCOP(subtotalFinal)}</span>
+                                                  {tieneAjusteManual && (
+                                                    <span className="text-xs text-orange-600">✏️ Ajustado</span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <div className="flex flex-col items-end">
+                                                <span className="font-medium">{formatCOP(subtotalFinal)}</span>
+                                                {tieneAjusteManual && (
+                                                  <span className="text-xs text-orange-600">✏️ Ajustado</span>
+                                                )}
+                                              </div>
+                                            )}
+                                          </td>
+                                          <td className="text-center py-2">
+                                            {estadoProducto === 'agotado' && (
+                                              <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                                                🚫 Agotado
+                                              </span>
+                                            )}
+                                            {estadoProducto === 'parcial' && (
+                                              <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                                                📦 Parcial
+                                              </span>
+                                            )}
+                                            {estadoProducto === 'normal' && !item.devuelto && (
+                                              <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                                                ✓ Normal
+                                              </span>
+                                            )}
+                                            {item.devuelto && (
+                                              <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+                                                ❌ Devuelto
+                                              </span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr className="font-semibold">
+                                      <td colSpan={5} className="text-right py-3 text-xs md:text-sm">
+                                        Total:
+                                      </td>
+                                      <td className="text-right py-3">{formatCOP(effectiveTotal)}</td>
+                                      <td></td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleOrderStatusChange(order.id, "entregado")}
+                                  className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
+                                  disabled={order.estado !== "pendiente"}
+                                >
+                                  Entregado
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleOrderStatusChange(order.id, "fiado")}
+                                  className="flex-1 sm:flex-none border-orange-300 text-orange-700 hover:bg-orange-50"
+                                  disabled={order.estado !== "pendiente"}
+                                >
+                                  Fiado
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleOrderStatusChange(order.id, "repaso")}
+                                  className="flex-1 sm:flex-none border-blue-300 text-blue-700 hover:bg-blue-50"
+                                  disabled={order.estado !== "pendiente"}
+                                >
+                                  Repaso
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleOrderStatusChange(order.id, "devolucion")}
+                                  className="flex-1 sm:flex-none"
+                                  disabled={order.estado !== "pendiente"}
+                                >
+                                  Devolución
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </Card>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+            </div>
                           </div>
                         </div>
                       )
