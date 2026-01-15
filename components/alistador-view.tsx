@@ -50,8 +50,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     loadData()
   }, [])
 
-  // 🔥 FUNCIÓN CORREGIDA - Confiar 100% en la BD
-  // 🔥 FUNCIÓN CON FILTRO POR FECHA DE ALISTAMIENTO
   async function loadData() {
   try {
     const response = await fetch('/api/planillas', {
@@ -63,32 +61,30 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     
     const data = await response.json()
 
-    // 🔥 OBTENER FECHA DE HOY (solo YYYY-MM-DD)
     const hoy = new Date().toISOString().split('T')[0]
     console.log('[ALISTADOR] 📅 Fecha actual:', hoy)
 
-    // 🔥 SEPARAR: planillas para HOY vs FUTURAS
     const planillasHoy: any[] = []
     const planillasFuturas: any[] = []
 
-    const fechaAlistamiento = p.fecha_alistamiento 
-  ? p.fecha_alistamiento.split('T')[0].trim()
-  : hoy
+    data.forEach((p: any) => {
+      const fechaAlistamiento = p.fecha_alistamiento 
+        ? p.fecha_alistamiento.split('T')[0].trim()
+        : hoy
 
-console.log('[DEBUG] Comparando:', { 
-  ruta: p.tipo_ruta, 
-  fechaAlistamiento, 
-  hoy, 
-  resultado: fechaAlistamiento > hoy ? 'FUTURA' : 'HOY' 
-})
+      console.log('[DEBUG] Comparando:', { 
+        ruta: p.tipo_ruta, 
+        fechaAlistamiento, 
+        hoy, 
+        resultado: fechaAlistamiento > hoy ? 'FUTURA' : 'HOY' 
+      })
 
       const tieneEntregador = p.entregador
       const estaActiva = p.estado === 'pendiente' || p.estado === 'alistando'
 
-      if (!tieneEntregador || !estaActiva) return // Ignorar sin entregador o completadas
+      if (!tieneEntregador || !estaActiva) return
 
       if (fechaAlistamiento <= hoy) {
-        // ✅ Para alistar HOY o atrasadas
         planillasHoy.push(p)
         console.log('[ALISTADOR] ✅ Para alistar HOY:', {
           ruta: p.tipo_ruta,
@@ -96,7 +92,6 @@ console.log('[DEBUG] Comparando:', {
           fecha_alistamiento: fechaAlistamiento,
         })
       } else {
-        // 📅 Programadas para el FUTURO (solo lectura)
         planillasFuturas.push(p)
         console.log('[ALISTADOR] 📅 Programada (futuro):', {
           ruta: p.tipo_ruta,
@@ -104,11 +99,11 @@ console.log('[DEBUG] Comparando:', {
           fecha_alistamiento: fechaAlistamiento,
         })
       }
+    })
 
     console.log('[ALISTADOR] 📊 Para alistar hoy:', planillasHoy.length)
     console.log('[ALISTADOR] 📊 Programadas (futuro):', planillasFuturas.length)
 
-    // Mapear planillas HOY
     const planillas: RouteSheet[] = planillasHoy.map((p: any) => ({
       id: p.id,
       ruta: p.tipo_ruta,
@@ -150,7 +145,6 @@ console.log('[DEBUG] Comparando:', {
       cuentasPorCobrar: [],
     }))
 
-    // Mapear planillas FUTURAS (mismo formato)
     const programadas: RouteSheet[] = planillasFuturas.map((p: any) => ({
       id: p.id,
       ruta: p.tipo_ruta,
@@ -193,7 +187,7 @@ console.log('[DEBUG] Comparando:', {
     }))
 
     setRouteSheets(planillas)
-    setRutasProgramadas(programadas) // 🔥 GUARDAR PROGRAMADAS
+    setRutasProgramadas(programadas)
     
   } catch (err) {
     console.error("[ALISTADOR] Error loading planillas:", err)
@@ -277,13 +271,11 @@ console.log('[DEBUG] Comparando:', {
     setObservaciones(product.observacionesFaltante || "")
   }
 
-  // 🔥 FUNCIÓN CORREGIDA - Guardar SIEMPRE en BD
   const handleSaveEstadoAlistamiento = async () => {
     if (!editingProduct) return
 
     const disponible = Number(disponibleInput) || 0
 
-    // Validaciones solo para estados que requieren observaciones
     if (estadoSeleccionado === 'no_alistado' && !observaciones.trim()) {
       alert('Por favor agregue observaciones para productos no alistados')
       return
@@ -318,7 +310,6 @@ console.log('[DEBUG] Comparando:', {
         planilla_id: sheetForEntregador.id
       })
 
-      // 🔥 SIEMPRE GUARDAR EN BASE DE DATOS - NO IMPORTA EL ESTADO
       const saveResponse = await fetch('/api/faltantes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -346,7 +337,6 @@ console.log('[DEBUG] Comparando:', {
 
       console.log('✅ Estado guardado correctamente en BD')
 
-      // 🔥 ACTUALIZAR EL ESTADO LOCAL INMEDIATAMENTE
       const updatedSheets = routeSheets.map(sheet => {
         if (sheet.entregador === editingProduct.entregador) {
           return {
@@ -372,7 +362,6 @@ console.log('[DEBUG] Comparando:', {
         return sheet
       })
 
-      // Actualizar el estado inmediatamente para feedback visual
       setRouteSheets(updatedSheets)
 
       setEditingProduct(null)
@@ -387,8 +376,6 @@ console.log('[DEBUG] Comparando:', {
       setSaving(false)
     }
   }
-
- // ... continuación de AlistadorView
 
   const handleStartPreparation = async (entregador: string) => {
     try {
