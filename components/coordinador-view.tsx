@@ -1093,6 +1093,6 @@ const handleConfirmAssignment = async () => {
         faltante={faltanteParaSubsanar}
         onClose={() => setFaltanteParaSubsanar(null)}
         onSubmit={handleSubsanarFaltante}
-       />
+      />
   )
 }
