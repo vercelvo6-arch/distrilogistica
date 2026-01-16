@@ -55,9 +55,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (planilla[0].estado !== 'completado') {
-      return NextResponse.json(
-        { error: 'La planilla debe estar completada para cuadrar en caja' },
+    if (planilla[0].estado !== 'completado' && planilla[0].estado !== 'alistado') {
+        return NextResponse.json(
+        { error: 'La planilla debe estar completada o alistada para cuadrar en caja' },
         { status: 400 }
       )
     }
