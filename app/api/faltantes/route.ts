@@ -307,6 +307,23 @@ export async function PATCH(request: NextRequest) {
     `;
 
     console.log(`[FALTANTES SUBSANAR] ✓ Faltante ${faltanteId} actualizado a estado: ${nuevoEstado}`);
+    const estadoProducto = nuevoEstado === 'resuelto' ? 'completo' : 
+                          nuevoEstado === 'parcial' ? 'incompleto' : 
+                          'no_alistado';
+
+    await sql`
+      UPDATE pedido_productos pp
+      SET 
+        estado_alistamiento = ${estadoProducto},
+        cantidad_disponible = ${faltante.cantidad_disponible + cantidadResueltaFinal},
+        observaciones_faltante = ${observaciones_resolucion}
+      FROM pedidos p
+      WHERE pp.pedido_id = p.id
+        AND p.planilla_id = ${faltante.planilla_id}
+        AND pp.codigo = ${faltante.codigo}
+    `;
+
+    console.log(`[FALTANTES SUBSANAR] ✓ Estado actualizado en pedido_productos a: ${estadoProducto}`);
 
     // Si es resolución parcial, crear un nuevo registro para la cantidad pendiente
     if (tipoResolucion === 'parcial') {
