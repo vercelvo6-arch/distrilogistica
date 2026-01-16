@@ -7,11 +7,19 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   console.log("[API /planillas/reasignar] ===== INICIO =====");
-
+  
   try {
     const session = await getSession();
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+    }
+
+    // Solo caja y admin pueden reasignar
+    if (session.user.rol !== 'caja' && session.user.rol !== 'administrador') {
+      return NextResponse.json(
+        { error: 'No tienes permisos para reasignar rutas' },
+        { status: 403 }
+      )
     }
 
     const body = await request.json();
@@ -21,7 +29,7 @@ export async function POST(request: NextRequest) {
     if (!planillaId) {
       return NextResponse.json({ error: "planillaId es requerido" }, { status: 400 });
     }
-
+    
     if (!nuevoEntregador || !nuevoEntregador.trim()) {
       return NextResponse.json({ error: "nuevoEntregador es requerido" }, { status: 400 });
     }
@@ -29,6 +37,21 @@ export async function POST(request: NextRequest) {
     console.log(`[API /reasignar] Reasignando planilla ${planillaId} a ${nuevoEntregador}`);
 
     const sql = getDB();
+
+    // Verificar que el nuevo entregador existe y está activo
+    const entregadorExists = await sql`
+      SELECT id, nombre FROM usuarios 
+      WHERE nombre = ${nuevoEntregador} 
+        AND rol = 'entregador' 
+        AND estado = 'activo'
+    `;
+
+    if (entregadorExists.length === 0) {
+      return NextResponse.json(
+        { error: `El entregador "${nuevoEntregador}" no existe o no está activo` },
+        { status: 400 }
+      );
+    }
 
     // Verificar que la planilla existe y obtener el entregador actual
     const planillaActual = await sql`
@@ -49,11 +72,12 @@ export async function POST(request: NextRequest) {
     console.log(`[API /reasignar] Total cargue a reasignar: ${totalCargue}`);
 
     // Actualizar el entregador de la planilla
-    await sql`
+    const result = await sql`
       UPDATE planillas
       SET entregador = ${nuevoEntregador},
           updated_at = NOW()
       WHERE id = ${planillaId}
+      RETURNING id, entregador, tipo_ruta, fecha
     `;
 
     console.log(`[API /reasignar] ✓ Planilla reasignada exitosamente`);
@@ -66,6 +90,7 @@ export async function POST(request: NextRequest) {
       entregadorAnterior,
       nuevoEntregador,
       totalCargue,
+      planilla: result[0]
     });
 
   } catch (error: any) {
