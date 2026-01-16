@@ -155,53 +155,47 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   async function loadHistorial() {
-    try {
-      const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
-      const dataIndividuales = await responseIndividuales.json()
-
-      const responseAgrupados = await fetch("/api/cuadres-caja/historial")
-      const dataAgrupados = await responseAgrupados.json()
-
-      const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
-        ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: "individual" }))
-        : []
-
-      const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
-        ? dataAgrupados.cuadres.map((c: any) => {
-            const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
-            const tipoRutaDisplay = c.rutas_nombres && c.rutas_nombres.length > 0
-              ? c.rutas_nombres.join(", ")
-              : numRutas > 1
-              ? `${numRutas} rutas agrupadas`
-              : "1 ruta"
-
-            return {
-              ...c,
-              tipo: "agrupado",
-              fecha_recepcion: c.fecha_cuadre,
-              efectivo_esperado: c.total_esperado,
-              efectivo_recibido: c.total_efectivo,
-              diferencia_efectivo: c.diferencia,
-              tipo_ruta: tipoRutaDisplay,
-              monto_consignacion: c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
-            }
-          })
-        : []
-
-      const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados].sort(
-        (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime(),
-      )
-
-      setRecepciones(todosLosCuadres)
-    } catch (err) {
-      console.error("[CAJA] Error loading historial:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo cargar el historial",
-        variant: "destructive",
-      })
-    }
+  try {
+    // Cargar cuadres individuales
+    const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
+    const dataIndividuales = await responseIndividuales.json()
+    
+    // Cargar cuadres agrupados
+    const responseAgrupados = await fetch("/api/cuadres-caja/historial")
+    const dataAgrupados = await responseAgrupados.json()
+    
+    // Combinar ambos arrays
+    const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones) 
+      ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: 'individual' }))
+      : []
+    
+    const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
+      ? dataAgrupados.cuadres.map((c: any) => ({ 
+          ...c, 
+          tipo: 'agrupado',
+          fecha_recepcion: c.fecha_cuadre,
+          efectivo_esperado: c.total_esperado,
+          efectivo_recibido: c.total_efectivo,
+          diferencia_efectivo: c.diferencia,
+          tipo_ruta: `${c.planillas_ids.length} rutas`
+        }))
+      : []
+    
+    // Combinar y ordenar por fecha
+    const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados]
+      .sort((a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime())
+    
+    setRecepciones(todosLosCuadres)
+    
+  } catch (err) {
+    console.error("[CAJA] Error loading historial:", err)
+    toast({
+      title: "Error",
+      description: "No se pudo cargar el historial",
+      variant: "destructive",
+    })
   }
+}
 
   const completedRoutes = routeSheets.filter(
     (s) => (s.estado === "alistado" || s.estado === "completado") && !s.cuadradoEnCaja,
@@ -221,6 +215,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
+    // Early return with safe defaults if route is null/undefined or has no orders
     if (!route || !Array.isArray(route.orders)) {
       return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0 }
     }
@@ -356,10 +351,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       const estadoMsg =
         result.estadoProducto === "agotado"
-          ? "Marcado como Agotado"
+          ? "🚫 Marcado como Agotado"
           : result.estadoProducto === "parcial"
-            ? "Entrega Parcial"
-            : "Entrega Completa"
+            ? "📦 Entrega Parcial"
+            : "✓ Entrega Completa"
 
       toast({
         title: "Cantidad actualizada",
@@ -390,7 +385,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       await loadData()
 
       toast({
-        title: "Subtotal ajustado",
+        title: "💰 Subtotal ajustado",
         description: "El valor ha sido actualizado manualmente",
       })
     } catch (err) {
@@ -456,6 +451,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       [field]: value,
     }
 
+    // Recalcular subtotal si cambia cantidad o precio
     if (field === "cantidad" || field === "precioUnitario") {
       const cantidad = field === "cantidad" ? Number(value) : nuevosProductos[index].cantidad
       const precio = field === "precioUnitario" ? Number(value) : nuevosProductos[index].precioUnitario
@@ -472,6 +468,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const handleSubmitNuevoPedido = async () => {
     if (!rutaParaNuevoPedido) return
 
+    // Validaciones
     if (!nuevoPedidoData.cliente.trim()) {
       toast({
         title: "Error",
@@ -524,7 +521,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
 
       toast({
-        title: "Pedido Creado",
+        title: "✅ Pedido Creado",
         description: `Pedido agregado exitosamente a la ruta ${rutaParaNuevoPedido.ruta}`,
       })
 
@@ -586,7 +583,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       if (data.existe) {
         toast({
-          title: "Consignación Duplicada",
+          title: "⚠️ Consignación Duplicada",
           description: "Este número de consignación ya fue registrado anteriormente",
           variant: "destructive",
         })
@@ -619,9 +616,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
 
-    const entregadoresSet = new Set(rutasSeleccionadas.map((r) => r.entregador))
+    const entregadores = new Set(rutasSeleccionadas.map((r) => r.entregador))
 
-    if (entregadoresSet.size > 1) {
+    if (entregadores.size > 1) {
       toast({
         title: "Error",
         description: "Solo puedes agrupar rutas del mismo entregador",
@@ -636,13 +633,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     let totalDevoluciones = 0
     let totalRepasos = 0
 
-    const nombresRutas = rutasSeleccionadas.map((r) => r.ruta)
-
     rutasSeleccionadas.forEach((route) => {
       if (!route) return
 
       totalCargue += route.totalAmount
 
+      // Safe check for orders array
       if (!Array.isArray(route.orders)) return
 
       route.orders.forEach((order) => {
@@ -682,7 +678,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       planillas: rutasSeleccionadas,
       planillaIds: selectedRoutes,
       totalRutas: rutasSeleccionadas.length,
-      nombresRutas,
       totales: {
         cargue: totalCargue,
         entregado: totalEntregado,
@@ -757,7 +752,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
 
       toast({
-        title: "Cuadre Agrupado Registrado",
+        title: "✅ Cuadre Agrupado Registrado",
         description: data.mensaje,
       })
 
@@ -833,7 +828,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
 
       toast({
-        title: "Recepción Registrada",
+        title: "✅ Recepción Registrada",
         description: data.mensaje,
       })
 
@@ -874,7 +869,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const diferencia = selectedPlanilla
     ? Math.round((totalRecibido - calculateRouteTotals(selectedPlanilla).entregado) * 100) / 100
     : 0
-    return (
+
+  return (
     <>
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
@@ -935,18 +931,84 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               ) : (
                 <div className="space-y-3">
                   {recepciones.map((rec) => (
-                    <div key={rec.id} className="border rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="font-semibold">
-                            {rec.entregador} - {rec.tipo_ruta}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
-                          </p>
-                        </div>
-                        <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
-                          {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
+  <div key={rec.id} className="border rounded-lg p-4">
+    <div className="flex items-start justify-between mb-3">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <p className="font-semibold">
+            {rec.entregador} - {rec.tipo === 'agrupado' ? `${rec.planillas_ids?.length || 0} rutas` : `Ruta ${rec.tipo_ruta}`}
+          </p>
+          {rec.tipo === 'agrupado' && (
+            <Badge className="bg-purple-100 text-purple-700 border-purple-300">
+              📦 AGRUPADO
+            </Badge>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
+        </p>
+      </div>
+      <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
+        {rec.estado === "cuadrado" ? "✓ Cuadrado" : "⚠ Con Diferencia"}
+      </Badge>
+    </div>
+
+    <div className="grid grid-cols-3 gap-3 text-sm">
+      <div>
+        <p className="text-muted-foreground">Esperado</p>
+        <p className="font-semibold">{formatCOP(Number(rec.efectivo_esperado))}</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Recibido</p>
+        <p className="font-semibold text-green-600">{formatCOP(Number(rec.efectivo_recibido))}</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Diferencia</p>
+        <p
+          className={`font-semibold ${Number(rec.diferencia_efectivo) === 0 ? "text-green-600" : "text-red-600"}`}
+        >
+          {Number(rec.diferencia_efectivo) > 0 ? "+" : ""}
+          {formatCOP(Number(rec.diferencia_efectivo))}
+        </p>
+      </div>
+    </div>
+
+    {rec.tiene_consignacion && (
+      <div className="mt-3 pt-3 border-t bg-blue-50 -m-4 p-4 rounded-b-lg">
+        <p className="text-sm font-medium mb-2">📄 Consignación</p>
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          <div>
+            <p className="text-muted-foreground">Número</p>
+            <p className="font-mono">{rec.numero_consignacion}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Banco</p>
+            <p>{rec.banco}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Monto</p>
+            <p className="font-semibold">{formatCOP(Number(rec.total_consignado || rec.monto_consignacion || 0))}</p>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {rec.observaciones && (
+      <div className="mt-3 pt-3 border-t">
+        <p className="text-sm text-muted-foreground">Observaciones:</p>
+        <p className="text-sm">{rec.observaciones}</p>
+      </div>
+    )}
+
+    {rec.tipo === 'agrupado' && rec.planillas_ids && (
+      <div className="mt-3 pt-3 border-t bg-purple-50 -m-4 p-4 rounded-b-lg">
+        <p className="text-sm font-medium mb-2">📋 Rutas Incluidas:</p>
+        <p className="text-xs text-muted-foreground">{rec.planillas_ids.join(', ')}</p>
+      </div>
+    )}
+  </div>
+))}
+                          {rec.estado === "cuadrado" ? "✓ Cuadrado" : "⚠ Con Diferencia"}
                         </Badge>
                       </div>
 
@@ -972,7 +1034,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
                       {rec.tiene_consignacion && (
                         <div className="mt-3 pt-3 border-t bg-blue-50 -m-4 p-4 rounded-b-lg">
-                          <p className="text-sm font-medium mb-2">Consignación</p>
+                          <p className="text-sm font-medium mb-2">📄 Consignación</p>
                           <div className="grid grid-cols-3 gap-2 text-sm">
                             <div>
                               <p className="text-muted-foreground">Número</p>
@@ -984,7 +1046,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                             </div>
                             <div>
                               <p className="text-muted-foreground">Monto</p>
-                              <p className="font-semibold">{formatCOP(Number(rec.monto_consignacion || 0))}</p>
+                              <p className="font-semibold">{formatCOP(Number(rec.monto_consignacion))}</p>
                             </div>
                           </div>
                         </div>
@@ -1070,44 +1132,50 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                 </Card>
               </div>
 
-              {selectedRoutes.length > 0 && (
-                <Card className="p-4 bg-blue-50 border-blue-200">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">
-                      {selectedRoutes.length} ruta{selectedRoutes.length > 1 ? "s" : ""} seleccionada
-                      {selectedRoutes.length > 1 ? "s" : ""}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSelectedRoutes([])}>
-                        Cancelar
-                      </Button>
-                      <Button size="sm" onClick={handleAgruparRutas}>
-                        Agrupar y Cuadrar
-                      </Button>
+              <Card className="p-6">
+                <h2 className="text-lg font-semibold mb-4">Entregas Pendientes de Cuadrar</h2>
+                {filteredRoutes.length > 0 && (
+                  <div className="flex items-center justify-between mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        checked={selectedRoutes.length === filteredRoutes.length && filteredRoutes.length > 0}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedRoutes(filteredRoutes.map((r) => r.id))
+                          } else {
+                            setSelectedRoutes([])
+                          }
+                        }}
+                      />
+                      <span className="text-sm font-medium">Seleccionar todas ({filteredRoutes.length})</span>
                     </div>
+
+                    {selectedRoutes.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">{selectedRoutes.length} seleccionadas</Badge>
+                        <Button size="sm" onClick={handleAgruparRutas}>
+                          Agrupar y Cuadrar ({selectedRoutes.length})
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setSelectedRoutes([])}>
+                          Limpiar
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                </Card>
-              )}
-
-              <div className="space-y-4">
-                {loading ? (
-                  <p className="text-center text-muted-foreground py-8">Cargando planillas...</p>
-                ) : filteredRoutes.length === 0 ? (
-                  <Card className="p-8">
-                    <p className="text-center text-muted-foreground">
-                      No hay rutas completadas pendientes de cuadre para esta fecha
-                    </p>
-                  </Card>
+                )}
+                {filteredRoutes.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    ✅ No hay entregas pendientes de cuadrar para la fecha seleccionada
+                  </p>
                 ) : (
-                  filteredRoutes.map((route) => {
-                    const routeTotals = calculateRouteTotals(route)
-                    const isExpanded = expandedRoutes.has(route.id)
-                    const isSelected = selectedRoutes.includes(route.id)
+                  <div className="space-y-4">
+                    {filteredRoutes.map((route) => {
+                      const totals = calculateRouteTotals(route)
+                      const isSelected = selectedRoutes.includes(route.id)
 
-                    return (
-                      <Card key={route.id} className={`p-4 ${isSelected ? "ring-2 ring-blue-500" : ""}`}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-3">
+                      return (
+                        <div key={route.id} className="border rounded-lg p-4 bg-amber-50 border-amber-200">
+                          <div className="flex items-start gap-3">
                             <Checkbox
                               checked={isSelected}
                               onCheckedChange={(checked) => {
@@ -1117,715 +1185,876 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                   setSelectedRoutes(selectedRoutes.filter((id) => id !== route.id))
                                 }
                               }}
+                              className="mt-1"
                             />
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-semibold text-lg">
-                                  Ruta {route.ruta} - {route.entregador}
-                                </h3>
-                                <Badge variant="outline">{route.totalOrders} pedidos</Badge>
+
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-4">
+                                <p className="font-semibold text-lg">
+                                  {route.entregador} - Ruta {route.ruta}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {route.totalOrders} pedidos · Fecha:{" "}
+                                  {new Date(route.fecha).toLocaleDateString("es-CO")}
+                                </p>
                               </div>
-                              <p className="text-sm text-muted-foreground">
-                                {new Date(route.fecha).toLocaleDateString("es-CO")}
-                              </p>
+
+                              <div className="mb-3 p-3 bg-white rounded-lg border">
+                                <Label className="text-xs text-muted-foreground mb-2 block">Reasignar a:</Label>
+                                <Select
+                                  disabled={reasignandoRuta === route.id}
+                                  onValueChange={(value) => handleReasignarRuta(route.id, value)}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue
+                                      placeholder={
+                                        reasignandoRuta === route.id ? "Reasignando..." : "Seleccionar entregador"
+                                      }
+                                    />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {entregadores
+                                      .filter((e) => e !== route.entregador)
+                                      .map((entregador) => (
+                                        <SelectItem key={entregador} value={entregador}>
+                                          {entregador}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="flex gap-2">
+                                <Button onClick={() => toggleRouteExpansion(route.id)} variant="outline" size="sm">
+                                  {expandedRoutes.has(route.id) ? (
+                                    <>
+                                      <ChevronUp className="h-4 w-4 mr-2" />
+                                      Ocultar Clientes
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="h-4 w-4 mr-2" />
+                                      Ver Clientes
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  onClick={() => handleOpenNuevoPedidoModal(route)}
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-green-300 text-green-700 hover:bg-green-50"
+                                >
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Nuevo Pedido
+                                </Button>
+                                <Button onClick={() => handleOpenModal(route)} size="sm">
+                                  <DollarSign className="h-4 w-4 mr-2" />
+                                  Recibir Efectivo
+                                </Button>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-5 gap-3 text-sm">
+                              <div>
+                                <p className="text-muted-foreground">Cargue</p>
+                                <p className="font-semibold">{formatCOP(route.totalAmount)}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Entregado</p>
+                                <p className="font-semibold text-green-600">{formatCOP(totals.entregado)}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Fiado</p>
+                                <p className="font-semibold text-yellow-600">{formatCOP(totals.fiado)}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Devoluciones</p>
+                                <p className="font-semibold text-red-600">{formatCOP(totals.devoluciones)}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Repasos</p>
+                                <p className="font-semibold text-blue-600">{formatCOP(totals.repasos)}</p>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <Select
-                              value={route.entregador}
-                              onValueChange={(nuevoEntregador) => handleReasignarRuta(route.id, nuevoEntregador)}
-                              disabled={reasignandoRuta === route.id}
-                            >
-                              <SelectTrigger className="w-[180px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {entregadores.map((e) => (
-                                  <SelectItem key={e} value={e}>
-                                    {e}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-
-                            <Button variant="outline" size="sm" onClick={() => handleOpenNuevoPedidoModal(route)}>
-                              <Plus className="h-4 w-4 mr-1" />
-                              Pedido
-                            </Button>
-
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleRouteExpansion(route.id)}
-                            >
-                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            </Button>
+                          <div className="mt-4 pt-4 border-t bg-white -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium">💵 Efectivo Esperado:</p>
+                              <p className="text-xl font-bold text-green-600">{formatCOP(totals.entregado)}</p>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="grid grid-cols-5 gap-3 mb-3">
-                          <div className="bg-gray-50 p-2 rounded">
-                            <p className="text-xs text-muted-foreground">Cargue</p>
-                            <p className="font-semibold">{formatCOP(route.totalAmount)}</p>
-                          </div>
-                          <div className="bg-green-50 p-2 rounded">
-                            <p className="text-xs text-green-700">Entregado</p>
-                            <p className="font-semibold text-green-600">{formatCOP(routeTotals.entregado)}</p>
-                          </div>
-                          <div className="bg-yellow-50 p-2 rounded">
-                            <p className="text-xs text-yellow-700">Fiado</p>
-                            <p className="font-semibold text-yellow-600">{formatCOP(routeTotals.fiado)}</p>
-                          </div>
-                          <div className="bg-red-50 p-2 rounded">
-                            <p className="text-xs text-red-700">Devoluciones</p>
-                            <p className="font-semibold text-red-600">{formatCOP(routeTotals.devoluciones)}</p>
-                          </div>
-                          <div className="bg-blue-50 p-2 rounded">
-                            <p className="text-xs text-blue-700">Repasos</p>
-                            <p className="font-semibold text-blue-600">{formatCOP(routeTotals.repasos)}</p>
-                          </div>
-                        </div>
+                          {expandedRoutes.has(route.id) && Array.isArray(route.orders) && (
+                            <div className="mt-4 pt-4 border-t">
+                              <h3 className="font-semibold mb-3">Clientes de la ruta:</h3>
 
-                        {isExpanded && (
-                          <div className="space-y-3 border-t pt-3">
-                            {route.orders?.map((order) => {
-                              const orderId = `${route.id}-${order.id}`
-                              const isOrderExpanded = expandedOrders.has(orderId)
+                              <div className="space-y-3">
+                                {route.orders.map((order) => {
+                                  if (!order) return null
 
-                              let orderEffectiveTotal = 0
-                              order.items?.forEach((item) => {
-                                if (item.devuelto) return
-                                const estadoProd = item.estadoProducto || "normal"
-                                if (estadoProd === "agotado") return
+                                  const isExpanded = expandedOrders.has(order.id)
 
-                                if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-                                  orderEffectiveTotal += Number(item.subtotalAjustado)
-                                } else if (
-                                  item.cantidadEntregada !== null &&
-                                  item.cantidadEntregada !== undefined
-                                ) {
-                                  orderEffectiveTotal += Number(item.cantidadEntregada) * Number(item.valorUnidad)
-                                } else {
-                                  orderEffectiveTotal += Number(item.subtotal)
-                                }
-                              })
+                                  let effectiveTotal = 0
+                                  let returnedTotal = 0
 
-                              return (
-                                <div key={order.id} className="border rounded-lg p-3 bg-white">
-                                  <div className="flex items-start justify-between mb-2">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <p className="font-medium">{order.cliente}</p>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => {
-                                            const newExpanded = new Set(expandedOrders)
-                                            if (newExpanded.has(orderId)) {
-                                              newExpanded.delete(orderId)
-                                            } else {
-                                              newExpanded.add(orderId)
-                                            }
-                                            setExpandedOrders(newExpanded)
-                                          }}
-                                        >
-                                          {isOrderExpanded ? (
-                                            <ChevronUp className="h-4 w-4" />
-                                          ) : (
-                                            <ChevronDown className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                      </div>
-                                      <p className="text-sm text-muted-foreground">
-                                        Total Original: {formatCOP(order.total)} | Total Efectivo:{" "}
-                                        {formatCOP(orderEffectiveTotal)}
-                                      </p>
-                                    </div>
-                                    <Select
-                                      value={order.estado}
-                                      onValueChange={(newStatus) =>
-                                        handleOrderStatusChange(order.id, newStatus as Order["estado"])
-                                      }
-                                    >
-                                      <SelectTrigger className="w-[140px]">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="entregado">Entregado</SelectItem>
-                                        <SelectItem value="fiado">Fiado</SelectItem>
-                                        <SelectItem value="devolucion">Devolución</SelectItem>
-                                        <SelectItem value="repaso">Repaso</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
+                                  if (Array.isArray(order.items)) {
+                                    order.items.forEach((item) => {
+                                      if (!item) return
 
-                                  {isOrderExpanded && (
-                                    <div className="space-y-2 mt-3 border-t pt-2">
-                                      {order.items?.map((item) => {
-                                        const cantidadFinal =
-                                          item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
-                                            ? item.cantidadEntregada
-                                            : item.cantidad
-
-                                        const subtotalFinal =
-                                          item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
-                                            ? item.subtotalAjustado
-                                            : item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
-                                              ? item.cantidadEntregada * item.valorUnidad
-                                              : item.subtotal
-
+                                      if (item.devuelto) {
+                                        returnedTotal += Number(item.subtotal) || 0
+                                      } else {
                                         const estadoProd = item.estadoProducto || "normal"
+                                        if (estadoProd === "agotado") return
 
-                                        return (
-                                          <div
-                                            key={item.codigo}
-                                            className={`grid grid-cols-12 gap-2 text-sm p-2 rounded ${
-                                              item.devuelto
-                                                ? "bg-red-50 line-through opacity-60"
-                                                : estadoProd === "agotado"
-                                                  ? "bg-gray-100 opacity-60"
-                                                  : estadoProd === "parcial"
-                                                    ? "bg-yellow-50"
-                                                    : ""
-                                            }`}
-                                          >
-                                            <div className="col-span-1 flex items-center">
-                                              <Checkbox
-                                                checked={item.devuelto}
-                                                onCheckedChange={() =>
-                                                  handleItemReturn(order.id, item.codigo, item.devuelto)
-                                                }
-                                              />
+                                        if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+                                          effectiveTotal += Number(item.subtotalAjustado) || 0
+                                        } else if (
+                                          item.cantidadEntregada !== null &&
+                                          item.cantidadEntregada !== undefined
+                                        ) {
+                                          effectiveTotal +=
+                                            (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
+                                        } else {
+                                          effectiveTotal += Number(item.subtotal) || 0
+                                        }
+                                      }
+                                    })
+                                  }
+
+                                  return (
+                                    <Card key={order.id} className="overflow-hidden">
+                                      <div className="p-3 md:p-4 bg-muted/50">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                              <h3 className="font-semibold text-sm md:text-base truncate">
+                                                {order.cliente}
+                                              </h3>
+                                              <span
+                                                className={`text-xs px-2 py-1 rounded-full shrink-0 font-medium ${
+                                                  order.estado === "pendiente"
+                                                    ? "bg-yellow-100 text-yellow-700"
+                                                    : order.estado === "entregado"
+                                                      ? "bg-green-100 text-green-700"
+                                                      : order.estado === "fiado"
+                                                        ? "bg-orange-100 text-orange-700"
+                                                        : order.estado === "repaso"
+                                                          ? "bg-blue-100 text-blue-700"
+                                                          : "bg-red-100 text-red-700"
+                                                }`}
+                                              >
+                                                {order.estado}
+                                              </span>
                                             </div>
-                                            <div className="col-span-4">
-                                              <p className="font-medium">{item.descripcion}</p>
-                                              <p className="text-xs text-muted-foreground">
-                                                Código: {item.codigo}
-                                              </p>
-                                            </div>
-                                            <div className="col-span-2">
-                                              <Label className="text-xs">Cantidad</Label>
-                                              <Input
-                                                type="number"
-                                                min={0}
-                                                max={item.cantidad}
-                                                value={cantidadFinal}
-                                                onChange={(e) =>
-                                                  handleCantidadChange(
-                                                    order.id,
-                                                    item.codigo,
-                                                    Number(e.target.value),
-                                                    item.cantidad,
-                                                  )
-                                                }
-                                                disabled={item.devuelto}
-                                                className="h-8"
-                                              />
-                                              <p className="text-xs text-muted-foreground mt-0.5">
-                                                de {item.cantidad}
-                                              </p>
-                                            </div>
-                                            <div className="col-span-2">
-                                              <Label className="text-xs">Precio Unit.</Label>
-                                              <p className="font-medium">{formatCOP(item.valorUnidad)}</p>
-                                            </div>
-                                            <div className="col-span-3">
-                                              <Label className="text-xs">Subtotal</Label>
-                                              <Input
-                                                type="number"
-                                                min={0}
-                                                value={subtotalFinal}
-                                                onChange={(e) =>
-                                                  handleSubtotalChange(
-                                                    order.id,
-                                                    item.codigo,
-                                                    Number(e.target.value),
-                                                  )
-                                                }
-                                                disabled={item.devuelto}
-                                                className="h-8 font-medium"
-                                              />
-                                              {(item.subtotalAjustado !== null ||
-                                                item.cantidadEntregada !== null) && (
-                                                <p className="text-xs text-muted-foreground mt-0.5">
-                                                  Orig: {formatCOP(item.subtotal)}
-                                                </p>
+
+                                            <p className="text-xs md:text-sm text-muted-foreground">
+                                              {Array.isArray(order.items) ? order.items.length : 0} productos ·{" "}
+                                              {formatCOP(effectiveTotal)}
+                                              {returnedTotal > 0 && (
+                                                <span className="text-red-600 ml-2">
+                                                  · Dev: {formatCOP(returnedTotal)}
+                                                </span>
                                               )}
-                                            </div>
+                                            </p>
                                           </div>
-                                        )
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              const newExpanded = new Set(expandedOrders)
+                                              if (newExpanded.has(order.id)) {
+                                                newExpanded.delete(order.id)
+                                              } else {
+                                                newExpanded.add(order.id)
+                                              }
+                                              setExpandedOrders(newExpanded)
+                                            }}
+                                          >
+                                            {isExpanded ? (
+                                              <ChevronUp className="h-4 w-4" />
+                                            ) : (
+                                              <ChevronDown className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </div>
 
-                        <div className="flex justify-end mt-3">
-                          <Button onClick={() => handleOpenModal(route)}>Recibir Efectivo</Button>
+                                      {isExpanded && Array.isArray(order.items) && (
+                                        <div className="p-3 md:p-4 space-y-4">
+                                          <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-700">
+                                            💡 <strong>Ajustes manuales:</strong> Edita "Cant. Entregada" para entregas
+                                            parciales. Para promociones con precios especiales, ajusta el "Subtotal"
+                                            directamente.
+                                          </div>
+
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-xs md:text-sm">
+                                              <thead>
+                                                <tr className="border-b">
+                                                  <th className="text-left py-2 w-10">Dev.</th>
+                                                  <th className="text-left py-2">Código</th>
+                                                  <th className="text-left py-2">Descripción</th>
+                                                  <th className="text-right py-2">Cant. Original</th>
+                                                  <th className="text-right py-2">Cant. Entregada</th>
+                                                  <th className="text-right py-2">Subtotal</th>
+                                                  <th className="text-center py-2">Estado</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {order.items.map((item, idx) => {
+                                                  if (!item) return null
+
+                                                  const cantidadEntregada =
+                                                    Number(item.cantidadEntregada) || Number(item.cantidad) || 0
+                                                  const subtotalCalculado =
+                                                    cantidadEntregada * (Number(item.valorUnidad) || 0)
+                                                  const subtotalFinal =
+                                                    item.subtotalAjustado !== null &&
+                                                    item.subtotalAjustado !== undefined
+                                                      ? Number(item.subtotalAjustado)
+                                                      : subtotalCalculado
+                                                  const estadoProducto = item.estadoProducto || "normal"
+                                                  const tieneAjusteManual =
+                                                    item.subtotalAjustado !== null &&
+                                                    item.subtotalAjustado !== undefined
+
+                                                  return (
+                                                    <tr
+                                                      key={idx}
+                                                      className={`border-b ${item.devuelto ? "bg-red-50 line-through opacity-60" : ""}`}
+                                                    >
+                                                      <td className="py-2">
+                                                        <Checkbox
+                                                          checked={item.devuelto || false}
+                                                          onCheckedChange={() =>
+                                                            handleItemReturn(
+                                                              order.id,
+                                                              item.codigo,
+                                                              item.devuelto || false,
+                                                            )
+                                                          }
+                                                          disabled={order.estado !== "pendiente"}
+                                                        />
+                                                      </td>
+                                                      <td className="py-2 font-mono">{item.codigo}</td>
+                                                      <td className="py-2">{item.descripcion}</td>
+                                                      <td className="text-right py-2">{item.cantidad}</td>
+                                                      <td className="text-right py-2">
+                                                        {order.estado === "pendiente" && !item.devuelto ? (
+                                                          <input
+                                                            type="number"
+                                                            min="0"
+                                                            max={item.cantidad}
+                                                            defaultValue={cantidadEntregada}
+                                                            onBlur={(e) => {
+                                                              const newCant = Number.parseInt(e.target.value) || 0
+                                                              if (newCant !== cantidadEntregada) {
+                                                                handleCantidadChange(
+                                                                  order.id,
+                                                                  item.codigo,
+                                                                  newCant,
+                                                                  item.cantidad,
+                                                                )
+                                                              }
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                              if (e.key === "Enter") {
+                                                                e.currentTarget.blur()
+                                                              }
+                                                            }}
+                                                            className="w-16 px-2 py-1 border rounded text-center"
+                                                          />
+                                                        ) : (
+                                                          <span className="font-medium">{cantidadEntregada}</span>
+                                                        )}
+                                                      </td>
+                                                      <td className="text-right py-2">
+                                                        {order.estado === "pendiente" && !item.devuelto ? (
+                                                          <div className="flex flex-col items-end gap-1">
+                                                            <input
+                                                              type="number"
+                                                              min="0"
+                                                              step="100"
+                                                              defaultValue={subtotalFinal}
+                                                              onBlur={(e) => {
+                                                                const newSubtotal =
+                                                                  Number.parseFloat(e.target.value) || 0
+                                                                if (newSubtotal !== subtotalFinal) {
+                                                                  handleSubtotalChange(
+                                                                    order.id,
+                                                                    item.codigo,
+                                                                    newSubtotal,
+                                                                  )
+                                                                }
+                                                              }}
+                                                              onKeyDown={(e) => {
+                                                                if (e.key === "Enter") {
+                                                                  e.currentTarget.blur()
+                                                                }
+                                                              }}
+                                                              placeholder={formatCOP(subtotalFinal)}
+                                                              className={`w-28 px-2 py-1 border rounded text-right font-medium ${
+                                                                tieneAjusteManual
+                                                                  ? "border-orange-400 bg-orange-50"
+                                                                  : ""
+                                                              }`}
+                                                            />
+                                                            <div className="flex items-center gap-2">
+                                                              <span className="text-xs text-muted-foreground">
+                                                                {formatCOP(subtotalFinal)}
+                                                              </span>
+                                                              {tieneAjusteManual && (
+                                                                <span className="text-xs text-orange-600">
+                                                                  ✏️ Ajustado
+                                                                </span>
+                                                              )}
+                                                            </div>
+                                                          </div>
+                                                        ) : (
+                                                          <div className="flex flex-col items-end">
+                                                            <span className="font-medium">
+                                                              {formatCOP(subtotalFinal)}
+                                                            </span>
+                                                            {tieneAjusteManual && (
+                                                              <span className="text-xs text-orange-600">
+                                                                ✏️ Ajustado
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                        )}
+                                                      </td>
+                                                      <td className="text-center py-2">
+                                                        {estadoProducto === "agotado" && (
+                                                          <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                                                            🚫 Agotado
+                                                          </span>
+                                                        )}
+                                                        {estadoProducto === "parcial" && (
+                                                          <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                                                            📦 Parcial
+                                                          </span>
+                                                        )}
+                                                        {estadoProducto === "normal" && !item.devuelto && (
+                                                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                                                            ✓ Normal
+                                                          </span>
+                                                        )}
+                                                        {item.devuelto && (
+                                                          <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+                                                            ❌ Devuelto
+                                                          </span>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  )
+                                                })}
+                                              </tbody>
+                                              <tfoot>
+                                                <tr className="font-semibold">
+                                                  <td colSpan={5} className="text-right py-3 text-xs md:text-sm">
+                                                    Total:
+                                                  </td>
+                                                  <td className="text-right py-3">{formatCOP(effectiveTotal)}</td>
+                                                  <td></td>
+                                                </tr>
+                                              </tfoot>
+                                            </table>
+                                          </div>
+
+                                          <div className="flex flex-wrap gap-2">
+                                            <Button
+                                              size="sm"
+                                              onClick={() => handleOrderStatusChange(order.id, "entregado")}
+                                              className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
+                                              disabled={order.estado !== "pendiente"}
+                                            >
+                                              Entregado
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleOrderStatusChange(order.id, "fiado")}
+                                              className="flex-1 sm:flex-none border-orange-300 text-orange-700 hover:bg-orange-50"
+                                              disabled={order.estado !== "pendiente"}
+                                            >
+                                              Fiado
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleOrderStatusChange(order.id, "repaso")}
+                                              className="flex-1 sm:flex-none border-blue-300 text-blue-700 hover:bg-blue-50"
+                                              disabled={order.estado !== "pendiente"}
+                                            >
+                                              Repaso
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              onClick={() => handleOrderStatusChange(order.id, "devolucion")}
+                                              className="flex-1 sm:flex-none"
+                                              disabled={order.estado !== "pendiente"}
+                                            >
+                                              Devolución
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </Card>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </Card>
-                    )
-                  })
+                      )
+                    })}
+                  </div>
                 )}
-              </div>
+              </Card>
             </>
           )}
         </div>
       </main>
 
-      <Dialog open={showModal} onOpenChange={handleCloseModal}>
-        <DialogContent className="max-w-lg">
+      {/* Modal para recibir efectivo */}
+      <Dialog open={showModal} onOpenChange={(open) => (open ? setShowModal(true) : handleCloseModal())}>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Recibir Efectivo - Ruta {selectedPlanilla?.ruta}</DialogTitle>
+            <DialogTitle>Recibir Efectivo</DialogTitle>
             <DialogDescription>
-              Entregador: {selectedPlanilla?.entregador} | Fecha:{" "}
-              {selectedPlanilla ? new Date(selectedPlanilla.fecha).toLocaleDateString("es-CO") : ""}
+              Ingresa los detalles de la recepción para la ruta: {selectedPlanilla?.ruta}
             </DialogDescription>
           </DialogHeader>
-
-          {selectedPlanilla && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-2 text-sm">
-                <div className="bg-gray-50 p-2 rounded">
-                  <p className="text-xs text-muted-foreground">Cargue</p>
-                  <p className="font-semibold">{formatCOP(selectedPlanilla.totalAmount)}</p>
-                </div>
-                <div className="bg-green-50 p-2 rounded">
-                  <p className="text-xs text-green-700">Entregado</p>
-                  <p className="font-semibold text-green-600">
-                    {formatCOP(calculateRouteTotals(selectedPlanilla).entregado)}
-                  </p>
-                </div>
-                <div className="bg-yellow-50 p-2 rounded">
-                  <p className="text-xs text-yellow-700">Fiado</p>
-                  <p className="font-semibold text-yellow-600">
-                    {formatCOP(calculateRouteTotals(selectedPlanilla).fiado)}
-                  </p>
-                </div>
-                <div className="bg-red-50 p-2 rounded">
-                  <p className="text-xs text-red-700">Devoluciones</p>
-                  <p className="font-semibold text-red-600">
-                    {formatCOP(calculateRouteTotals(selectedPlanilla).devoluciones)}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="efectivo">Efectivo Recibido *</Label>
-                <Input
-                  id="efectivo"
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={formData.efectivoRecibido}
-                  onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
-                  placeholder="0"
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="consignacion"
-                  checked={formData.tieneConsignacion}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, tieneConsignacion: checked as boolean })
-                  }
-                />
-                <Label htmlFor="consignacion">Tiene consignación</Label>
-              </div>
-
-              {formData.tieneConsignacion && (
-                <div className="space-y-3 border-l-4 border-blue-500 pl-4">
-                  <div>
-                    <Label htmlFor="numeroConsignacion">Número de Consignación *</Label>
-                    <Input
-                      id="numeroConsignacion"
-                      value={formData.numeroConsignacion}
-                      onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
-                      onBlur={handleConsignacionBlur}
-                      placeholder="Ej: 123456789"
-                      disabled={validatingConsignacion}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="banco">Banco *</Label>
-                    <Select value={formData.banco} onValueChange={(value) => setFormData({ ...formData, banco: value })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona un banco" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Bancolombia">Bancolombia</SelectItem>
-                        <SelectItem value="Davivienda">Davivienda</SelectItem>
-                        <SelectItem value="BBVA">BBVA</SelectItem>
-                        <SelectItem value="Banco de Bogotá">Banco de Bogotá</SelectItem>
-                        <SelectItem value="Nequi">Nequi</SelectItem>
-                        <SelectItem value="Daviplata">Daviplata</SelectItem>
-                        <SelectItem value="Otro">Otro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="montoConsignacion">Monto Consignación *</Label>
-                    <Input
-                      id="montoConsignacion"
-                      type="number"
-                      min={0}
-                      step={1000}
-                      value={formData.montoConsignacion}
-                      onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <Label htmlFor="observaciones">Observaciones</Label>
-                <Textarea
-                  id="observaciones"
-                  value={formData.observaciones}
-                  onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                  placeholder="Notas adicionales (opcional)"
-                  rows={2}
-                />
-              </div>
-
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm font-medium">Total Recibido:</span>
-                  <span className="text-lg font-bold text-blue-600">{formatCOP(totalRecibido)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Diferencia:</span>
-                  <span
-                    className={`text-lg font-bold ${diferencia === 0 ? "text-green-600" : diferencia > 0 ? "text-green-600" : "text-red-600"}`}
-                  >
-                    {diferencia > 0 ? "+" : ""}
-                    {formatCOP(diferencia)}
-                  </span>
-                </div>
-              </div>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="efectivoRecibido" className="text-right">
+                Efectivo Recibido
+              </Label>
+              <Input
+                id="efectivoRecibido"
+                value={formData.efectivoRecibido}
+                onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
+                type="number"
+                className="col-span-1"
+              />
             </div>
-          )}
 
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="tieneConsignacion"
+                checked={formData.tieneConsignacion}
+                onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: !!checked })}
+              />
+              <label
+                htmlFor="tieneConsignacion"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                ¿Tiene consignación?
+              </label>
+            </div>
+
+            {formData.tieneConsignacion && (
+              <>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="numeroConsignacion" className="text-right">
+                    Número Consignación
+                  </Label>
+                  <Input
+                    id="numeroConsignacion"
+                    value={formData.numeroConsignacion}
+                    onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
+                    onBlur={handleConsignacionBlur}
+                    className="col-span-1"
+                    placeholder="Ej: 1234567890"
+                  />
+                </div>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="banco" className="text-right">
+                    Banco
+                  </Label>
+                  <Input
+                    id="banco"
+                    value={formData.banco}
+                    onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
+                    className="col-span-1"
+                    placeholder="Ej: Bancolombia"
+                  />
+                </div>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="montoConsignacion" className="text-right">
+                    Monto Consignación
+                  </Label>
+                  <Input
+                    id="montoConsignacion"
+                    value={formData.montoConsignacion}
+                    onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+                    type="number"
+                    className="col-span-1"
+                  />
+                </div>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="fechaConsignacion" className="text-right">
+                    Fecha Consignación
+                  </Label>
+                  <Input
+                    id="fechaConsignacion"
+                    type="date"
+                    value={formData.fechaConsignacion}
+                    onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
+                    className="col-span-1"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="observaciones" className="text-right">
+                Observaciones
+              </Label>
+              <Textarea
+                id="observaciones"
+                value={formData.observaciones}
+                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                className="col-span-1"
+                rows={3}
+              />
+            </div>
+
+            {selectedPlanilla && (
+              <div className="mt-4 pt-4 border-t flex flex-col gap-3">
+                <p className="text-sm font-medium">Resumen de la Ruta:</p>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Cargue</p>
+                    <p className="font-semibold">{formatCOP(selectedPlanilla.montoCargue || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Entregado</p>
+                    <p className="font-semibold text-green-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).entregado)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Fiado</p>
+                    <p className="font-semibold text-yellow-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).fiado)}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Devoluciones</p>
+                    <p className="font-semibold text-red-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).devoluciones)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Repasos</p>
+                    <p className="font-semibold text-blue-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).repasos)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Diferencia Esperada</p>
+                    <p
+                      className={`font-semibold ${
+                        Math.round(
+                          (Number(formData.efectivoRecibido || 0) +
+                            (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
+                            calculateRouteTotals(selectedPlanilla).entregado) *
+                            100,
+                        ) /
+                          100 ===
+                        0
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {formatCOP(
+                        Math.round(
+                          (Number(formData.efectivoRecibido || 0) +
+                            (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
+                            calculateRouteTotals(selectedPlanilla).entregado) *
+                            100,
+                        ) / 100,
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseModal} disabled={submitting}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? "Registrando..." : "Registrar Recepción"}
+            <Button type="submit" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? "Guardando..." : "Confirmar Recepción"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAgrupadoModal} onOpenChange={() => setShowAgrupadoModal(false)}>
-        <DialogContent className="max-w-2xl">
+      {/* Modal para agrupar rutas y cuadrar */}
+      <Dialog
+        open={showAgrupadoModal}
+        onOpenChange={(open) => (open ? setShowAgrupadoModal(true) : setShowAgrupadoModal(false))}
+      >
+        <DialogContent className="sm:max-w-[425px] lg:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Cuadre Agrupado - {agrupadoData?.entregador}</DialogTitle>
+            <DialogTitle>Cuadre Agrupado</DialogTitle>
             <DialogDescription>
-              Agrupando {agrupadoData?.totalRutas} rutas: {agrupadoData?.nombresRutas?.join(", ")}
+              Estás cuadrando {agrupadoData?.totalRutas} rutas para el entregador: {agrupadoData?.entregador}
             </DialogDescription>
           </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="efectivoRecibidoAgrupado" className="text-right">
+                Efectivo Recibido
+              </Label>
+              <Input
+                id="efectivoRecibidoAgrupado"
+                value={formData.efectivoRecibido}
+                onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
+                type="number"
+                className="col-span-1"
+              />
+            </div>
 
-          {agrupadoData && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-5 gap-2 text-sm">
-                <div className="bg-gray-50 p-2 rounded">
-                  <p className="text-xs text-muted-foreground">Cargue Total</p>
-                  <p className="font-semibold">{formatCOP(agrupadoData.totales.cargue)}</p>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="tieneConsignacionAgrupado"
+                checked={formData.tieneConsignacion}
+                onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: !!checked })}
+              />
+              <label
+                htmlFor="tieneConsignacionAgrupado"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                ¿Tiene consignación?
+              </label>
+            </div>
+
+            {formData.tieneConsignacion && (
+              <>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="numeroConsignacionAgrupado" className="text-right">
+                    Número Consignación
+                  </Label>
+                  <Input
+                    id="numeroConsignacionAgrupado"
+                    value={formData.numeroConsignacion}
+                    onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
+                    onBlur={handleConsignacionBlur}
+                    className="col-span-1"
+                    placeholder="Ej: 1234567890"
+                  />
                 </div>
-                <div className="bg-green-50 p-2 rounded">
-                  <p className="text-xs text-green-700">Entregado</p>
-                  <p className="font-semibold text-green-600">{formatCOP(agrupadoData.totales.entregado)}</p>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="bancoAgrupado" className="text-right">
+                    Banco
+                  </Label>
+                  <Input
+                    id="bancoAgrupado"
+                    value={formData.banco}
+                    onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
+                    className="col-span-1"
+                    placeholder="Ej: Bancolombia"
+                  />
                 </div>
-                <div className="bg-yellow-50 p-2 rounded">
-                  <p className="text-xs text-yellow-700">Fiado</p>
-                  <p className="font-semibold text-yellow-600">{formatCOP(agrupadoData.totales.fiado)}</p>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="montoConsignacionAgrupado" className="text-right">
+                    Monto Consignación
+                  </Label>
+                  <Input
+                    id="montoConsignacionAgrupado"
+                    value={formData.montoConsignacion}
+                    onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+                    type="number"
+                    className="col-span-1"
+                  />
                 </div>
-                <div className="bg-red-50 p-2 rounded">
-                  <p className="text-xs text-red-700">Devoluciones</p>
-                  <p className="font-semibold text-red-600">{formatCOP(agrupadoData.totales.devoluciones)}</p>
+                <div className="grid grid-cols-2 items-center gap-4">
+                  <Label htmlFor="fechaConsignacionAgrupado" className="text-right">
+                    Fecha Consignación
+                  </Label>
+                  <Input
+                    id="fechaConsignacionAgrupado"
+                    type="date"
+                    value={formData.fechaConsignacion}
+                    onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
+                    className="col-span-1"
+                  />
                 </div>
-                <div className="bg-blue-50 p-2 rounded">
-                  <p className="text-xs text-blue-700">Repasos</p>
-                  <p className="font-semibold text-blue-600">{formatCOP(agrupadoData.totales.repasos)}</p>
+              </>
+            )}
+
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="observacionesAgrupado" className="text-right">
+                Observaciones
+              </Label>
+              <Textarea
+                id="observacionesAgrupado"
+                value={formData.observaciones}
+                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                className="col-span-1"
+                rows={3}
+              />
+            </div>
+
+            <div className="mt-4 pt-4 border-t flex flex-col gap-3">
+              <p className="text-sm font-medium">Resumen del Cuadre Agrupado:</p>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Cargue Total</p>
+                  <p className="font-semibold">{formatCOP(agrupadoData?.totales.cargue || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Entregado Total</p>
+                  <p className="font-semibold text-green-600">{formatCOP(agrupadoData?.totales.entregado || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Fiado Total</p>
+                  <p className="font-semibold text-yellow-600">{formatCOP(agrupadoData?.totales.fiado || 0)}</p>
                 </div>
               </div>
-
-              <div>
-                <Label htmlFor="efectivoAgrupado">Efectivo Recibido *</Label>
-                <Input
-                  id="efectivoAgrupado"
-                  type="number"
-                  min={0}
-                  step={1000}
-                  value={formData.efectivoRecibido}
-                  onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
-                  placeholder="0"
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="consignacionAgrupado"
-                  checked={formData.tieneConsignacion}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, tieneConsignacion: checked as boolean })
-                  }
-                />
-                <Label htmlFor="consignacionAgrupado">Tiene consignación</Label>
-              </div>
-
-              {formData.tieneConsignacion && (
-                <div className="space-y-3 border-l-4 border-blue-500 pl-4">
-                  <div>
-                    <Label htmlFor="numeroConsignacionAgrupado">Número de Consignación *</Label>
-                    <Input
-                      id="numeroConsignacionAgrupado"
-                      value={formData.numeroConsignacion}
-                      onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
-                      onBlur={handleConsignacionBlur}
-                      placeholder="Ej: 123456789"
-                      disabled={validatingConsignacion}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="bancoAgrupado">Banco *</Label>
-                    <Select value={formData.banco} onValueChange={(value) => setFormData({ ...formData, banco: value })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona un banco" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Bancolombia">Bancolombia</SelectItem>
-                        <SelectItem value="Davivienda">Davivienda</SelectItem>
-                        <SelectItem value="BBVA">BBVA</SelectItem>
-                        <SelectItem value="Banco de Bogotá">Banco de Bogotá</SelectItem>
-                        <SelectItem value="Nequi">Nequi</SelectItem>
-                        <SelectItem value="Daviplata">Daviplata</SelectItem>
-                        <SelectItem value="Otro">Otro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="montoConsignacionAgrupado">Monto Consignación *</Label>
-                    <Input
-                      id="montoConsignacionAgrupado"
-                      type="number"
-                      min={0}
-                      step={1000}
-                      value={formData.montoConsignacion}
-                      onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                      placeholder="0"
-                    />
-                  </div>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <p className="text-muted-foreground">Devoluciones</p>
+                  <p className="font-semibold text-red-600">{formatCOP(agrupadoData?.totales.devoluciones || 0)}</p>
                 </div>
-              )}
-
-              <div>
-                <Label htmlFor="observacionesAgrupado">Observaciones</Label>
-                <Textarea
-                  id="observacionesAgrupado"
-                  value={formData.observaciones}
-                  onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                  placeholder="Notas adicionales (opcional)"
-                  rows={2}
-                />
-              </div>
-
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm font-medium">Total Recibido:</span>
-                  <span className="text-lg font-bold text-blue-600">
-                    {formatCOP(
-                      Number(formData.efectivoRecibido || 0) +
-                        (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0),
-                    )}
-                  </span>
+                <div>
+                  <p className="text-muted-foreground">Repasos</p>
+                  <p className="font-semibold text-blue-600">{formatCOP(agrupadoData?.totales.repasos || 0)}</p>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Diferencia:</span>
-                  <span
-                    className={`text-lg font-bold ${
+                <div>
+                  <p className="text-muted-foreground">Diferencia Esperada</p>
+                  <p
+                    className={`font-semibold ${
                       Math.round(
                         (Number(formData.efectivoRecibido || 0) +
                           (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                          agrupadoData.totales.entregado) *
+                          (agrupadoData?.totales.entregado || 0)) *
                           100,
                       ) /
                         100 ===
                       0
                         ? "text-green-600"
-                        : Math.round(
-                              (Number(formData.efectivoRecibido || 0) +
-                                (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                                agrupadoData.totales.entregado) *
-                                100,
-                            ) /
-                              100 >
-                            0
-                          ? "text-green-600"
-                          : "text-red-600"
+                        : "text-red-600"
                     }`}
                   >
-                    {Math.round(
-                      (Number(formData.efectivoRecibido || 0) +
-                        (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                        agrupadoData.totales.entregado) *
-                        100,
-                    ) /
-                      100 >
-                    0
-                      ? "+"
-                      : ""}
                     {formatCOP(
                       Math.round(
                         (Number(formData.efectivoRecibido || 0) +
                           (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                          agrupadoData.totales.entregado) *
+                          (agrupadoData?.totales.entregado || 0)) *
                           100,
                       ) / 100,
                     )}
-                  </span>
+                  </p>
                 </div>
               </div>
             </div>
-          )}
-
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAgrupadoModal(false)} disabled={submitting}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSubmitAgrupado} disabled={submitting}>
-              {submitting ? "Registrando..." : "Registrar Cuadre Agrupado"}
+            <Button type="submit" onClick={handleSubmitAgrupado} disabled={submitting}>
+              {submitting ? "Guardando..." : "Confirmar Cuadre Agrupado"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showNuevoPedidoModal} onOpenChange={handleCloseNuevoPedidoModal}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      {/* Modal para agregar nuevo pedido */}
+      <Dialog
+        open={showNuevoPedidoModal}
+        onOpenChange={(open) => (open ? setShowNuevoPedidoModal(true) : handleCloseNuevoPedidoModal())}
+      >
+        <DialogContent className="sm:max-w-[425px] lg:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Nuevo Pedido - Ruta {rutaParaNuevoPedido?.ruta}</DialogTitle>
-            <DialogDescription>
-              Agregar un nuevo pedido a la ruta de {rutaParaNuevoPedido?.entregador}
-            </DialogDescription>
+            <DialogTitle>Nuevo Pedido</DialogTitle>
+            <DialogDescription>Agregar un nuevo pedido a la ruta: {rutaParaNuevoPedido?.ruta}</DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="clienteNuevo">Cliente *</Label>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="clienteNuevoPedido" className="text-right">
+                Cliente
+              </Label>
               <Input
-                id="clienteNuevo"
+                id="clienteNuevoPedido"
                 value={nuevoPedidoData.cliente}
                 onChange={(e) => setNuevoPedidoData({ ...nuevoPedidoData, cliente: e.target.value })}
+                className="col-span-1"
                 placeholder="Nombre del cliente"
               />
             </div>
-
-            <div>
-              <Label htmlFor="observacionesNuevo">Observaciones</Label>
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="observacionesNuevoPedido" className="text-right">
+                Observaciones
+              </Label>
               <Textarea
-                id="observacionesNuevo"
+                id="observacionesNuevoPedido"
                 value={nuevoPedidoData.observaciones}
                 onChange={(e) => setNuevoPedidoData({ ...nuevoPedidoData, observaciones: e.target.value })}
-                placeholder="Observaciones del pedido (opcional)"
-                rows={2}
+                className="col-span-1"
+                rows={3}
+                placeholder="Notas adicionales sobre el pedido"
               />
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label>Productos</Label>
-                <Button type="button" variant="outline" size="sm" onClick={agregarProducto}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Agregar Producto
-                </Button>
-              </div>
-
-              <div className="space-y-3">
-                {productosNuevoPedido.map((producto, index) => (
-                  <div key={index} className="border rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Producto {index + 1}</span>
-                      {productosNuevoPedido.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => eliminarProducto(index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs">Código *</Label>
-                        <Input
-                          value={producto.codigo}
-                          onChange={(e) => actualizarProducto(index, "codigo", e.target.value)}
-                          placeholder="Código"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Descripción *</Label>
-                        <Input
-                          value={producto.descripcion}
-                          onChange={(e) => actualizarProducto(index, "descripcion", e.target.value)}
-                          placeholder="Nombre del producto"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-xs">Cantidad *</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={producto.cantidad}
-                          onChange={(e) => actualizarProducto(index, "cantidad", e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Precio Unitario *</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          step={100}
-                          value={producto.precioUnitario}
-                          onChange={(e) => actualizarProducto(index, "precioUnitario", e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Subtotal</Label>
-                        <Input type="text" value={formatCOP(producto.subtotal)} disabled className="bg-gray-50" />
-                      </div>
-                    </div>
+            <h3 className="font-semibold mt-4">Productos del Pedido</h3>
+            <div className="space-y-4">
+              {productosNuevoPedido.map((producto, index) => (
+                <div key={index} className="grid grid-cols-6 gap-3 items-center border-b pb-3">
+                  <Input
+                    placeholder="Código"
+                    value={producto.codigo}
+                    onChange={(e) => actualizarProducto(index, "codigo", e.target.value)}
+                    className="col-span-1 text-xs"
+                  />
+                  <Input
+                    placeholder="Descripción"
+                    value={producto.descripcion}
+                    onChange={(e) => actualizarProducto(index, "descripcion", e.target.value)}
+                    className="col-span-2 text-xs"
+                  />
+                  <Input
+                    placeholder="Cantidad"
+                    type="number"
+                    min="1"
+                    value={producto.cantidad}
+                    onChange={(e) => actualizarProducto(index, "cantidad", Number.parseInt(e.target.value) || 1)}
+                    className="col-span-1 text-xs text-right"
+                  />
+                  <Input
+                    placeholder="Precio Unit."
+                    type="number"
+                    min="0"
+                    value={producto.precioUnitario}
+                    onChange={(e) =>
+                      actualizarProducto(index, "precioUnitario", Number.parseFloat(e.target.value) || 0)
+                    }
+                    className="col-span-1 text-xs text-right"
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <span className="font-medium text-sm">{formatCOP(producto.subtotal)}</span>
+                    <Button variant="ghost" size="icon" onClick={() => eliminarProducto(index)}>
+                      <X className="h-4 w-4 text-red-500" />
+                    </Button>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
+            <Button variant="outline" onClick={agregarProducto} className="w-full mt-3 bg-transparent">
+              <Plus className="h-4 w-4 mr-2" />
+              Agregar Otro Producto
+            </Button>
 
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-medium">Total del Pedido:</span>
-                <span className="text-lg font-bold text-blue-600">{formatCOP(calcularTotalNuevoPedido())}</span>
-              </div>
+            <div className="mt-4 pt-4 border-t flex justify-end">
+              <p className="text-xl font-bold">Total Pedido: {formatCOP(calcularTotalNuevoPedido())}</p>
             </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseNuevoPedidoModal} disabled={submittingNuevoPedido}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSubmitNuevoPedido} disabled={submittingNuevoPedido}>
+            <Button type="submit" onClick={handleSubmitNuevoPedido} disabled={submittingNuevoPedido}>
               {submittingNuevoPedido ? "Creando..." : "Crear Pedido"}
             </Button>
           </DialogFooter>
