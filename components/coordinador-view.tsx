@@ -151,7 +151,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
 
   const handleSubsanarFaltante = async (data: SubsanacionData) => {
   try {
-    const response = await fetch("/api/faltantes/resolver", {  // ← CAMBIAR AQUÍ
+    const response = await fetch("/api/faltantes", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -163,7 +163,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
 
     const result = await response.json()
-    alert(result.message || "Faltante subsanado correctamente")  // ← Cambiar 'mensaje' por 'message'
+    alert(result.mensaje || "Faltante subsanado correctamente")
 
     await loadSupervisionData()
   } catch (err) {
