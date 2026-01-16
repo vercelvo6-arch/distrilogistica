@@ -23,6 +23,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'No se recibieron planillas válidas' },
         { status: 400 }
+      )
     }
 
     // 🔧 FIX 1: Cálculos corregidos - manejo de null/undefined
@@ -91,7 +92,6 @@ export async function POST(request: Request) {
       cuadreId: result[0].id,
       mensaje: `✅ Cuadre registrado para ${planillaIds.length} ruta${planillaIds.length > 1 ? 's' : ''}`
     })
-
   } catch (error) {
     console.error('[CUADRE CAJA] ERROR:', error)
     return NextResponse.json(
