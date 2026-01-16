@@ -155,21 +155,47 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   async function loadHistorial() {
-    try {
-      const response = await fetch("/api/caja/recibir-efectivo")
-      if (!response.ok) throw new Error("Error al cargar historial")
-
-      const data = await response.json()
-      setRecepciones(Array.isArray(data.recepciones) ? data.recepciones : [])
-    } catch (err) {
-      console.error("[CAJA] Error loading historial:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo cargar el historial",
-        variant: "destructive",
-      })
-    }
+  try {
+    // Cargar cuadres individuales
+    const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
+    const dataIndividuales = await responseIndividuales.json()
+    
+    // Cargar cuadres agrupados
+    const responseAgrupados = await fetch("/api/cuadres-caja/historial")
+    const dataAgrupados = await responseAgrupados.json()
+    
+    // Combinar ambos arrays
+    const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones) 
+      ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: 'individual' }))
+      : []
+    
+    const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
+      ? dataAgrupados.cuadres.map((c: any) => ({ 
+          ...c, 
+          tipo: 'agrupado',
+          fecha_recepcion: c.fecha_cuadre,
+          efectivo_esperado: c.total_esperado,
+          efectivo_recibido: c.total_efectivo,
+          diferencia_efectivo: c.diferencia,
+          tipo_ruta: `${c.planillas_ids.length} rutas`
+        }))
+      : []
+    
+    // Combinar y ordenar por fecha
+    const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados]
+      .sort((a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime())
+    
+    setRecepciones(todosLosCuadres)
+    
+  } catch (err) {
+    console.error("[CAJA] Error loading historial:", err)
+    toast({
+      title: "Error",
+      description: "No se pudo cargar el historial",
+      variant: "destructive",
+    })
   }
+}
 
   const completedRoutes = routeSheets.filter(
     (s) => (s.estado === "alistado" || s.estado === "completado") && !s.cuadradoEnCaja,
