@@ -223,58 +223,64 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
-    if (!route || !Array.isArray(route.orders)) {
-      return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0 }
-    }
+  if (!route || !Array.isArray(route.orders)) {
+    return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0 }
+  }
 
-    let entregado = 0
-    let fiado = 0
-    let devoluciones = 0
-    let repasos = 0
+  let entregado = 0
+  let fiado = 0
+  let devoluciones = 0
+  let repasos = 0
 
-    route.orders.forEach((order) => {
-      if (!order || !Array.isArray(order.items)) return
+  route.orders.forEach((order) => {
+    if (!order || !Array.isArray(order.items)) return
 
-      let effectiveTotal = 0
-      let returnedTotal = 0
+    let effectiveTotal = 0
+    let returnedTotal = 0  // ← Para acumular productos devueltos individualmente
 
-      order.items.forEach((item) => {
-        if (!item) return
+    order.items.forEach((item) => {
+      if (!item) return
 
-        if (item.devuelto) {
-          returnedTotal += Number(item.subtotal) || 0
+      if (item.devuelto) {
+        // ✅ Producto marcado como devuelto individualmente
+        returnedTotal += Number(item.subtotal) || 0
+      } else {
+        const estadoProd = item.estadoProducto || "normal"
+        if (estadoProd === "agotado") return
+
+        if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+          effectiveTotal += Number(item.subtotalAjustado) || 0
+        } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
+          effectiveTotal += (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
         } else {
-          const estadoProd = item.estadoProducto || "normal"
-          if (estadoProd === "agotado") return
-
-          if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-            effectiveTotal += Number(item.subtotalAjustado) || 0
-          } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
-            effectiveTotal += (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
-          } else {
-            effectiveTotal += Number(item.subtotal) || 0
-          }
+          effectiveTotal += Number(item.subtotal) || 0
         }
-      })
-
-      if (order.estado === "entregado") {
-        entregado += effectiveTotal
-      } else if (order.estado === "fiado") {
-        fiado += effectiveTotal
-      } else if (order.estado === "devolucion") {
-        devoluciones += effectiveTotal
-      } else if (order.estado === "repaso") {
-        repasos += effectiveTotal
       }
     })
 
-    return {
-      entregado: Math.round(entregado * 100) / 100,
-      fiado: Math.round(fiado * 100) / 100,
-      devoluciones: Math.round(devoluciones * 100) / 100,
-      repasos: Math.round(repasos * 100) / 100,
+    // ✅ SUMAR DEVOLUCIONES PARCIALES (productos individuales con checkbox)
+    devoluciones += returnedTotal
+
+    // ✅ Sumar según el estado del pedido COMPLETO
+    if (order.estado === "entregado") {
+      entregado += effectiveTotal
+    } else if (order.estado === "fiado") {
+      fiado += effectiveTotal
+    } else if (order.estado === "devolucion") {
+      // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
+      devoluciones += effectiveTotal
+    } else if (order.estado === "repaso") {
+      repasos += effectiveTotal
     }
+  })
+
+  return {
+    entregado: Math.round(entregado * 100) / 100,
+    fiado: Math.round(fiado * 100) / 100,
+    devoluciones: Math.round(devoluciones * 100) / 100,
+    repasos: Math.round(repasos * 100) / 100,
   }
+}
 
   const toggleRouteExpansion = (routeId: number) => {
     const newExpanded = new Set(expandedRoutes)
