@@ -23,13 +23,12 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'No se recibieron planillas válidas' },
         { status: 400 }
-      )
     }
 
-    // Cálculos
+    // 🔧 FIX 1: Cálculos corregidos - manejo de null/undefined
     const totalConsignado = Number(montoConsignacion || 0)
-    const totalEfectivo = Number(efectivoRecibido)
-    const totalEsperadoNum = Number(totalEsperado)
+    const totalEfectivo = Number(efectivoRecibido) || 0
+    const totalEsperadoNum = Number(totalEsperado) || 0
     const totalRecibido = totalEfectivo + totalConsignado
     const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
     const estado = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
       estado
     })
 
-    // Insertar cuadre
+    // 🔧 FIX 2: Insertar cuadre con valores validados
     const result = await sql`
       INSERT INTO cuadres_caja (
         entregador,
@@ -64,18 +63,18 @@ export async function POST(request: Request) {
         ${planillaIds},
         ${totalEsperadoNum},
         ${totalEfectivo},
-        ${totalConsignado},
+        ${totalConsignado || 0},
         ${diferencia},
         ${estado},
         ${observaciones || null},
-        ${tieneConsignacion},
+        ${tieneConsignacion || false},
         ${numeroConsignacion || null},
         ${banco || null}
       )
       RETURNING id
     `
 
-    // 🔥 FIX: Actualizar planillas una por una
+    // Actualizar planillas una por una
     for (const planillaId of planillaIds) {
       await sql`
         UPDATE planillas
