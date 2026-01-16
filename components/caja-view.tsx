@@ -206,7 +206,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const completedRoutes = routeSheets.filter(
-    (s) => (s.estado === "alistado" || s.estado === "completado") && !s.cuadradoEnCaja,
+    (s) => !s.cuadradoEnCaja
   )
 
   const entregadores = Array.from(new Set(completedRoutes.map((r) => r.entregador).filter(Boolean))) as string[]
