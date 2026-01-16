@@ -155,54 +155,55 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   async function loadHistorial() {
-  try {
-    const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
-    const dataIndividuales = await responseIndividuales.json()
+    try {
+      const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
+      const dataIndividuales = await responseIndividuales.json()
 
-    const responseAgrupados = await fetch("/api/cuadres-caja/historial")
-    const dataAgrupados = await responseAgrupados.json()
+      const responseAgrupados = await fetch("/api/cuadres-caja/historial")
+      const dataAgrupados = await responseAgrupados.json()
 
-    const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
-      ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: "individual" }))
-      : []
+      const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
+        ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: "individual" }))
+        : []
 
-    const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
-      ? dataAgrupados.cuadres.map((c: any) => {
-          const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
-          const tipoRutaDisplay = c.rutas_nombres && c.rutas_nombres.length > 0
-            ? c.rutas_nombres.join(", ")
-            : numRutas > 1
-            ? `${numRutas} rutas agrupadas`
-            : "1 ruta"
+      const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
+        ? dataAgrupados.cuadres.map((c: any) => {
+            const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
+            const tipoRutaDisplay =
+              c.rutas_nombres && c.rutas_nombres.length > 0
+                ? c.rutas_nombres.join(", ")
+                : numRutas > 1
+                  ? `${numRutas} rutas agrupadas`
+                  : "1 ruta"
 
-          return {
-            ...c,
-            tipo: "agrupado",
-            fecha_recepcion: c.fecha_cuadre,
-            efectivo_esperado: c.total_esperado,
-            efectivo_recibido: c.total_efectivo,
-            diferencia_efectivo: c.diferencia,
-            tipo_ruta: tipoRutaDisplay,
-            monto_consignacion: c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
-          }
-        })
-      : []
-    
-    // Combinar y ordenar por fecha
-    const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados]
-      .sort((a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime())
-    
-    setRecepciones(todosLosCuadres)
-    
-  } catch (err) {
-    console.error("[CAJA] Error loading historial:", err)
-    toast({
-      title: "Error",
-      description: "No se pudo cargar el historial",
-      variant: "destructive",
-    })
+            return {
+              ...c,
+              tipo: "agrupado",
+              fecha_recepcion: c.fecha_cuadre,
+              efectivo_esperado: c.total_esperado,
+              efectivo_recibido: c.total_efectivo,
+              diferencia_efectivo: c.diferencia,
+              tipo_ruta: tipoRutaDisplay,
+              monto_consignacion:
+                c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
+            }
+          })
+        : []
+
+      const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados].sort(
+        (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime(),
+      )
+
+      setRecepciones(todosLosCuadres)
+    } catch (err) {
+      console.error("[CAJA] Error loading historial:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo cargar el historial",
+        variant: "destructive",
+      })
+    }
   }
-}
 
   const completedRoutes = routeSheets.filter(
     (s) => (s.estado === "alistado" || s.estado === "completado") && !s.cuadradoEnCaja,
@@ -222,7 +223,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
-    // Early return with safe defaults if route is null/undefined or has no orders
     if (!route || !Array.isArray(route.orders)) {
       return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0 }
     }
@@ -458,7 +458,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       [field]: value,
     }
 
-    // Recalcular subtotal si cambia cantidad o precio
     if (field === "cantidad" || field === "precioUnitario") {
       const cantidad = field === "cantidad" ? Number(value) : nuevosProductos[index].cantidad
       const precio = field === "precioUnitario" ? Number(value) : nuevosProductos[index].precioUnitario
@@ -475,7 +474,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const handleSubmitNuevoPedido = async () => {
     if (!rutaParaNuevoPedido) return
 
-    // Validaciones
     if (!nuevoPedidoData.cliente.trim()) {
       toast({
         title: "Error",
@@ -623,9 +621,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
 
-    const entregadores = new Set(rutasSeleccionadas.map((r) => r.entregador))
+    const entregadoresSet = new Set(rutasSeleccionadas.map((r) => r.entregador))
 
-    if (entregadores.size > 1) {
+    if (entregadoresSet.size > 1) {
       toast({
         title: "Error",
         description: "Solo puedes agrupar rutas del mismo entregador",
@@ -634,18 +632,17 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       return
     }
 
-    let totalCargue = 0
-    let totalEntregado = 0
-    let totalFiado = 0
-    let totalDevoluciones = 0
-    let totalRepasos = 0
+    let totalCargueAgrupado = 0
+    let totalEntregadoAgrupado = 0
+    let totalFiadoAgrupado = 0
+    let totalDevolucionesAgrupado = 0
+    let totalRepasosAgrupado = 0
 
     rutasSeleccionadas.forEach((route) => {
       if (!route) return
 
-      totalCargue += route.totalAmount
+      totalCargueAgrupado += route.totalAmount
 
-      // Safe check for orders array
       if (!Array.isArray(route.orders)) return
 
       route.orders.forEach((order) => {
@@ -669,13 +666,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         })
 
         if (order.estado === "entregado") {
-          totalEntregado += effectiveTotal
+          totalEntregadoAgrupado += effectiveTotal
         } else if (order.estado === "fiado") {
-          totalFiado += effectiveTotal
+          totalFiadoAgrupado += effectiveTotal
         } else if (order.estado === "devolucion") {
-          totalDevoluciones += effectiveTotal
+          totalDevolucionesAgrupado += effectiveTotal
         } else if (order.estado === "repaso") {
-          totalRepasos += effectiveTotal
+          totalRepasosAgrupado += effectiveTotal
         }
       })
     })
@@ -683,23 +680,23 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const nombresRutas = rutasSeleccionadas.map((r) => r.ruta)
 
     const agrupado = {
-     entregador: rutasSeleccionadas[0].entregador,
-     planillas: rutasSeleccionadas,
-     planillaIds: selectedRoutes,
-     totalRutas: rutasSeleccionadas.length,
-     nombresRutas,
-     totales: {
-       cargue: totalCargue,
-       entregado: totalEntregado,
-       fiado: totalFiado,
-       devoluciones: totalDevoluciones,
-       repasos: totalRepasos,
-  },
-}
+      entregador: rutasSeleccionadas[0].entregador,
+      planillas: rutasSeleccionadas,
+      planillaIds: selectedRoutes,
+      totalRutas: rutasSeleccionadas.length,
+      nombresRutas,
+      totales: {
+        cargue: totalCargueAgrupado,
+        entregado: totalEntregadoAgrupado,
+        fiado: totalFiadoAgrupado,
+        devoluciones: totalDevolucionesAgrupado,
+        repasos: totalRepasosAgrupado,
+      },
+    }
 
     setAgrupadoData(agrupado)
     setFormData({
-      efectivoRecibido: totalEntregado.toString(),
+      efectivoRecibido: totalEntregadoAgrupado.toString(),
       tieneConsignacion: false,
       numeroConsignacion: "",
       banco: "",
@@ -941,82 +938,22 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               ) : (
                 <div className="space-y-3">
                   {recepciones.map((rec) => (
-  <div key={rec.id} className="border rounded-lg p-4">
-    <div className="flex items-start justify-between mb-3">
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <p className="font-semibold">
-            {rec.entregador} - {rec.tipo_ruta}
-          </p>
-          {rec.tipo === 'agrupado' && (
-            <Badge className="bg-purple-100 text-purple-700 border-purple-300">
-              📦 AGRUPADO
-            </Badge>
-          )}
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
-        </p>
-      </div>
-      <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
-        {rec.estado === "cuadrado" ? "✓ Cuadrado" : "⚠ Con Diferencia"}
-      </Badge>
-
-    <div className="grid grid-cols-3 gap-3 text-sm">
-      <div>
-        <p className="text-muted-foreground">Esperado</p>
-        <p className="font-semibold">{formatCOP(Number(rec.efectivo_esperado))}</p>
-      </div>
-      <div>
-        <p className="text-muted-foreground">Recibido</p>
-        <p className="font-semibold text-green-600">{formatCOP(Number(rec.efectivo_recibido))}</p>
-      </div>
-      <div>
-        <p className="text-muted-foreground">Diferencia</p>
-        <p
-          className={`font-semibold ${Number(rec.diferencia_efectivo) === 0 ? "text-green-600" : "text-red-600"}`}
-        >
-          {Number(rec.diferencia_efectivo) > 0 ? "+" : ""}
-          {formatCOP(Number(rec.diferencia_efectivo))}
-        </p>
-      </div>
-    </div>
-
-    {rec.tiene_consignacion && (
-      <div className="mt-3 pt-3 border-t bg-blue-50 -m-4 p-4 rounded-b-lg">
-        <p className="text-sm font-medium mb-2">📄 Consignación</p>
-        <div className="grid grid-cols-3 gap-2 text-sm">
-          <div>
-            <p className="text-muted-foreground">Número</p>
-            <p className="font-mono">{rec.numero_consignacion}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Banco</p>
-            <p>{rec.banco}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Monto</p>
-            <p className="font-semibold">{formatCOP(Number(rec.total_consignado || rec.monto_consignacion || 0))}</p>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {rec.observaciones && (
-      <div className="mt-3 pt-3 border-t">
-        <p className="text-sm text-muted-foreground">Observaciones:</p>
-        <p className="text-sm">{rec.observaciones}</p>
-      </div>
-    )}
-
-    {rec.tipo === 'agrupado' && rec.planillas_ids && (
-      <div className="mt-3 pt-3 border-t bg-purple-50 -m-4 p-4 rounded-b-lg">
-        <p className="text-sm font-medium mb-2">📋 Rutas Incluidas:</p>
-        <p className="text-xs text-muted-foreground">{rec.planillas_ids.join(', ')}</p>
-      </div>
-    )}
-  </div>
-))}
+                    <div key={rec.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-semibold">
+                              {rec.entregador} - {rec.tipo_ruta}
+                            </p>
+                            {rec.tipo === "agrupado" && (
+                              <Badge className="bg-purple-100 text-purple-700 border-purple-300">📦 AGRUPADO</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
+                          </p>
+                        </div>
+                        <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
                           {rec.estado === "cuadrado" ? "✓ Cuadrado" : "⚠ Con Diferencia"}
                         </Badge>
                       </div>
@@ -1055,7 +992,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                             </div>
                             <div>
                               <p className="text-muted-foreground">Monto</p>
-                              <p className="font-semibold">{formatCOP(Number(rec.monto_consignacion))}</p>
+                              <p className="font-semibold">
+                                {formatCOP(Number(rec.total_consignado || rec.monto_consignacion || 0))}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -1065,6 +1004,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                         <div className="mt-3 pt-3 border-t">
                           <p className="text-sm text-muted-foreground">Observaciones:</p>
                           <p className="text-sm">{rec.observaciones}</p>
+                        </div>
+                      )}
+
+                      {rec.tipo === "agrupado" && rec.planillas_ids && (
+                        <div className="mt-3 pt-3 border-t bg-purple-50 -m-4 p-4 rounded-b-lg">
+                          <p className="text-sm font-medium mb-2">📋 Rutas Incluidas:</p>
+                          <p className="text-xs text-muted-foreground">{rec.planillas_ids.join(", ")}</p>
                         </div>
                       )}
                     </div>
@@ -1634,7 +1580,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           <DialogHeader>
             <DialogTitle>Recibir Efectivo</DialogTitle>
             <DialogDescription>
-              Agrupando {agrupadoData?.totalRutas} rutas: {agrupadoData?.nombresRutas?.join(", ")}
+              {selectedPlanilla && `Ruta: ${selectedPlanilla.ruta} - ${selectedPlanilla.entregador}`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
