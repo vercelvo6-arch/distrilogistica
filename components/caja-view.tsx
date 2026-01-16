@@ -156,29 +156,36 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   async function loadHistorial() {
   try {
-    // Cargar cuadres individuales
     const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
     const dataIndividuales = await responseIndividuales.json()
-    
-    // Cargar cuadres agrupados
+
     const responseAgrupados = await fetch("/api/cuadres-caja/historial")
     const dataAgrupados = await responseAgrupados.json()
-    
-    // Combinar ambos arrays
-    const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones) 
-      ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: 'individual' }))
+
+    const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
+      ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: "individual" }))
       : []
-    
+
     const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
-      ? dataAgrupados.cuadres.map((c: any) => ({ 
-          ...c, 
-          tipo: 'agrupado',
-          fecha_recepcion: c.fecha_cuadre,
-          efectivo_esperado: c.total_esperado,
-          efectivo_recibido: c.total_efectivo,
-          diferencia_efectivo: c.diferencia,
-          tipo_ruta: `${c.planillas_ids.length} rutas`
-        }))
+      ? dataAgrupados.cuadres.map((c: any) => {
+          const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
+          const tipoRutaDisplay = c.rutas_nombres && c.rutas_nombres.length > 0
+            ? c.rutas_nombres.join(", ")
+            : numRutas > 1
+            ? `${numRutas} rutas agrupadas`
+            : "1 ruta"
+
+          return {
+            ...c,
+            tipo: "agrupado",
+            fecha_recepcion: c.fecha_cuadre,
+            efectivo_esperado: c.total_esperado,
+            efectivo_recibido: c.total_efectivo,
+            diferencia_efectivo: c.diferencia,
+            tipo_ruta: tipoRutaDisplay,
+            monto_consignacion: c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
+          }
+        })
       : []
     
     // Combinar y ordenar por fecha
@@ -673,19 +680,22 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       })
     })
 
+    const nombresRutas = rutasSeleccionadas.map((r) => r.ruta)
+
     const agrupado = {
-      entregador: rutasSeleccionadas[0].entregador,
-      planillas: rutasSeleccionadas,
-      planillaIds: selectedRoutes,
-      totalRutas: rutasSeleccionadas.length,
-      totales: {
-        cargue: totalCargue,
-        entregado: totalEntregado,
-        fiado: totalFiado,
-        devoluciones: totalDevoluciones,
-        repasos: totalRepasos,
-      },
-    }
+     entregador: rutasSeleccionadas[0].entregador,
+     planillas: rutasSeleccionadas,
+     planillaIds: selectedRoutes,
+     totalRutas: rutasSeleccionadas.length,
+     nombresRutas,
+     totales: {
+       cargue: totalCargue,
+       entregado: totalEntregado,
+       fiado: totalFiado,
+       devoluciones: totalDevoluciones,
+       repasos: totalRepasos,
+  },
+}
 
     setAgrupadoData(agrupado)
     setFormData({
@@ -936,7 +946,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       <div>
         <div className="flex items-center gap-2 mb-1">
           <p className="font-semibold">
-            {rec.entregador} - {rec.tipo === 'agrupado' ? `${rec.planillas_ids?.length || 0} rutas` : `Ruta ${rec.tipo_ruta}`}
+            {rec.entregador} - {rec.tipo_ruta}
           </p>
           {rec.tipo === 'agrupado' && (
             <Badge className="bg-purple-100 text-purple-700 border-purple-300">
@@ -1625,7 +1635,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           <DialogHeader>
             <DialogTitle>Recibir Efectivo</DialogTitle>
             <DialogDescription>
-              Ingresa los detalles de la recepción para la ruta: {selectedPlanilla?.ruta}
+              Agrupando {agrupadoData?.totalRutas} rutas: {agrupadoData?.nombresRutas?.join(", ")}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
