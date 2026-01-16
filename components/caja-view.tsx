@@ -949,57 +949,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         </p>
       </div>
       <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
-        {rec.estado === "cuadrado" ? "✓ Cuadrado" : "⚠ Con Diferencia"}
-      </Badge>
-    </div>
-
-    <div className="grid grid-cols-3 gap-3 text-sm">
-      <div>
-        <p className="text-muted-foreground">Esperado</p>
-        <p className="font-semibold">{formatCOP(Number(rec.efectivo_esperado))}</p>
-      </div>
-      <div>
-        <p className="text-muted-foreground">Recibido</p>
-        <p className="font-semibold text-green-600">{formatCOP(Number(rec.efectivo_recibido))}</p>
-      </div>
-      <div>
-        <p className="text-muted-foreground">Diferencia</p>
-        <p
-          className={`font-semibold ${Number(rec.diferencia_efectivo) === 0 ? "text-green-600" : "text-red-600"}`}
-        >
-          {Number(rec.diferencia_efectivo) > 0 ? "+" : ""}
-          {formatCOP(Number(rec.diferencia_efectivo))}
-        </p>
-      </div>
-    </div>
-
-    {rec.tiene_consignacion && (
-      <div className="mt-3 pt-3 border-t bg-blue-50 -m-4 p-4 rounded-b-lg">
-        <p className="text-sm font-medium mb-2">📄 Consignación</p>
-        <div className="grid grid-cols-3 gap-2 text-sm">
-          <div>
-            <p className="text-muted-foreground">Número</p>
-            <p className="font-mono">{rec.numero_consignacion}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Banco</p>
-            <p>{rec.banco}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Monto</p>
-            <p className="font-semibold">{formatCOP(Number(rec.total_consignado || rec.monto_consignacion || 0))}</p>
-          </div>
-        </div>
-      </div>
-    )}
-
-    {rec.observaciones && (
-      <div className="mt-3 pt-3 border-t">
-        <p className="text-sm text-muted-foreground">Observaciones:</p>
-        <p className="text-sm">{rec.observaciones}</p>
-      </div>
-    )}
-
+        ))}
     {rec.tipo === 'agrupado' && rec.planillas_ids && (
       <div className="mt-3 pt-3 border-t bg-purple-50 -m-4 p-4 rounded-b-lg">
         <p className="text-sm font-medium mb-2">📋 Rutas Incluidas:</p>
