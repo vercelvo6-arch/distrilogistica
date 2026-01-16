@@ -18,22 +18,32 @@ export async function POST(request: Request) {
       observaciones
     } = body
 
-    if (!planillaIds || planillaIds.length === 0) {
+    // Validación
+    if (!planillaIds || !Array.isArray(planillaIds) || planillaIds.length === 0) {
       return NextResponse.json(
-        { error: 'No se recibieron planillas' },
+        { error: 'No se recibieron planillas válidas' },
         { status: 400 }
       )
     }
 
+    // Cálculos
     const totalConsignado = Number(montoConsignacion || 0)
     const totalEfectivo = Number(efectivoRecibido)
     const totalEsperadoNum = Number(totalEsperado)
-
     const totalRecibido = totalEfectivo + totalConsignado
-    const diferencia = totalRecibido - totalEsperadoNum
-
+    const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
     const estado = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
+    console.log('[CUADRE CAJA] Registrando cuadre:', {
+      entregador,
+      planillas: planillaIds.length,
+      totalEsperado: totalEsperadoNum,
+      totalRecibido,
+      diferencia,
+      estado
+    })
+
+    // Insertar cuadre
     const result = await sql`
       INSERT INTO cuadres_caja (
         entregador,
@@ -65,22 +75,31 @@ export async function POST(request: Request) {
       RETURNING id
     `
 
-    await sql`
-      UPDATE planillas
-      SET cuadrado_en_caja = true
-      WHERE id = ANY(${planillaIds})
-    `
+    // 🔥 FIX: Actualizar planillas una por una
+    for (const planillaId of planillaIds) {
+      await sql`
+        UPDATE planillas
+        SET cuadrado_en_caja = true,
+            updated_at = NOW()
+        WHERE id = ${planillaId}
+      `
+    }
+
+    console.log('[CUADRE CAJA] ✓ Cuadre registrado:', result[0].id)
 
     return NextResponse.json({
       success: true,
       cuadreId: result[0].id,
-      mensaje: `✅ Cuadre registrado para ${planillaIds.length} rutas`
+      mensaje: `✅ Cuadre registrado para ${planillaIds.length} ruta${planillaIds.length > 1 ? 's' : ''}`
     })
 
   } catch (error) {
-    console.error('[CUADRE CAJA]', error)
+    console.error('[CUADRE CAJA] ERROR:', error)
     return NextResponse.json(
-      { error: 'Error interno al registrar cuadre' },
+      { 
+        error: 'Error al registrar cuadre',
+        details: error instanceof Error ? error.message : 'Error desconocido'
+      },
       { status: 500 }
     )
   }
