@@ -150,27 +150,27 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   }
 
   const handleSubsanarFaltante = async (data: SubsanacionData) => {
-    try {
-      const response = await fetch("/api/faltantes", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
+  try {
+    const response = await fetch("/api/faltantes/resolver", {  // ← CAMBIAR AQUÍ
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Error al subsanar faltante")
-      }
-
-      const result = await response.json()
-      alert(result.mensaje || "Faltante subsanado correctamente")
-
-      await loadSupervisionData()
-    } catch (err) {
-      console.error("[SUBSANAR] ERROR:", err)
-      alert("Error: " + (err as Error).message)
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || "Error al subsanar faltante")
     }
+
+    const result = await response.json()
+    alert(result.message || "Faltante subsanado correctamente")  // ← Cambiar 'mensaje' por 'message'
+
+    await loadSupervisionData()
+  } catch (err) {
+    console.error("[SUBSANAR] ERROR:", err)
+    alert("Error: " + (err as Error).message)
   }
+}
 
   async function loadSupervisionData() {
     try {
