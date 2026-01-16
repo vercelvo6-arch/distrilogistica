@@ -961,7 +961,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
         {rec.estado === "cuadrado" ? "✓ Cuadrado" : "⚠ Con Diferencia"}
       </Badge>
-    </div>
 
     <div className="grid grid-cols-3 gap-3 text-sm">
       <div>
