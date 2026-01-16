@@ -155,47 +155,43 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   async function loadHistorial() {
-  try {
-    // Cargar cuadres individuales
-    const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
-    const dataIndividuales = await responseIndividuales.json()
-    
-    // Cargar cuadres agrupados
-    const responseAgrupados = await fetch("/api/cuadres-caja/historial")
-    const dataAgrupados = await responseAgrupados.json()
-    
-    // Combinar ambos arrays
-    const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones) 
-      ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: 'individual' }))
-      : []
-    
-    const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
-      ? dataAgrupados.cuadres.map((c: any) => ({ 
-          ...c, 
-          tipo: 'agrupado',
-          fecha_recepcion: c.fecha_cuadre,
-          efectivo_esperado: c.total_esperado,
-          efectivo_recibido: c.total_efectivo,
-          diferencia_efectivo: c.diferencia,
-          tipo_ruta: `${c.planillas_ids.length} rutas`
-        }))
-      : []
-    
-    // Combinar y ordenar por fecha
-    const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados]
-      .sort((a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime())
-    
-    setRecepciones(todosLosCuadres)
-    
-  } catch (err) {
-    console.error("[CAJA] Error loading historial:", err)
-    toast({
-      title: "Error",
-      description: "No se pudo cargar el historial",
-      variant: "destructive",
-    })
+    try {
+      const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
+      const dataIndividuales = await responseIndividuales.json()
+
+      const responseAgrupados = await fetch("/api/cuadres-caja/historial")
+      const dataAgrupados = await responseAgrupados.json()
+
+      const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
+        ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: "individual" }))
+        : []
+
+      const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
+        ? dataAgrupados.cuadres.map((c: any) => ({
+            ...c,
+            tipo: "agrupado",
+            fecha_recepcion: c.fecha_cuadre,
+            efectivo_esperado: c.total_esperado,
+            efectivo_recibido: c.total_efectivo,
+            diferencia_efectivo: c.diferencia,
+            tipo_ruta: `${c.planillas_ids.length} rutas`,
+          }))
+        : []
+
+      const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados].sort(
+        (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime(),
+      )
+
+      setRecepciones(todosLosCuadres)
+    } catch (err) {
+      console.error("[CAJA] Error loading historial:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo cargar el historial",
+        variant: "destructive",
+      })
+    }
   }
-}
 
   const completedRoutes = routeSheets.filter(
     (s) => (s.estado === "alistado" || s.estado === "completado") && !s.cuadradoEnCaja,
@@ -215,7 +211,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
-    // Early return with safe defaults if route is null/undefined or has no orders
     if (!route || !Array.isArray(route.orders)) {
       return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0 }
     }
@@ -451,7 +446,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       [field]: value,
     }
 
-    // Recalcular subtotal si cambia cantidad o precio
     if (field === "cantidad" || field === "precioUnitario") {
       const cantidad = field === "cantidad" ? Number(value) : nuevosProductos[index].cantidad
       const precio = field === "precioUnitario" ? Number(value) : nuevosProductos[index].precioUnitario
@@ -468,7 +462,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const handleSubmitNuevoPedido = async () => {
     if (!rutaParaNuevoPedido) return
 
-    // Validaciones
     if (!nuevoPedidoData.cliente.trim()) {
       toast({
         title: "Error",
@@ -616,9 +609,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
 
-    const entregadores = new Set(rutasSeleccionadas.map((r) => r.entregador))
+    const entregadoresSet = new Set(rutasSeleccionadas.map((r) => r.entregador))
 
-    if (entregadores.size > 1) {
+    if (entregadoresSet.size > 1) {
       toast({
         title: "Error",
         description: "Solo puedes agrupar rutas del mismo entregador",
@@ -638,7 +631,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       totalCargue += route.totalAmount
 
-      // Safe check for orders array
       if (!Array.isArray(route.orders)) return
 
       route.orders.forEach((order) => {
@@ -931,33 +923,17 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               ) : (
                 <div className="space-y-3">
                   {recepciones.map((rec) => (
-  <div key={rec.id} className="border rounded-lg p-4">
-    <div className="flex items-start justify-between mb-3">
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <p className="font-semibold">
-            {rec.entregador} - {rec.tipo === 'agrupado' ? `${rec.planillas_ids?.length || 0} rutas` : `Ruta ${rec.tipo_ruta}`}
-          </p>
-          {rec.tipo === 'agrupado' && (
-            <Badge className="bg-purple-100 text-purple-700 border-purple-300">
-              📦 AGRUPADO
-            </Badge>
-          )}
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
-        </p>
-      </div>
-      <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
-        ))}
-    {rec.tipo === 'agrupado' && rec.planillas_ids && (
-      <div className="mt-3 pt-3 border-t bg-purple-50 -m-4 p-4 rounded-b-lg">
-        <p className="text-sm font-medium mb-2">📋 Rutas Incluidas:</p>
-        <p className="text-xs text-muted-foreground">{rec.planillas_ids.join(', ')}</p>
-      </div>
-    )}
-  </div>
-))}
+                    <div key={rec.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="font-semibold">
+                            {rec.entregador} - Ruta {rec.tipo_ruta}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
+                          </p>
+                        </div>
+                        <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
                           {rec.estado === "cuadrado" ? "✓ Cuadrado" : "⚠ Con Diferencia"}
                         </Badge>
                       </div>
@@ -1140,41 +1116,43 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-4">
-                                <p className="font-semibold text-lg">
-                                  {route.entregador} - Ruta {route.ruta}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {route.totalOrders} pedidos · Fecha:{" "}
-                                  {new Date(route.fecha).toLocaleDateString("es-CO")}
-                                </p>
+                                <div>
+                                  <p className="font-semibold text-lg">
+                                    {route.entregador} - Ruta {route.ruta}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {route.totalOrders} pedidos · Fecha:{" "}
+                                    {new Date(route.fecha).toLocaleDateString("es-CO")}
+                                  </p>
+                                </div>
+
+                                <div className="mb-3 p-3 bg-white rounded-lg border">
+                                  <Label className="text-xs text-muted-foreground mb-2 block">Reasignar a:</Label>
+                                  <Select
+                                    disabled={reasignandoRuta === route.id}
+                                    onValueChange={(value) => handleReasignarRuta(route.id, value)}
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue
+                                        placeholder={
+                                          reasignandoRuta === route.id ? "Reasignando..." : "Seleccionar entregador"
+                                        }
+                                      />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {entregadores
+                                        .filter((e) => e !== route.entregador)
+                                        .map((entregador) => (
+                                          <SelectItem key={entregador} value={entregador}>
+                                            {entregador}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               </div>
 
-                              <div className="mb-3 p-3 bg-white rounded-lg border">
-                                <Label className="text-xs text-muted-foreground mb-2 block">Reasignar a:</Label>
-                                <Select
-                                  disabled={reasignandoRuta === route.id}
-                                  onValueChange={(value) => handleReasignarRuta(route.id, value)}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue
-                                      placeholder={
-                                        reasignandoRuta === route.id ? "Reasignando..." : "Seleccionar entregador"
-                                      }
-                                    />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {entregadores
-                                      .filter((e) => e !== route.entregador)
-                                      .map((entregador) => (
-                                        <SelectItem key={entregador} value={entregador}>
-                                          {entregador}
-                                        </SelectItem>
-                                      ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 mb-4">
                                 <Button onClick={() => toggleRouteExpansion(route.id)} variant="outline" size="sm">
                                   {expandedRoutes.has(route.id) ? (
                                     <>
@@ -1202,28 +1180,28 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                   Recibir Efectivo
                                 </Button>
                               </div>
-                            </div>
 
-                            <div className="grid grid-cols-5 gap-3 text-sm">
-                              <div>
-                                <p className="text-muted-foreground">Cargue</p>
-                                <p className="font-semibold">{formatCOP(route.totalAmount)}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Entregado</p>
-                                <p className="font-semibold text-green-600">{formatCOP(totals.entregado)}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Fiado</p>
-                                <p className="font-semibold text-yellow-600">{formatCOP(totals.fiado)}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Devoluciones</p>
-                                <p className="font-semibold text-red-600">{formatCOP(totals.devoluciones)}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Repasos</p>
-                                <p className="font-semibold text-blue-600">{formatCOP(totals.repasos)}</p>
+                              <div className="grid grid-cols-5 gap-3 text-sm">
+                                <div>
+                                  <p className="text-muted-foreground">Cargue</p>
+                                  <p className="font-semibold">{formatCOP(route.totalAmount)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Entregado</p>
+                                  <p className="font-semibold text-green-600">{formatCOP(totals.entregado)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Fiado</p>
+                                  <p className="font-semibold text-yellow-600">{formatCOP(totals.fiado)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Devoluciones</p>
+                                  <p className="font-semibold text-red-600">{formatCOP(totals.devoluciones)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">Repasos</p>
+                                  <p className="font-semibold text-blue-600">{formatCOP(totals.repasos)}</p>
+                                </div>
                               </div>
                             </div>
                           </div>
