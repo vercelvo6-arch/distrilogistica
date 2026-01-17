@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       banco,
       montoConsignacion,
       fechaConsignacion,
-      observaciones
+      observaciones,
       descuento,           
       motivoDescuento
     } = body
