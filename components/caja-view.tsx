@@ -835,6 +835,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
           fechaConsignacion: formData.tieneConsignacion ? formData.fechaConsignacion : null,
           observaciones: formData.observaciones || null,
+          descuento: Number(formData.descuento || 0),             
+          motivoDescuento: formData.motivoDescuento || null,  
         }),
       })
 
@@ -1009,7 +1011,27 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                           </div>
                         </div>
                       )}
+)}
 
+            {rec.descuento && Number(rec.descuento) > 0 && (
+              <div className="mt-3 pt-3 border-t bg-orange-50 -m-4 p-4 rounded-b-lg">
+                <p className="text-sm font-medium mb-2">💰 Descuento Aplicado</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Monto</p>
+                    <p className="font-semibold text-orange-600">{formatCOP(Number(rec.descuento))}</p>
+                  </div>
+                  {rec.motivo_descuento && (
+                    <div>
+                      <p className="text-muted-foreground">Motivo</p>
+                      <p className="text-sm">{rec.motivo_descuento}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {rec.observaciones && (
                       {rec.observaciones && (
                         <div className="mt-3 pt-3 border-t">
                           <p className="text-sm text-muted-foreground">Observaciones:</p>
