@@ -871,6 +871,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   let totalFiado = 0
   let totalDevoluciones = 0
   let totalRepasos = 0
+  let totalDescuentos = 0
 
   filteredRoutes.forEach((route) => {
     const totals = calculateRouteTotals(route)
@@ -879,7 +880,17 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     totalDevoluciones += totals.devoluciones
     totalRepasos += totals.repasos
   })
+ // Calcular descuentos desde recepciones del día filtrado
+  recepciones.forEach((rec) => {
+    if (filterFecha) {
+      const recDate = new Date(rec.fecha_recepcion).toISOString().split("T")[0]
+      if (recDate === filterFecha) {
+        totalDescuentos += Number(rec.descuento || 0)
+      }
+    }
+  })
 
+  const totalRecibido = selectedPlanilla
   const totalRecibido = selectedPlanilla
     ? Number(formData.efectivoRecibido || 0) +
       (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
@@ -1094,7 +1105,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                 </div>
               </Card>
 
-              <div className="grid grid-cols-5 gap-4">
+              <div className="grid grid-cols-6 gap-4">
                 <Card className="p-4">
                   <p className="text-sm text-muted-foreground mb-1">Total Cargue</p>
                   <p className="text-2xl font-bold">{formatCOP(totalCargue)}</p>
@@ -1115,6 +1126,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                   <p className="text-sm text-blue-700 mb-1">Repasos</p>
                   <p className="text-2xl font-bold text-blue-600">{formatCOP(totalRepasos)}</p>
                 </Card>
+                <Card className="p-4 bg-purple-50 border-purple-200">
+                <p className="text-sm text-purple-700 mb-1">Descuentos</p>
+                <p className="text-2xl font-bold text-purple-600">{formatCOP(totalDescuentos)}</p>
+            </Card>
               </div>
 
               <Card className="p-6">
