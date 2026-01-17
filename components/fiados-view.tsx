@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { CreditCard, LogOut, Download, DollarSign, CheckCircle2 } from "lucide-react"
+import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Edit, Plus } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -11,6 +11,16 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 interface Fiado {
   id: string
@@ -19,12 +29,24 @@ interface Fiado {
   telefono: string
   barrio: string
   total: number
+  monto_pagado: number
+  saldo_pendiente: number
   fecha: string
   entregador: string
   tipo_ruta: string
   planilla_id: string
   estado: string
   observaciones?: string
+  abonos?: Abono[]
+}
+
+interface Abono {
+  id: number
+  monto_abono: number
+  fecha_abono: string
+  metodo_pago: string
+  observaciones?: string
+  registrado_por: string
 }
 
 interface ResumenFiados {
@@ -36,15 +58,26 @@ interface ResumenFiados {
 interface FiadosViewProps {
   onLogout: () => void
   userRole: "administrador" | "coordinador" | "caja"
+  userId?: string
 }
 
-export function FiadosView({ onLogout, userRole }: FiadosViewProps) {
+export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   const { toast } = useToast()
   const [fiados, setFiados] = useState<Fiado[]>([])
   const [resumen, setResumen] = useState<ResumenFiados[]>([])
   const [selectedFiados, setSelectedFiados] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [entregadores, setEntregadores] = useState<string[]>([])
+
+  // Estados para modal de abono
+  const [showAbonoModal, setShowAbonoModal] = useState(false)
+  const [selectedFiado, setSelectedFiado] = useState<Fiado | null>(null)
+  const [abonoForm, setAbonoForm] = useState({
+    monto: "",
+    metodoPago: "efectivo",
+    observaciones: ""
+  })
+  const [submittingAbono, setSubmittingAbono] = useState(false)
 
   // Filtros
   const [entregadorFilter, setEntregadorFilter] = useState("all")
@@ -114,13 +147,16 @@ export function FiadosView({ onLogout, userRole }: FiadosViewProps) {
       const response = await fetch('/api/fiados/marcar-pagado', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedidoIds: Array.from(selectedFiados) })
+        body: JSON.stringify({ 
+          pedidoIds: Array.from(selectedFiados),
+          usuarioId: userId 
+        })
       })
 
       if (!response.ok) throw new Error('Error al marcar como pagado')
 
       toast({
-        title: "Éxito",
+        title: "✅ Éxito",
         description: `${selectedFiados.size} fiado(s) marcado(s) como pagado(s)`,
       })
       
@@ -136,8 +172,82 @@ export function FiadosView({ onLogout, userRole }: FiadosViewProps) {
     }
   }
 
+  const openAbonoModal = (fiado: Fiado) => {
+    setSelectedFiado(fiado)
+    setAbonoForm({
+      monto: "",
+      metodoPago: "efectivo",
+      observaciones: ""
+    })
+    setShowAbonoModal(true)
+  }
+
+  const handleRegistrarAbono = async () => {
+    if (!selectedFiado) return
+
+    const montoAbono = parseFloat(abonoForm.monto)
+    
+    if (!montoAbono || montoAbono <= 0) {
+      toast({
+        title: "Error",
+        description: "Ingresa un monto válido para el abono",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (montoAbono > selectedFiado.saldo_pendiente) {
+      toast({
+        title: "Error",
+        description: `El abono no puede ser mayor al saldo pendiente (${formatCOP(selectedFiado.saldo_pendiente)})`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setSubmittingAbono(true)
+
+      const response = await fetch('/api/fiados/registrar-abono', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pedidoId: selectedFiado.id,
+          montoAbono,
+          metodoPago: abonoForm.metodoPago,
+          observaciones: abonoForm.observaciones || null,
+          usuarioId: userId
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al registrar abono')
+      }
+
+      toast({
+        title: "✅ Abono Registrado",
+        description: `Abono de ${formatCOP(montoAbono)} registrado. Saldo pendiente: ${formatCOP(data.saldo_pendiente)}`,
+      })
+
+      setShowAbonoModal(false)
+      setSelectedFiado(null)
+      await loadFiados()
+    } catch (error) {
+      console.error('Error registrando abono:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al registrar abono",
+        variant: "destructive",
+      })
+    } finally {
+      setSubmittingAbono(false)
+    }
+  }
+
   const exportarCSV = () => {
-    const headers = ["Cliente", "Dirección", "Teléfono", "Barrio", "Monto", "Fecha", "Entregador", "Ruta", "Estado"]
+    const headers = ["Cliente", "Dirección", "Teléfono", "Barrio", "Total", "Pagado", "Saldo", "Fecha", "Entregador", "Ruta", "Estado"]
     
     const rows = fiados.map(f => [
       f.cliente,
@@ -145,6 +255,8 @@ export function FiadosView({ onLogout, userRole }: FiadosViewProps) {
       f.telefono || '',
       f.barrio || '',
       Number(f.total || 0).toFixed(2),
+      Number(f.monto_pagado || 0).toFixed(2),
+      Number(f.saldo_pendiente || 0).toFixed(2),
       f.fecha,
       f.entregador,
       f.tipo_ruta,
@@ -161,7 +273,7 @@ export function FiadosView({ onLogout, userRole }: FiadosViewProps) {
     window.URL.revokeObjectURL(url)
 
     toast({
-      title: "Exportado",
+      title: "✅ Exportado",
       description: "Reporte de fiados descargado exitosamente",
     })
   }
@@ -180,7 +292,7 @@ export function FiadosView({ onLogout, userRole }: FiadosViewProps) {
               </div>
               <div>
                 <h1 className="text-lg sm:text-xl font-bold">Cuentas por Cobrar (Fiados)</h1>
-                <p className="text-xs text-muted-foreground">Gestión de créditos a clientes</p>
+                <p className="text-xs text-muted-foreground">Gestión de créditos y abonos</p>
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={onLogout}>
@@ -279,66 +391,100 @@ export function FiadosView({ onLogout, userRole }: FiadosViewProps) {
                     <TableHead className="w-[50px]"></TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Dirección</TableHead>
-                    <TableHead>Barrio</TableHead>
                     <TableHead>Teléfono</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Entregador</TableHead>
                     <TableHead>Ruta</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Pagado</TableHead>
+                    <TableHead className="text-right">Saldo</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8">
+                      <TableCell colSpan={12} className="text-center py-8">
                         Cargando...
                       </TableCell>
                     </TableRow>
                   ) : fiados.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                         No hay fiados para el período seleccionado
                       </TableCell>
                     </TableRow>
                   ) : (
-                    fiados.map((fiado) => (
-                      <TableRow key={fiado.id}>
-                        <TableCell>
-                          {fiado.estado === "fiado" && (
-                            <Checkbox
-                              checked={selectedFiados.has(fiado.id)}
-                              onCheckedChange={(checked) => {
-                                const newSet = new Set(selectedFiados)
-                                if (checked) {
-                                  newSet.add(fiado.id)
-                                } else {
-                                  newSet.delete(fiado.id)
-                                }
-                                setSelectedFiados(newSet)
-                              }}
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">{fiado.cliente}</TableCell>
-                        <TableCell className="text-sm">{fiado.direccion || 'N/A'}</TableCell>
-                        <TableCell className="text-sm">{fiado.barrio || 'N/A'}</TableCell>
-                        <TableCell className="text-sm">{fiado.telefono || 'N/A'}</TableCell>
-                        <TableCell>{new Date(fiado.fecha).toLocaleDateString('es-CO')}</TableCell>
-                        <TableCell>{fiado.entregador}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{fiado.tipo_ruta}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-orange-600">
-                          {formatCOP(Number(fiado.total || 0))}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={fiado.estado === "pagado" ? "default" : "secondary"}>
-                            {fiado.estado}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    fiados.map((fiado) => {
+                      const saldo = Number(fiado.saldo_pendiente || fiado.total)
+                      const isParcial = Number(fiado.monto_pagado) > 0 && saldo > 0
+                      
+                      return (
+                        <TableRow key={fiado.id}>
+                          <TableCell>
+                            {fiado.estado === "fiado" && (
+                              <Checkbox
+                                checked={selectedFiados.has(fiado.id)}
+                                onCheckedChange={(checked) => {
+                                  const newSet = new Set(selectedFiados)
+                                  if (checked) {
+                                    newSet.add(fiado.id)
+                                  } else {
+                                    newSet.delete(fiado.id)
+                                  }
+                                  setSelectedFiados(newSet)
+                                }}
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium">{fiado.cliente}</TableCell>
+                          <TableCell className="text-sm">{fiado.direccion || 'N/A'}</TableCell>
+                          <TableCell className="text-sm">{fiado.telefono || 'N/A'}</TableCell>
+                          <TableCell>{new Date(fiado.fecha).toLocaleDateString('es-CO')}</TableCell>
+                          <TableCell>{fiado.entregador}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{fiado.tipo_ruta}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCOP(Number(fiado.total || 0))}
+                          </TableCell>
+                          <TableCell className="text-right text-green-600">
+                            {formatCOP(Number(fiado.monto_pagado || 0))}
+                          </TableCell>
+                          <TableCell className="text-right font-bold text-orange-600">
+                            {formatCOP(saldo)}
+                          </TableCell>
+                          <TableCell>
+                            {isParcial ? (
+                              <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
+                                parcial
+                              </Badge>
+                            ) : fiado.estado === "pagado" ? (
+                              <Badge variant="default" className="bg-green-100 text-green-700">
+                                pagado
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="bg-orange-100 text-orange-700">
+                                fiado
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {fiado.estado === "fiado" && saldo > 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openAbonoModal(fiado)}
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Abono
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -346,6 +492,110 @@ export function FiadosView({ onLogout, userRole }: FiadosViewProps) {
           </Card>
         </div>
       </main>
+
+      {/* MODAL PARA REGISTRAR ABONO */}
+      <Dialog open={showAbonoModal} onOpenChange={setShowAbonoModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Registrar Abono</DialogTitle>
+            <DialogDescription>
+              Cliente: {selectedFiado?.cliente}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedFiado && (
+            <div className="space-y-4 py-4">
+              <div className="bg-muted p-4 rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total del pedido:</span>
+                  <span className="font-semibold">{formatCOP(Number(selectedFiado.total))}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total pagado:</span>
+                  <span className="text-green-600 font-semibold">
+                    {formatCOP(Number(selectedFiado.monto_pagado || 0))}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm pt-2 border-t">
+                  <span className="font-medium">Saldo pendiente:</span>
+                  <span className="font-bold text-orange-600">
+                    {formatCOP(Number(selectedFiado.saldo_pendiente || selectedFiado.total))}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="montoAbono">Monto del Abono *</Label>
+                <Input
+                  id="montoAbono"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={selectedFiado.saldo_pendiente}
+                  value={abonoForm.monto}
+                  onChange={(e) => setAbonoForm({ ...abonoForm, monto: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="metodoPago">Método de Pago</Label>
+                <Select
+                  value={abonoForm.metodoPago}
+                  onValueChange={(value) => setAbonoForm({ ...abonoForm, metodoPago: value })}
+                >
+                  <SelectTrigger id="metodoPago">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="efectivo">Efectivo</SelectItem>
+                    <SelectItem value="transferencia">Transferencia</SelectItem>
+                    <SelectItem value="consignacion">Consignación</SelectItem>
+                    <SelectItem value="otro">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="observaciones">Observaciones (opcional)</Label>
+                <Textarea
+                  id="observaciones"
+                  value={abonoForm.observaciones}
+                  onChange={(e) => setAbonoForm({ ...abonoForm, observaciones: e.target.value })}
+                  placeholder="Notas adicionales sobre el abono..."
+                  rows={3}
+                />
+              </div>
+
+              {abonoForm.monto && (
+                <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-green-900">Nuevo saldo:</span>
+                    <span className="text-xl font-bold text-green-600">
+                      {formatCOP(
+                        Number(selectedFiado.saldo_pendiente) - parseFloat(abonoForm.monto || "0")
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAbonoModal(false)}
+              disabled={submittingAbono}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleRegistrarAbono} disabled={submittingAbono}>
+              {submittingAbono ? "Registrando..." : "Registrar Abono"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
