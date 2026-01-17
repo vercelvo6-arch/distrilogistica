@@ -46,7 +46,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const { toast } = useToast()
   const [filterEntregador, setFilterEntregador] = useState<string>("all")
   const [filterRuta, setFilterRuta] = useState<string>("all")
-  const [filterFecha, setFilterFecha] = useState<string>(new Date().toISOString().split("T")[0])
+  const [filterFechaDesde, setFilterFechaDesde] = useState<string>(new Date().toISOString().split("T")[0])
+  const [filterFechaHasta, setFilterFechaHasta] = useState<string>(new Date().toISOString().split("T")[0])
   const [selectedView, setSelectedView] = useState<"caja" | "historial" | "comisiones">("caja")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [recepciones, setRecepciones] = useState<RecepcionCaja[]>([])
@@ -215,14 +216,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const rutas = Array.from(new Set(completedRoutes.map((r) => r.ruta)))
 
   const filteredRoutes = completedRoutes.filter((route) => {
-    if (filterEntregador !== "all" && route.entregador !== filterEntregador) return false
-    if (filterRuta !== "all" && route.ruta !== filterRuta) return false
-    if (filterFecha) {
-      const routeDate = new Date(route.fecha).toISOString().split("T")[0]
-      if (routeDate !== filterFecha) return false
-    }
-    return true
-  })
+  if (filterEntregador !== "all" && route.entregador !== filterEntregador) return false
+  if (filterRuta !== "all" && route.ruta !== filterRuta) return false
+  if (filterFechaDesde || filterFechaHasta) {
+    const routeDate = new Date(route.fecha).toISOString().split("T")[0]
+    if (filterFechaDesde && routeDate < filterFechaDesde) return false
+    if (filterFechaHasta && routeDate > filterFechaHasta) return false
+  }
+  return true
+})
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
   if (!route || !Array.isArray(route.orders)) {
@@ -881,13 +883,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     totalRepasos += totals.repasos
   })
  // Calcular descuentos desde recepciones del día filtrado
+ // Calcular descuentos desde recepciones del rango de fechas
   recepciones.forEach((rec) => {
-    if (filterFecha) {
-      const recDate = new Date(rec.fecha_recepcion).toISOString().split("T")[0]
-      if (recDate === filterFecha) {
-        totalDescuentos += Number(rec.descuento || 0)
-      }
-    }
+    const recDate = new Date(rec.fecha_recepcion).toISOString().split("T")[0]
+    if (filterFechaDesde && recDate < filterFechaDesde) return
+    if (filterFechaHasta && recDate > filterFechaHasta) return
+    totalDescuentos += Number(rec.descuento || 0)
+
   })
 
   const totalRecibido = selectedPlanilla
@@ -1064,15 +1066,24 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                 <div className="flex items-center gap-4 flex-wrap">
                   <Filter className="h-5 w-5 text-muted-foreground" />
 
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="date"
-                      value={filterFecha}
-                      onChange={(e) => setFilterFecha(e.target.value)}
-                      className="w-[180px]"
-                    />
-                  </div>
+                <div className="flex items-center gap-2">
+                 <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Input
+                type="date"
+                value={filterFechaDesde}
+                onChange={(e) => setFilterFechaDesde(e.target.value)}
+                className="w-[140px]"
+                placeholder="Desde"
+              />
+              <span className="text-sm text-muted-foreground">-</span>
+              <Input
+                type="date"
+                value={filterFechaHasta}
+                onChange={(e) => setFilterFechaHasta(e.target.value)}
+                className="w-[140px]"
+                placeholder="Hasta"
+              />
+            </div>
 
                   <Select value={filterEntregador} onValueChange={setFilterEntregador}>
                     <SelectTrigger className="w-[200px]">
