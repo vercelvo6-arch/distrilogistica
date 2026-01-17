@@ -1445,14 +1445,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                                               item.devuelto || false,
                                                             )
                                                           }
-                                                          disabled={order.estado !== "pendiente"}
+                                                          disabled={route.cuadradoEnCaja}
                                                         />
                                                       </td>
                                                       <td className="py-2 font-mono">{item.codigo}</td>
                                                       <td className="py-2">{item.descripcion}</td>
                                                       <td className="text-right py-2">{item.cantidad}</td>
                                                       <td className="text-right py-2">
-                                                        {order.estado === "pendiente" && !item.devuelto ? (
+                                                        {!route.cuadradoEnCaja && !item.devuelto ? (
                                                           <input
                                                             type="number"
                                                             min="0"
@@ -1481,7 +1481,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                                         )}
                                                       </td>
                                                       <td className="text-right py-2">
-                                                        {order.estado === "pendiente" && !item.devuelto ? (
+                                                        {!route.cuadradoEnCaja && !item.devuelto ? (
                                                           <div className="flex flex-col items-end gap-1">
                                                             <input
                                                               type="number"
@@ -1578,7 +1578,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                               size="sm"
                                               onClick={() => handleOrderStatusChange(order.id, "entregado")}
                                               className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
-                                              disabled={order.estado !== "pendiente"}
+                                              disabled={route.cuadradoEnCaja}
                                             >
                                               Entregado
                                             </Button>
@@ -1587,7 +1587,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                               variant="outline"
                                               onClick={() => handleOrderStatusChange(order.id, "fiado")}
                                               className="flex-1 sm:flex-none border-orange-300 text-orange-700 hover:bg-orange-50"
-                                              disabled={order.estado !== "pendiente"}
+                                              disabled={route.cuadradoEnCaja}
                                             >
                                               Fiado
                                             </Button>
@@ -1596,7 +1596,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                               variant="outline"
                                               onClick={() => handleOrderStatusChange(order.id, "repaso")}
                                               className="flex-1 sm:flex-none border-blue-300 text-blue-700 hover:bg-blue-50"
-                                              disabled={order.estado !== "pendiente"}
+                                              disabled={route.cuadradoEnCaja}
                                             >
                                               Repaso
                                             </Button>
@@ -1605,7 +1605,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                               variant="destructive"
                                               onClick={() => handleOrderStatusChange(order.id, "devolucion")}
                                               className="flex-1 sm:flex-none"
-                                              disabled={order.estado !== "pendiente"}
+                                              disabled={route.cuadradoEnCaja}
                                             >
                                               Devolución
                                             </Button>
