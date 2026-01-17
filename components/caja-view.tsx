@@ -35,6 +35,7 @@ interface CajaViewProps {
 }
 
 interface NuevoProducto {
+  id: string  
   codigo: string
   descripcion: string
   cantidad: number
@@ -81,8 +82,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     observaciones: "",
   })
   const [productosNuevoPedido, setProductosNuevoPedido] = useState<NuevoProducto[]>([
-    { codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
-  ])
+  { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
+])
   const [submittingNuevoPedido, setSubmittingNuevoPedido] = useState(false)
 
   const [reasignandoRuta, setReasignandoRuta] = useState<number | null>(null)
@@ -437,23 +438,26 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const handleOpenNuevoPedidoModal = (ruta: RouteSheet) => {
     setRutaParaNuevoPedido(ruta)
     setNuevoPedidoData({ cliente: "", observaciones: "" })
-    setProductosNuevoPedido([{ codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }])
-    setShowNuevoPedidoModal(true)
-  }
+    setProductosNuevoPedido([
+    { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
+  ])
+  setShowNuevoPedidoModal(true)
+}
 
   const handleCloseNuevoPedidoModal = () => {
     setShowNuevoPedidoModal(false)
     setRutaParaNuevoPedido(null)
     setNuevoPedidoData({ cliente: "", observaciones: "" })
-    setProductosNuevoPedido([{ codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }])
-  }
-
-  const agregarProducto = () => {
     setProductosNuevoPedido([
-      ...productosNuevoPedido,
-      { codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
-    ])
-  }
+    { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
+  ])
+}
+  const agregarProducto = () => {
+  setProductosNuevoPedido([
+    ...productosNuevoPedido,
+    { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
+  ])
+}
 
   const eliminarProducto = (index: number) => {
     if (productosNuevoPedido.length > 1) {
@@ -461,21 +465,23 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
-  const actualizarProducto = (index: number, field: keyof NuevoProducto, value: any) => {
-    const nuevosProductos = [...productosNuevoPedido]
-    nuevosProductos[index] = {
-      ...nuevosProductos[index],
-      [field]: value,
-    }
-
-    if (field === "cantidad" || field === "precioUnitario") {
-      const cantidad = field === "cantidad" ? Number(value) : nuevosProductos[index].cantidad
-      const precio = field === "precioUnitario" ? Number(value) : nuevosProductos[index].precioUnitario
-      nuevosProductos[index].subtotal = Math.round(cantidad * precio * 100) / 100
-    }
-
-    setProductosNuevoPedido(nuevosProductos)
-  }
+  const actualizarProducto = (productoId: string, field: keyof Omit<NuevoProducto, 'id'>, value: any) => {
+  setProductosNuevoPedido(prevProductos => 
+    prevProductos.map(producto => {
+      if (producto.id !== productoId) return producto  // ⭐ Solo actualiza el correcto
+      
+      const actualizado = { ...producto, [field]: value }
+      
+      if (field === "cantidad" || field === "precioUnitario") {
+        const cantidad = field === "cantidad" ? Number(value) : actualizado.cantidad
+        const precio = field === "precioUnitario" ? Number(value) : actualizado.precioUnitario
+        actualizado.subtotal = Math.round(cantidad * precio * 100) / 100
+      }
+      
+      return actualizado
+    })
+  )
+}
 
   const calcularTotalNuevoPedido = () => {
     return productosNuevoPedido.reduce((total, prod) => total + prod.subtotal, 0)
@@ -2044,46 +2050,46 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
             <h3 className="font-semibold mt-4">Productos del Pedido</h3>
             <div className="space-y-4">
-              {productosNuevoPedido.map((producto, index) => (
-                <div key={index} className="grid grid-cols-6 gap-3 items-center border-b pb-3">
-                  <Input
-                    placeholder="Código"
-                    value={producto.codigo}
-                    onChange={(e) => actualizarProducto(index, "codigo", e.target.value)}
-                    className="col-span-1 text-xs"
-                  />
-                  <Input
-                    placeholder="Descripción"
-                    value={producto.descripcion}
-                    onChange={(e) => actualizarProducto(index, "descripcion", e.target.value)}
-                    className="col-span-2 text-xs"
-                  />
-                  <Input
-                    placeholder="Cantidad"
-                    type="number"
-                    min="1"
-                    value={producto.cantidad}
-                    onChange={(e) => actualizarProducto(index, "cantidad", Number.parseInt(e.target.value) || 1)}
-                    className="col-span-1 text-xs text-right"
-                  />
-                  <Input
-                    placeholder="Precio Unit."
-                    type="number"
-                    min="0"
-                    value={producto.precioUnitario}
-                    onChange={(e) =>
-                      actualizarProducto(index, "precioUnitario", Number.parseFloat(e.target.value) || 0)
-                    }
-                    className="col-span-1 text-xs text-right"
-                  />
-                  <div className="flex items-center justify-end gap-2">
-                    <span className="font-medium text-sm">{formatCOP(producto.subtotal)}</span>
-                    <Button variant="ghost" size="icon" onClick={() => eliminarProducto(index)}>
-                      <X className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+              {productosNuevoPedido.map((producto) => (
+  <div key={producto.id} className="grid grid-cols-6 gap-3 items-center border-b pb-3">
+    <Input
+      placeholder="Código"
+      value={producto.codigo}
+      onChange={(e) => actualizarProducto(producto.id, "codigo", e.target.value)}
+      className="col-span-1 text-xs"
+    />
+    <Input
+      placeholder="Descripción"
+      value={producto.descripcion}
+      onChange={(e) => actualizarProducto(producto.id, "descripcion", e.target.value)}
+      className="col-span-2 text-xs"
+    />
+    <Input
+      placeholder="Cantidad"
+      type="number"
+      min="1"
+      value={producto.cantidad}
+      onChange={(e) => actualizarProducto(producto.id, "cantidad", Number.parseInt(e.target.value) || 1)}
+      className="col-span-1 text-xs text-right"
+    />
+    <Input
+      placeholder="Precio Unit."
+      type="number"
+      min="0"
+      value={producto.precioUnitario}
+      onChange={(e) =>
+        actualizarProducto(producto.id, "precioUnitario", Number.parseFloat(e.target.value) || 0)
+      }
+      className="col-span-1 text-xs text-right"
+    />
+    <div className="flex items-center justify-end gap-2">
+      <span className="font-medium text-sm">{formatCOP(producto.subtotal)}</span>
+      <Button variant="ghost" size="icon" onClick={() => eliminarProducto(productosNuevoPedido.findIndex(p => p.id === producto.id))}>
+        <X className="h-4 w-4 text-red-500" />
+      </Button>
+    </div>
+  </div>
+))}
             </div>
             <Button variant="outline" onClick={agregarProducto} className="w-full mt-3 bg-transparent">
               <Plus className="h-4 w-4 mr-2" />
