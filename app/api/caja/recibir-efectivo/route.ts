@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
         fecha_consignacion,
         observaciones,
         recibido_por,
-        estado
+        estado,
         descuento,              
         motivo_descuento 
       ) VALUES (
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
         ${fechaConsignacion || null},
         ${observaciones || null},
         ${session.user.id},
-        ${estado}
+        ${estado},
         ${descuento || 0},              
         ${motivoDescuento || null}  
       )
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
             base_comisionable,
             porcentaje_aplicado,
             monto_comision,
-            estado
+            estado,
           ) VALUES (
             ${planilla[0].entregador},
             ${planilla[0].fecha},
