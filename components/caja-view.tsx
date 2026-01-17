@@ -891,7 +891,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
 
   const totalRecibido = selectedPlanilla
-  const totalRecibido = selectedPlanilla
     ? Number(formData.efectivoRecibido || 0) +
       (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
     : 0
