@@ -1011,7 +1011,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                           </div>
                         </div>
                       )}
-)}
 
             {rec.descuento && Number(rec.descuento) > 0 && (
               <div className="mt-3 pt-3 border-t bg-orange-50 -m-4 p-4 rounded-b-lg">
