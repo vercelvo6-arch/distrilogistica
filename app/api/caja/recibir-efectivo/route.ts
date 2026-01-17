@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
       montoConsignacion,
       fechaConsignacion,
       observaciones
+      descuento,           
+      motivoDescuento
     } = body
 
     if (!planillaId || efectivoEsperado === undefined || efectivoRecibido === undefined) {
@@ -87,7 +89,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const diferenciaEfectivo = Number(efectivoRecibido) - Number(efectivoEsperado)
+    const efectivoEsperadoAjustado = Number(efectivoEsperado) - Number(descuento || 0)
+    const diferenciaEfectivo = Number(efectivoRecibido) - efectivoEsperadoAjustado
     const estado = diferenciaEfectivo === 0 ? 'cuadrado' : 'con_diferencia'
 
     const timestamp = Date.now()
@@ -109,6 +112,8 @@ export async function POST(request: NextRequest) {
         observaciones,
         recibido_por,
         estado
+        descuento,              
+        motivo_descuento 
       ) VALUES (
         ${recepcionId},
         ${planillaId},
@@ -123,6 +128,8 @@ export async function POST(request: NextRequest) {
         ${observaciones || null},
         ${session.user.id},
         ${estado}
+        ${descuento || 0},              
+        ${motivoDescuento || null}  
       )
       RETURNING *
     `
