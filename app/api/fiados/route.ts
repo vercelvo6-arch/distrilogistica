@@ -9,19 +9,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    // Solo admin, coordinador y caja pueden ver fiados
-    if (!['administrador', 'coordinador', 'caja'].includes(session.user.rol)) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
-    }
-
-    const searchParams = request.nextUrl.searchParams
+    const { searchParams } = new URL(request.url)
     const fechaInicio = searchParams.get('fechaInicio')
     const fechaFin = searchParams.get('fechaFin')
     const entregador = searchParams.get('entregador')
 
     const sql = getDB()
 
-    // Query base para fiados
+    // Construir query base
     let fiadosQuery = sql`
       SELECT 
         p.id,
@@ -30,97 +25,78 @@ export async function GET(request: NextRequest) {
         p.telefono,
         p.barrio,
         p.total,
+        COALESCE(p.monto_pagado, 0) as monto_pagado,
+        COALESCE(p.saldo_pendiente, p.total) as saldo_pendiente,
         p.estado,
         p.observaciones,
-        p.planilla_id,
         pl.fecha,
         pl.entregador,
-        pl.tipo_ruta
+        pl.tipo_ruta,
+        pl.id as planilla_id
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
-      WHERE p.estado = 'fiado'
-    `
-
-    // Agregar filtros
-    if (fechaInicio && fechaFin) {
-      fiadosQuery = sql`
-        SELECT 
-          p.id,
-          p.cliente,
-          p.direccion,
-          p.telefono,
-          p.barrio,
-          p.total,
-          p.estado,
-          p.observaciones,
-          p.planilla_id,
-          pl.fecha,
-          pl.entregador,
-          pl.tipo_ruta
-        FROM pedidos p
-        JOIN planillas pl ON p.planilla_id = pl.id
-        WHERE p.estado = 'fiado'
-          AND pl.fecha >= ${fechaInicio}
-          AND pl.fecha <= ${fechaFin}
-      `
-    }
-
-    if (entregador && entregador !== 'all') {
-      fiadosQuery = sql`
-        SELECT 
-          p.id,
-          p.cliente,
-          p.direccion,
-          p.telefono,
-          p.barrio,
-          p.total,
-          p.estado,
-          p.observaciones,
-          p.planilla_id,
-          pl.fecha,
-          pl.entregador,
-          pl.tipo_ruta
-        FROM pedidos p
-        JOIN planillas pl ON p.planilla_id = pl.id
-        WHERE p.estado = 'fiado'
-          AND pl.fecha >= ${fechaInicio || '1900-01-01'}
-          AND pl.fecha <= ${fechaFin || '2100-12-31'}
-          AND pl.entregador = ${entregador}
-      `
-    }
-
-    fiadosQuery = sql`
-      ${fiadosQuery}
-      ORDER BY pl.fecha DESC
+      WHERE p.estado IN ('fiado', 'pagado')
+        ${fechaInicio ? sql`AND pl.fecha >= ${fechaInicio}` : sql``}
+        ${fechaFin ? sql`AND pl.fecha <= ${fechaFin}` : sql``}
+        ${entregador && entregador !== 'all' ? sql`AND pl.entregador = ${entregador}` : sql``}
+      ORDER BY pl.fecha DESC, p.cliente ASC
     `
 
     const fiados = await fiadosQuery
 
-    // Calcular resumen por entregador
-    const resumenQuery = sql`
-      SELECT 
-        pl.entregador,
-        COUNT(p.id)::int as total_fiados,
-        SUM(p.total)::numeric as monto_total
-      FROM pedidos p
-      JOIN planillas pl ON p.planilla_id = pl.id
-      WHERE p.estado = 'fiado'
-        ${fechaInicio && fechaFin ? sql`AND pl.fecha >= ${fechaInicio} AND pl.fecha <= ${fechaFin}` : sql``}
-        ${entregador && entregador !== 'all' ? sql`AND pl.entregador = ${entregador}` : sql``}
-      GROUP BY pl.entregador
-      ORDER BY monto_total DESC
-    `
+    // Obtener abonos para cada pedido (opcional, para mostrar historial)
+    const pedidosIds = fiados.map((f: any) => f.id)
+    let abonos: any[] = []
 
-    const resumen = await resumenQuery
+    if (pedidosIds.length > 0) {
+      abonos = await sql`
+        SELECT 
+          a.*,
+          u.nombre as registrado_por_nombre
+        FROM abonos_fiados a
+        LEFT JOIN usuarios u ON a.registrado_por = u.id
+        WHERE a.pedido_id = ANY(${pedidosIds})
+        ORDER BY a.fecha_abono DESC
+      `
+    }
+
+    // Agrupar abonos por pedido
+    const fiadosConAbonos = fiados.map((fiado: any) => ({
+      ...fiado,
+      abonos: abonos.filter((a: any) => a.pedido_id === fiado.id)
+    }))
+
+    // Calcular resumen por entregador
+    const resumenMap = new Map<string, { total_fiados: number; monto_total: number }>()
+
+    fiadosConAbonos.forEach((fiado: any) => {
+      const entregador = fiado.entregador
+      const saldo = Number(fiado.saldo_pendiente)
+
+      if (saldo > 0) { // Solo contar fiados con saldo pendiente
+        if (!resumenMap.has(entregador)) {
+          resumenMap.set(entregador, { total_fiados: 0, monto_total: 0 })
+        }
+        const current = resumenMap.get(entregador)!
+        current.total_fiados += 1
+        current.monto_total += saldo
+      }
+    })
+
+    const resumen = Array.from(resumenMap.entries()).map(([entregador, data]) => ({
+      entregador,
+      ...data
+    }))
 
     return NextResponse.json({
-      fiados,
+      fiados: fiadosConAbonos,
       resumen
     })
+
   } catch (error) {
     console.error('[API fiados] Error:', error)
     return NextResponse.json(
-      { error: 'Error al cargar fiados', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Error al cargar fiados' },
       { status: 500 }
     )
   }
