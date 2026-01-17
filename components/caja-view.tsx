@@ -1031,7 +1031,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               </div>
             )}
 
-            {rec.observaciones && (
                       {rec.observaciones && (
                         <div className="mt-3 pt-3 border-t">
                           <p className="text-sm text-muted-foreground">Observaciones:</p>
