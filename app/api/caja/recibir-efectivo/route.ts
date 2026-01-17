@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       ) VALUES (
         ${recepcionId},
         ${planillaId},
-        ${efectivoEsperado},
+        ${efectivoEsperadoAjustado},
         ${efectivoRecibido},
         ${diferenciaEfectivo},
         ${tieneConsignacion || false},
