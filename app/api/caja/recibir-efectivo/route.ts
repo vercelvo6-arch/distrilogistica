@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
             base_comisionable,
             porcentaje_aplicado,
             monto_comision,
-            estado,
+            estado
           ) VALUES (
             ${planilla[0].entregador},
             ${planilla[0].fecha},
