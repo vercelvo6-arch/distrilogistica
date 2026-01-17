@@ -62,6 +62,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     montoConsignacion: "",
     fechaConsignacion: new Date().toISOString().split("T")[0],
     observaciones: "",
+    descuento: "",
+    motivoDescuento: "",
   })
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
@@ -576,6 +578,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       montoConsignacion: "",
       fechaConsignacion: new Date().toISOString().split("T")[0],
       observaciones: "",
+      descuento: "",              
+      motivoDescuento: "",
     })
   }
 
@@ -1671,6 +1675,37 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               </>
             )}
 
+            {/* NUEVO BLOQUE - DESCUENTOS */}
+<div className="grid grid-cols-2 items-center gap-4">
+  <Label htmlFor="descuento" className="text-right">
+    Descuento Aplicado
+  </Label>
+  <Input
+    id="descuento"
+    value={formData.descuento}
+    onChange={(e) => setFormData({ ...formData, descuento: e.target.value })}
+    type="number"
+    min="0"
+    className="col-span-1"
+    placeholder="0"
+  />
+</div>
+
+{formData.descuento && Number(formData.descuento) > 0 && (
+  <div className="grid grid-cols-2 items-center gap-4">
+    <Label htmlFor="motivoDescuento" className="text-right">
+      Motivo del Descuento
+    </Label>
+    <Textarea
+      id="motivoDescuento"
+      value={formData.motivoDescuento}
+      onChange={(e) => setFormData({ ...formData, motivoDescuento: e.target.value })}
+      className="col-span-1"
+      rows={2}
+      placeholder="Ej: Promoción, avería, etc."
+    />
+  </div>
+)}
             <div className="grid grid-cols-2 items-center gap-4">
               <Label htmlFor="observaciones" className="text-right">
                 Observaciones
@@ -1725,7 +1760,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                         Math.round(
                           (Number(formData.efectivoRecibido || 0) +
                             (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                            calculateRouteTotals(selectedPlanilla).entregado) *
+                            (calculateRouteTotals(selectedPlanilla).entregado - Number(formData.descuento || 0))) *
                             100,
                         ) /
                           100 ===
