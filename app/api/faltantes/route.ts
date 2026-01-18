@@ -156,8 +156,36 @@ export async function GET(request: NextRequest) {
     
     const sql = getDB();
     
-    // Construir query manualmente
-    let query = `
+    // Construir condiciones dinámicamente
+    const conditions = ['1=1'];
+    
+    if (planilla_id) {
+      conditions.push(`f.planilla_id = ${Number(planilla_id)}`);
+    }
+    
+    if (entregador && entregador !== 'all') {
+      conditions.push(`f.entregador = '${entregador}'`);
+    }
+    
+    if (estado && estado !== 'all') {
+      conditions.push(`f.estado = '${estado}'`);
+    }
+    
+    if (codigo) {
+      conditions.push(`f.codigo ILIKE '%${codigo}%'`);
+    }
+    
+    if (fecha_inicio) {
+      conditions.push(`f.fecha_marcado >= '${fecha_inicio}'::date`);
+    }
+    
+    if (fecha_fin) {
+      conditions.push(`f.fecha_marcado <= '${fecha_fin}'::date + interval '1 day'`);
+    }
+    
+    const whereClause = conditions.join(' AND ');
+    
+    const query = `
       SELECT 
         f.*,
         u.nombre as marcado_por_nombre,
@@ -167,54 +195,15 @@ export async function GET(request: NextRequest) {
       LEFT JOIN usuarios u ON f.marcado_por = u.id
       LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
       LEFT JOIN planillas pl ON f.planilla_id = pl.id
-      WHERE 1=1
+      WHERE ${whereClause}
+      ORDER BY f.fecha_marcado DESC 
+      LIMIT 500
     `;
     
-    const params: any[] = [];
-    let paramIndex = 1;
-    
-    if (planilla_id) {
-      query += ` AND f.planilla_id = $${paramIndex}`;
-      params.push(Number(planilla_id));
-      paramIndex++;
-    }
-    
-    if (entregador && entregador !== 'all') {
-      query += ` AND f.entregador = $${paramIndex}`;
-      params.push(entregador);
-      paramIndex++;
-    }
-    
-    if (estado && estado !== 'all') {
-      query += ` AND f.estado = $${paramIndex}`;
-      params.push(estado);
-      paramIndex++;
-    }
-    
-    if (codigo) {
-      query += ` AND f.codigo ILIKE $${paramIndex}`;
-      params.push(`%${codigo}%`);
-      paramIndex++;
-    }
-    
-    if (fecha_inicio) {
-      query += ` AND f.fecha_marcado >= $${paramIndex}::date`;
-      params.push(fecha_inicio);
-      paramIndex++;
-    }
-    
-    if (fecha_fin) {
-      query += ` AND f.fecha_marcado <= $${paramIndex}::date + interval '1 day'`;
-      params.push(fecha_fin);
-      paramIndex++;
-    }
-    
-    query += ` ORDER BY f.fecha_marcado DESC LIMIT 500`;
-    
     console.log('[FALTANTES GET] Query:', query);
-    console.log('[FALTANTES GET] Params:', params);
     
-    const faltantes = await sql.unsafe(query, params);
+    const result = await sql.unsafe(query);
+    const faltantes = Array.isArray(result) ? result : [];
     
     console.log('[FALTANTES GET] ✅ Encontrados:', faltantes.length);
     
@@ -230,7 +219,6 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
 // PATCH - Subsanar faltante con los 3 estados posibles
 export async function PATCH(request: NextRequest) {
   try {
