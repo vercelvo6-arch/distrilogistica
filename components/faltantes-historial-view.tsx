@@ -15,7 +15,7 @@ export function FaltantesHistorialView() {
   
   // Filtros
   const [filterEntregador, setFilterEntregador] = useState<string>("all")
-  const [filterEstado, setFilterEstado] = useState<string>("pendiente")
+  const [filterEstado, setFilterEstado] = useState<string>("all")
   const [filterFechaInicio, setFilterFechaInicio] = useState<string>("")
   const [filterFechaFin, setFilterFechaFin] = useState<string>("")
   const [filterCodigo, setFilterCodigo] = useState<string>("")
@@ -85,7 +85,7 @@ export function FaltantesHistorialView() {
 
   const clearFilters = () => {
     setFilterEntregador("all")
-    setFilterEstado("pendiente")
+    setFilterEstado("all")
     setFilterFechaInicio("")
     setFilterFechaFin("")
     setFilterCodigo("")
