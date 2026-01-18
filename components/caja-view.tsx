@@ -56,6 +56,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const [showModal, setShowModal] = useState(false)
   const [selectedPlanilla, setSelectedPlanilla] = useState<RouteSheet | null>(null)
+  const [showFiadoModal, setShowFiadoModal] = useState(false)
+  const [selectedOrderForFiado, setSelectedOrderForFiado] = useState<Order | null>(null)
+  const [montoPagadoFiado, setMontoPagadoFiado] = useState("")
   const [formData, setFormData] = useState({
     efectivoRecibido: "",
     tieneConsignacion: false,
@@ -477,33 +480,42 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 }
 
   const handleOrderStatusChange = async (orderId: string, newStatus: Order["estado"]) => {
+  // Si es "fiado", abrir modal para registrar pago parcial
+  if (newStatus === "fiado") {
+    const order = routeSheets
+      .flatMap(sheet => sheet.orders)
+      .find(o => o.id === orderId)
+    
+    if (order) {
+      setSelectedOrderForFiado(order)
+      setMontoPagadoFiado("")
+      setShowFiadoModal(true)
+    }
+    return
+  }
+
+  // Para otros estados (entregado, repaso, devolución), funciona normal
   try {
-    // PASO 1: Actualizar lo que VE el usuario (estado local React)
     setRouteSheets(prevSheets => 
       prevSheets.map(sheet => ({
         ...sheet,
         orders: sheet.orders.map(order => 
           order.id === orderId 
-            ? { ...order, estado: newStatus }  // ← Cambiar el estado del pedido
+            ? { ...order, estado: newStatus }
             : order
         )
       }))
     )
 
-    // PASO 2: Guardar en el servidor (en segundo plano)
     await updatePedidoEstado(orderId, newStatus)
 
-    // PASO 3: Mostrar confirmación
     toast({
       title: "✅ Actualizado",
       description: `Pedido marcado como ${newStatus}`,
     })
   } catch (err) {
     console.error("[CAJA] Error updating order status:", err)
-    
-    // PASO 4: Si falla, recargar desde el servidor
     await loadData()
-    
     toast({
       title: "Error",
       description: "No se pudo actualizar el pedido",
@@ -878,7 +890,64 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
       setSubmitting(false)
     }
   }
+const handleSubmitFiado = async () => {
+  if (!selectedOrderForFiado) return
 
+  const montoPagado = Number(montoPagadoFiado)
+  const totalPedido = selectedOrderForFiado.total
+
+  // Validar que el monto pagado sea válido
+  if (montoPagado < 0 || montoPagado > totalPedido) {
+    toast({
+      title: "Error",
+      description: `El monto debe estar entre $0 y ${formatCOP(totalPedido)}`,
+      variant: "destructive",
+    })
+    return
+  }
+
+  try {
+    const saldoPendiente = totalPedido - montoPagado
+
+    // Actualizar estado local (optimista)
+    setRouteSheets(prevSheets => 
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(order => 
+          order.id === selectedOrderForFiado.id 
+            ? { 
+                ...order, 
+                estado: "fiado",
+                montoPagado: montoPagado,
+                saldoPendiente: saldoPendiente
+              }
+            : order
+        )
+      }))
+    )
+
+    // Guardar en el servidor
+    await updatePedidoEstado(selectedOrderForFiado.id, "fiado", montoPagado, saldoPendiente)
+
+    toast({
+      title: "✅ Fiado Registrado",
+      description: `Pagó: ${formatCOP(montoPagado)} | Debe: ${formatCOP(saldoPendiente)}`,
+    })
+
+    // Cerrar modal
+    setShowFiadoModal(false)
+    setSelectedOrderForFiado(null)
+    setMontoPagadoFiado("")
+  } catch (err) {
+    console.error("[CAJA] Error al registrar fiado:", err)
+    await loadData()
+    toast({
+      title: "Error",
+      description: "No se pudo registrar el fiado",
+      variant: "destructive",
+    })
+  }
+}
   const handleSubmit = async () => {
     if (!selectedPlanilla) return
 
@@ -2192,6 +2261,71 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal para Fiado Parcial */}
+<Dialog open={showFiadoModal} onOpenChange={setShowFiadoModal}>
+  <DialogContent className="sm:max-w-[425px]">
+    <DialogHeader>
+      <DialogTitle>Registrar Pago Parcial (Fiado)</DialogTitle>
+      <DialogDescription>
+        {selectedOrderForFiado && `Cliente: ${selectedOrderForFiado.cliente}`}
+      </DialogDescription>
+    </DialogHeader>
+    
+    <div className="grid gap-4 py-4">
+      {selectedOrderForFiado && (
+        <>
+          <div className="grid grid-cols-2 items-center gap-4">
+            <Label className="text-right font-semibold">Total del Pedido:</Label>
+            <p className="text-lg font-bold">{formatCOP(selectedOrderForFiado.total)}</p>
+          </div>
+
+          <div className="grid grid-cols-2 items-center gap-4">
+            <Label htmlFor="montoPagado" className="text-right">
+              ¿Cuánto pagó?
+            </Label>
+            <Input
+              id="montoPagado"
+              type="number"
+              min="0"
+              max={selectedOrderForFiado.total}
+              value={montoPagadoFiado}
+              onChange={(e) => setMontoPagadoFiado(e.target.value)}
+              placeholder="0"
+              className="col-span-1"
+              autoFocus
+            />
+          </div>
+
+          {montoPagadoFiado && (
+            <div className="grid grid-cols-2 items-center gap-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
+              <Label className="text-right font-semibold text-orange-700">
+                Saldo Pendiente:
+              </Label>
+              <p className="text-lg font-bold text-orange-600">
+                {formatCOP(selectedOrderForFiado.total - Number(montoPagadoFiado))}
+              </p>
+            </div>
+          )}
+
+          <div className="text-xs text-muted-foreground bg-blue-50 p-3 rounded border border-blue-200">
+            💡 <strong>Nota:</strong> El pedido se marcará como "Fiado" y se registrará el monto pagado. 
+            El saldo pendiente quedará como cuenta por cobrar.
+          </div>
+        </>
+      )}
+    </div>
+
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setShowFiadoModal(false)}>
+        Cancelar
+      </Button>
+      <Button onClick={handleSubmitFiado}>
+        Guardar Fiado
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
     </>
   )
 }
