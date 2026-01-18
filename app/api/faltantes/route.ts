@@ -156,36 +156,8 @@ export async function GET(request: NextRequest) {
     
     const sql = getDB();
     
-    // Construir condiciones dinámicamente
-    const conditions = ['1=1'];
-    
-    if (planilla_id) {
-      conditions.push(`f.planilla_id = ${Number(planilla_id)}`);
-    }
-    
-    if (entregador && entregador !== 'all') {
-      conditions.push(`f.entregador = '${entregador}'`);
-    }
-    
-    if (estado && estado !== 'all') {
-      conditions.push(`f.estado = '${estado}'`);
-    }
-    
-    if (codigo) {
-      conditions.push(`f.codigo ILIKE '%${codigo}%'`);
-    }
-    
-    if (fecha_inicio) {
-      conditions.push(`f.fecha_marcado >= '${fecha_inicio}'::date`);
-    }
-    
-    if (fecha_fin) {
-      conditions.push(`f.fecha_marcado <= '${fecha_fin}'::date + interval '1 day'`);
-    }
-    
-    const whereClause = conditions.join(' AND ');
-    
-    const query = `
+    // Usar template literals nativos de postgres.js
+    let faltantes = await sql`
       SELECT 
         f.*,
         u.nombre as marcado_por_nombre,
@@ -195,15 +167,16 @@ export async function GET(request: NextRequest) {
       LEFT JOIN usuarios u ON f.marcado_por = u.id
       LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
       LEFT JOIN planillas pl ON f.planilla_id = pl.id
-      WHERE ${whereClause}
+      WHERE 
+        (${planilla_id ? sql`f.planilla_id = ${Number(planilla_id)}` : sql`1=1`})
+        AND (${entregador && entregador !== 'all' ? sql`f.entregador = ${entregador}` : sql`1=1`})
+        AND (${estado && estado !== 'all' ? sql`f.estado = ${estado}` : sql`1=1`})
+        AND (${codigo ? sql`f.codigo ILIKE ${`%${codigo}%`}` : sql`1=1`})
+        AND (${fecha_inicio ? sql`f.fecha_marcado >= ${fecha_inicio}::date` : sql`1=1`})
+        AND (${fecha_fin ? sql`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'` : sql`1=1`})
       ORDER BY f.fecha_marcado DESC 
       LIMIT 500
     `;
-    
-    console.log('[FALTANTES GET] Query:', query);
-    
-    const result = await sql.unsafe(query);
-    const faltantes = Array.isArray(result) ? result : [];
     
     console.log('[FALTANTES GET] ✅ Encontrados:', faltantes.length);
     
@@ -219,6 +192,7 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
 // PATCH - Subsanar faltante con los 3 estados posibles
 export async function PATCH(request: NextRequest) {
   try {
