@@ -752,6 +752,8 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                     )
                     })}
                 </div>
+               )
+              )}
           </TabsContent>
 
           <TabsContent value="programadas">
