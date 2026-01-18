@@ -211,7 +211,7 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
            {selectedView === "repasos" && (
             <RepassosView onLogout={onLogout} userRole="administrador" />
            )}
-          )}
+          
         </div>
       </main>
     </div>
