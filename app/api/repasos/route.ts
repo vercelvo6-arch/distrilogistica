@@ -20,22 +20,22 @@ export async function GET(request: NextRequest) {
     const repasos = await sql`
       SELECT 
         p.id,
-        p.fecha,
-        p.numero_pedido,
-        p.estado,
-        p.total,
         p.planilla_id,
-        p.cliente_id,
+        p.cliente,
+        p.direccion,
+        p.telefono,
+        p.barrio,
+        p.secuencia,
+        p.total,
+        p.saldo,
         p.observaciones,
+        p.entregador_en,
         p.created_at,
         p.updated_at,
-        c.nombre as cliente_nombre,
-        c.codigo as cliente_codigo,
-        c.direccion as cliente_direccion,
-        c.telefono as cliente_telefono
+        p.monto_pagado,
+        p.valor_pendiente
       FROM pedidos p
-      LEFT JOIN clientes c ON p.cliente_id = c.id
-      WHERE p.estado = 'repaso'
+      WHERE p.saldo = 'repaso'
       ORDER BY p.created_at DESC
     `
 
@@ -44,38 +44,44 @@ export async function GET(request: NextRequest) {
       repasos.map(async (repaso) => {
         const productos = await sql`
           SELECT 
-            pp.id,
-            pp.producto_id,
-            pp.cantidad,
-            pp.precio_unitario,
-            pp.subtotal,
-            pr.codigo as producto_codigo,
-            pr.descripcion as producto_descripcion
-          FROM pedido_productos pp
-          LEFT JOIN productos pr ON pp.producto_id = pr.id
-          WHERE pp.pedido_id = ${repaso.id}
-          ORDER BY pp.id
+            pc.id,
+            pc.pedido_id,
+            pc.codigo,
+            pc.descripcion,
+            pc.cantidad,
+            pc.precio,
+            pc.subtotal
+          FROM productos_catalogo pc
+          WHERE pc.pedido_id = ${repaso.id}
+          ORDER BY pc.id
         `
 
         return {
-          ...repaso,
+          id: repaso.id,
+          planilla_id: repaso.planilla_id,
+          cliente: {
+            nombre: repaso.cliente,
+            direccion: repaso.direccion,
+            telefono: repaso.telefono,
+            barrio: repaso.barrio
+          },
+          numero_pedido: repaso.secuencia,
+          total: Number(repaso.total),
+          saldo: repaso.saldo,
+          observaciones: repaso.observaciones,
+          entregador: repaso.entregador_en,
+          created_at: repaso.created_at,
+          updated_at: repaso.updated_at,
+          monto_pagado: Number(repaso.monto_pagado || 0),
+          valor_pendiente: Number(repaso.valor_pendiente || 0),
           productos: productos.map((p) => ({
             id: p.id,
-            producto_id: p.producto_id,
-            codigo: p.producto_codigo,
-            descripcion: p.producto_descripcion,
+            codigo: p.codigo,
+            descripcion: p.descripcion,
             cantidad: Number(p.cantidad),
-            precio_unitario: Number(p.precio_unitario),
+            precio_unitario: Number(p.precio),
             subtotal: Number(p.subtotal)
-          })),
-          total: Number(repaso.total),
-          cliente: {
-            id: repaso.cliente_id,
-            nombre: repaso.cliente_nombre,
-            codigo: repaso.cliente_codigo,
-            direccion: repaso.cliente_direccion,
-            telefono: repaso.cliente_telefono
-          }
+          }))
         }
       })
     )
