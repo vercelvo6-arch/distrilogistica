@@ -19,24 +19,24 @@ export async function GET(request: NextRequest) {
     // Obtener todos los pedidos con estado 'repaso'
     const repasos = await sql`
       SELECT 
-        p.id,
-        p.planilla_id,
-        p.cliente,
-        p.direccion,
-        p.telefono,
-        p.barrio,
-        p.secuencia,
-        p.total,
-        p.saldo,
-        p.observaciones,
-        p.entregador_en,
-        p.created_at,
-        p.updated_at,
-        p.monto_pagado,
-        p.valor_pendiente
-      FROM pedidos p
-      WHERE p.saldo = 'repaso'
-      ORDER BY p.created_at DESC
+        id,
+        planilla_id,
+        cliente,
+        direccion,
+        telefono,
+        barrio,
+        secuencia,
+        total,
+        saldo,
+        observaciones,
+        entregador_en,
+        created_at,
+        updated_at,
+        monto_pagado,
+        valor_pendiente
+      FROM pedidos
+      WHERE saldo = 'repaso'
+      ORDER BY created_at DESC
     `
 
     // Obtener los productos de cada repaso
@@ -44,16 +44,16 @@ export async function GET(request: NextRequest) {
       repasos.map(async (repaso) => {
         const productos = await sql`
           SELECT 
-            pc.id,
-            pc.pedido_id,
-            pc.codigo,
-            pc.descripcion,
-            pc.cantidad,
-            pc.precio,
-            pc.subtotal
-          FROM productos_catalogo pc
-          WHERE pc.pedido_id = ${repaso.id}
-          ORDER BY pc.id
+            id,
+            pedido_id,
+            codigo,
+            descripcion,
+            cantidad,
+            precio,
+            subtotal
+          FROM productos_catalogo
+          WHERE pedido_id = ${repaso.id}
+          ORDER BY id
         `
 
         return {
