@@ -650,86 +650,104 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                         </div>
                       </div>
                       {isExpanded && (
-                        <div className="p-3 md:p-5">
-                          <div className="mb-4 md:mb-6">
-                            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 md:p-4 mb-4">
-                              <h3 className="font-bold text-base md:text-lg mb-1 text-green-800 flex items-center gap-2">
-                                <Package className="h-4 w-4 md:h-5 md:w-5" />
-                                Lista de Productos Consolidados
-                              </h3>
-                              <p className="text-xs md:text-sm text-green-700 mb-4">
-                                Registre el estado de alistamiento de cada producto
-                              </p>
-                            </div>
-                            <div className="overflow-x-auto border rounded-lg">
-                              <table className="w-full text-xs md:text-sm">
-                                <thead className="bg-muted">
-                                  <tr>
-                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
-                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
-                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">
-                                      Categoría
-                                    </th>
-                                    <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Solicitado</th>
-                                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
-                                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {consolidatedProducts.map((product) => {
-                                    const estadoInfo = getEstadoInfo(product.estadoAlistamiento)
-                                    return (
-                                      <tr 
-                                        key={product.codigo} 
-                                        className="border-b hover:bg-muted/50"
-                                      >
-                                        <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
-                                        <td className="py-2 md:py-3 px-2 md:px-4">
-                                          {product.descripcion}
-                                          {product.observacionesFaltante && (
-                                            <p className="text-xs text-orange-600 mt-1">
-                                              📝 {product.observacionesFaltante}
-                                            </p>
-                                          )}
-                                        </td>
-                                        <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
-                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                            {product.categoria}
-                                          </span>
-                                        </td>
-                                        <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
-                                          {product.cantidadTotal}
-                                        </td>
-                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${estadoInfo.color}`}>
-                                            {estadoInfo.icon} {estadoInfo.label}
-                                          </span>
-                                        </td>
-                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleOpenEditDialog(entregador, product)}
-                                            className="text-xs"
-                                          >
-                                            <Edit className="h-3 w-3 mr-1" />
-                                            {product.estadoAlistamiento === 'pendiente' ? 'Registrar' : 'Editar'}
-                                          </Button>
-                                        </td>
-                                      </tr>
-                                    )
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </Card>
-                  )
-                })}
-              </div>
-            )}
+  <div className="p-3 md:p-5">
+    {/* ✅ COMENTARIOS SIMPLES AL INICIO */}
+    {(() => {
+      const comentarios = sheets
+        .flatMap(s => s.orders)
+        .map(o => o.comentarios)
+        .filter(c => c && c.trim() !== '')
+      
+      if (comentarios.length > 0) {
+        return (
+          <div className="mb-4 bg-amber-50 border-l-4 border-amber-500 rounded p-3">
+            <h4 className="font-bold text-sm text-amber-900 mb-2">📝 Notas de Alistamiento</h4>
+            <ul className="space-y-1.5">
+              {comentarios.map((c, i) => (
+                <li key={i} className="text-sm text-gray-700 flex gap-2">
+                  <span className="text-amber-600">•</span>
+                  <span>{c}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      }
+      return null
+    })()}
+
+    {/* TABLA DE PRODUCTOS */}
+    <div className="mb-4 md:mb-6">
+      <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 md:p-4 mb-4">
+        <h3 className="font-bold text-base md:text-lg mb-1 text-green-800 flex items-center gap-2">
+          <Package className="h-4 w-4 md:h-5 md:w-5" />
+          Lista de Productos Consolidados
+        </h3>
+        <p className="text-xs md:text-sm text-green-700 mb-4">
+          Registre el estado de alistamiento de cada producto
+        </p>
+      </div>
+      <div className="overflow-x-auto border rounded-lg">
+        <table className="w-full text-xs md:text-sm">
+          <thead className="bg-muted">
+            <tr>
+              <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
+              <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
+              <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
+              <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold hidden md:table-cell">Precio Unit.</th>
+              <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Solicitado</th>
+              <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
+              <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {consolidatedProducts.map((product) => {
+              const estadoInfo = getEstadoInfo(product.estadoAlistamiento)
+              return (
+                <tr key={product.codigo} className="border-b hover:bg-muted/50">
+                  <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
+                  <td className="py-2 md:py-3 px-2 md:px-4">
+                    {product.descripcion}
+                    {product.observacionesFaltante && (
+                      <p className="text-xs text-orange-600 mt-1">📝 {product.observacionesFaltante}</p>
+                    )}
+                  </td>
+                  <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                      {product.categoria}
+                    </span>
+                  </td>
+                  <td className="text-right py-2 md:py-3 px-2 md:px-4 hidden md:table-cell font-medium">
+                    {formatCOP(product.valorUnidad)}
+                  </td>
+                  <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
+                    {product.cantidadTotal}
+                  </td>
+                  <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                    <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${estadoInfo.color}`}>
+                      {estadoInfo.icon} {estadoInfo.label}
+                    </span>
+                  </td>
+                  <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenEditDialog(entregador, product)}
+                      className="text-xs"
+                    >
+                      <Edit className="h-3 w-3 mr-1" />
+                      {product.estadoAlistamiento === 'pendiente' ? 'Registrar' : 'Editar'}
+                    </Button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+)}
           </TabsContent>
 
           <TabsContent value="programadas">
