@@ -435,3 +435,41 @@ export async function updateSubtotalAjustado(pedidoId: string, codigo: string, s
     throw error
   }
 }
+
+export async function updateDescuentoPedido(pedidoId: string, descuento: number) {
+  const sql = getDB()
+  try {
+    await sql`
+      UPDATE pedidos 
+      SET descuento = ${descuento},
+          updated_at = NOW()
+      WHERE id = ${pedidoId}
+    `
+
+    revalidatePath("/")
+    return { success: true, descuento }
+    
+  } catch (error) {
+    console.error("[updateDescuentoPedido] ❌ ERROR:", error)
+    throw error
+  }
+}
+
+export async function updateMotivoDescuentoPedido(pedidoId: string, motivo: string) {
+  const sql = getDB()
+  try {
+    await sql`
+      UPDATE pedidos 
+      SET motivo_descuento = ${motivo},
+          updated_at = NOW()
+      WHERE id = ${pedidoId}
+    `
+
+    revalidatePath("/")
+    return { success: true, motivo }
+    
+  } catch (error) {
+    console.error("[updateMotivoDescuentoPedido] ❌ ERROR:", error)
+    throw error
+  }
+}
