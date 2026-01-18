@@ -536,12 +536,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   ])
 }
 
-  const eliminarProducto = (index: number) => {
-    if (productosNuevoPedido.length > 1) {
-      setProductosNuevoPedido(productosNuevoPedido.filter((_, i) => i !== index))
-    }
-  }
-
   const actualizarProducto = (productoId: string, field: keyof Omit<NuevoProducto, 'id'>, value: any) => {
   setProductosNuevoPedido(prevProductos => 
     prevProductos.map(producto => {
