@@ -147,44 +147,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const planilla_id = searchParams.get('planilla_id');
     const entregador = searchParams.get('entregador');
-    const estado = searchParams.get('estado'); // ✅ AGREGAR ESTO
-    const codigo = searchParams.get('codigo'); // ✅ AGREGAR ESTO
-    const fecha_inicio = searchParams.get('fecha_inicio'); // ✅ AGREGAR ESTO
-    const fecha_fin = searchParams.get('fecha_fin'); // ✅ AGREGAR ESTO
+    const estado = searchParams.get('estado');
+    const codigo = searchParams.get('codigo');
+    const fecha_inicio = searchParams.get('fecha_inicio');
+    const fecha_fin = searchParams.get('fecha_fin');
     
     const sql = getDB();
     
-    // Construir condiciones dinámicamente
-    let conditions = [];
-    let params: any = {};
-    
-    if (planilla_id) {
-      conditions.push(`f.planilla_id = ${planilla_id}`);
-    }
-    
-    if (entregador && entregador !== 'all') {
-      conditions.push(`f.entregador = ${entregador}`);
-    }
-    
-    if (estado && estado !== 'all') {
-      conditions.push(`f.estado = ${estado}`);
-    }
-    
-    if (codigo) {
-      conditions.push(`f.codigo ILIKE ${'%' + codigo + '%'}`);
-    }
-    
-    if (fecha_inicio) {
-      conditions.push(`f.fecha_marcado >= ${fecha_inicio}`);
-    }
-    
-    if (fecha_fin) {
-      conditions.push(`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'`);
-    }
-    
-    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
-    
-    const faltantes = await sql`
+    let query = `
       SELECT 
         f.*,
         u.nombre as marcado_por_nombre,
@@ -194,10 +164,45 @@ export async function GET(request: NextRequest) {
       LEFT JOIN usuarios u ON f.marcado_por = u.id
       LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
       LEFT JOIN planillas pl ON f.planilla_id = pl.id
-      ${sql.unsafe(whereClause)}
-      ORDER BY f.fecha_marcado DESC
-      LIMIT 500
+      WHERE 1=1
     `;
+    
+    const params: any[] = [];
+    let paramIndex = 1;
+    
+    if (planilla_id) {
+      query += ` AND f.planilla_id = $${paramIndex++}`;
+      params.push(planilla_id);
+    }
+    
+    if (entregador && entregador !== 'all') {
+      query += ` AND f.entregador = $${paramIndex++}`;
+      params.push(entregador);
+    }
+    
+    if (estado && estado !== 'all') {
+      query += ` AND f.estado = $${paramIndex++}`;
+      params.push(estado);
+    }
+    
+    if (codigo) {
+      query += ` AND f.codigo ILIKE $${paramIndex++}`;
+      params.push(`%${codigo}%`);
+    }
+    
+    if (fecha_inicio) {
+      query += ` AND f.fecha_marcado >= $${paramIndex++}`;
+      params.push(fecha_inicio);
+    }
+    
+    if (fecha_fin) {
+      query += ` AND f.fecha_marcado <= $${paramIndex++}::date + interval '1 day'`;
+      params.push(fecha_fin);
+    }
+    
+    query += ` ORDER BY f.fecha_marcado DESC LIMIT 500`;
+    
+    const faltantes = await sql.unsafe(query, params);
     
     return NextResponse.json({ 
       success: true,
