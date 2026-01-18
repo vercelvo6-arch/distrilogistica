@@ -27,15 +27,15 @@ export async function GET(request: NextRequest) {
         barrio,
         secuencia,
         total,
-        saldo,
+        estado,
         observaciones,
-        entregador_en,
+        entregado_en,
         created_at,
         updated_at,
         monto_pagado,
-        valor_pendiente
+        saldo_pendiente
       FROM pedidos
-      WHERE saldo = 'repaso'
+      WHERE estado = 'repaso'
       ORDER BY created_at DESC
     `
 
@@ -67,13 +67,13 @@ export async function GET(request: NextRequest) {
           },
           numero_pedido: repaso.secuencia,
           total: Number(repaso.total),
-          saldo: repaso.saldo,
+          estado: repaso.estado,
           observaciones: repaso.observaciones,
-          entregador: repaso.entregador_en,
+          entregador: repaso.entregado_en,
           created_at: repaso.created_at,
           updated_at: repaso.updated_at,
           monto_pagado: Number(repaso.monto_pagado || 0),
-          valor_pendiente: Number(repaso.valor_pendiente || 0),
+          saldo_pendiente: Number(repaso.saldo_pendiente || 0),
           productos: productos.map((p) => ({
             id: p.id,
             codigo: p.codigo,
