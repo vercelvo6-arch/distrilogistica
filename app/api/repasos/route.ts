@@ -47,11 +47,11 @@ export async function GET(request: NextRequest) {
             id,
             pedido_id,
             codigo,
-            descripcion,
+            nombre,
             cantidad,
-            precio,
-            subtotal
-          FROM productos_catalogo
+            precio_unitario,
+            total
+          FROM pedido_productos
           WHERE pedido_id = ${repaso.id}
           ORDER BY id
         `
@@ -77,10 +77,10 @@ export async function GET(request: NextRequest) {
           productos: productos.map((p) => ({
             id: p.id,
             codigo: p.codigo,
-            descripcion: p.descripcion,
+            descripcion: p.nombre,
             cantidad: Number(p.cantidad),
-            precio_unitario: Number(p.precio),
-            subtotal: Number(p.subtotal)
+            precio_unitario: Number(p.precio_unitario),
+            subtotal: Number(p.total)
           }))
         }
       })
