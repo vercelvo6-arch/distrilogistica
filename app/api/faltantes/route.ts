@@ -152,9 +152,43 @@ export async function GET(request: NextRequest) {
     const fecha_inicio = searchParams.get('fecha_inicio');
     const fecha_fin = searchParams.get('fecha_fin');
     
+    console.log('[FALTANTES GET] Params:', { planilla_id, entregador, estado, codigo, fecha_inicio, fecha_fin });
+    
     const sql = getDB();
     
-    let query = `
+    // Construir condiciones
+    const conditions = [];
+    
+    if (planilla_id) {
+      conditions.push(sql`f.planilla_id = ${planilla_id}`);
+    }
+    
+    if (entregador && entregador !== 'all') {
+      conditions.push(sql`f.entregador = ${entregador}`);
+    }
+    
+    if (estado && estado !== 'all') {
+      conditions.push(sql`f.estado = ${estado}`);
+    }
+    
+    if (codigo) {
+      conditions.push(sql`f.codigo ILIKE ${`%${codigo}%`}`);
+    }
+    
+    if (fecha_inicio) {
+      conditions.push(sql`f.fecha_marcado >= ${fecha_inicio}::date`);
+    }
+    
+    if (fecha_fin) {
+      conditions.push(sql`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'`);
+    }
+    
+    // Construir query final
+    const whereClause = conditions.length > 0 
+      ? sql` WHERE ${sql.join(conditions, sql` AND `)}` 
+      : sql``;
+    
+    const faltantes = await sql`
       SELECT 
         f.*,
         u.nombre as marcado_por_nombre,
@@ -164,52 +198,19 @@ export async function GET(request: NextRequest) {
       LEFT JOIN usuarios u ON f.marcado_por = u.id
       LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
       LEFT JOIN planillas pl ON f.planilla_id = pl.id
-      WHERE 1=1
+      ${whereClause}
+      ORDER BY f.fecha_marcado DESC 
+      LIMIT 500
     `;
     
-    const params: any[] = [];
-    let paramIndex = 1;
-    
-    if (planilla_id) {
-      query += ` AND f.planilla_id = $${paramIndex++}`;
-      params.push(planilla_id);
-    }
-    
-    if (entregador && entregador !== 'all') {
-      query += ` AND f.entregador = $${paramIndex++}`;
-      params.push(entregador);
-    }
-    
-    if (estado && estado !== 'all') {
-      query += ` AND f.estado = $${paramIndex++}`;
-      params.push(estado);
-    }
-    
-    if (codigo) {
-      query += ` AND f.codigo ILIKE $${paramIndex++}`;
-      params.push(`%${codigo}%`);
-    }
-    
-    if (fecha_inicio) {
-      query += ` AND f.fecha_marcado >= $${paramIndex++}`;
-      params.push(fecha_inicio);
-    }
-    
-    if (fecha_fin) {
-      query += ` AND f.fecha_marcado <= $${paramIndex++}::date + interval '1 day'`;
-      params.push(fecha_fin);
-    }
-    
-    query += ` ORDER BY f.fecha_marcado DESC LIMIT 500`;
-    
-    const faltantes = await sql.unsafe(query, params);
+    console.log('[FALTANTES GET] ✅ Encontrados:', faltantes.length);
     
     return NextResponse.json({ 
       success: true,
       faltantes
     });
   } catch (error) {
-    console.error('[FALTANTES] ERROR:', error);
+    console.error('[FALTANTES GET] ERROR:', error);
     return NextResponse.json(
       { error: 'Error al obtener faltantes' },
       { status: 500 }
