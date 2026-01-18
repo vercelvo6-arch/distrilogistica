@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB()
 
-    // Construir query base
-    let fiadosQuery = sql`
+    // Construir query dinámicamente
+    const fiados = await sql`
       SELECT 
         p.id,
         p.cliente,
@@ -42,9 +42,7 @@ export async function GET(request: NextRequest) {
       ORDER BY pl.fecha DESC, p.cliente ASC
     `
 
-    const fiados = await fiadosQuery
-
-    // Obtener abonos para cada pedido (opcional, para mostrar historial)
+    // Obtener abonos
     const pedidosIds = fiados.map((f: any) => f.id)
     let abonos: any[] = []
 
@@ -66,18 +64,18 @@ export async function GET(request: NextRequest) {
       abonos: abonos.filter((a: any) => a.pedido_id === fiado.id)
     }))
 
-    // Calcular resumen por entregador
+    // Calcular resumen
     const resumenMap = new Map<string, { total_fiados: number; monto_total: number }>()
 
     fiadosConAbonos.forEach((fiado: any) => {
-      const entregador = fiado.entregador
+      const entregadorNombre = fiado.entregador
       const saldo = Number(fiado.saldo_pendiente)
 
-      if (saldo > 0) { // Solo contar fiados con saldo pendiente
-        if (!resumenMap.has(entregador)) {
-          resumenMap.set(entregador, { total_fiados: 0, monto_total: 0 })
+      if (saldo > 0) {
+        if (!resumenMap.has(entregadorNombre)) {
+          resumenMap.set(entregadorNombre, { total_fiados: 0, monto_total: 0 })
         }
-        const current = resumenMap.get(entregador)!
+        const current = resumenMap.get(entregadorNombre)!
         current.total_fiados += 1
         current.monto_total += saldo
       }
