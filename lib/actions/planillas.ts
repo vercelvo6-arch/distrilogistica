@@ -31,13 +31,32 @@ export async function updatePlanillaEstado(planillaId: string, estado: string, u
   }
 }
 
-export async function updatePedidoEstado(pedidoId: string, estado: string) {
+export async function updatePedidoEstado(
+  pedidoId: string, 
+  estado: string,
+  montoPagado?: number,
+  saldoPendiente?: number
+) {
   const sql = getDB()
   try {
+    // Construir el objeto de actualización dinámicamente
+    const updates: any = {
+      estado,
+      entregado_en: estado === "entregado" ? new Date().toISOString() : null,
+    }
+    
+    // Si es fiado y se proporcionan los montos, agregarlos
+    if (estado === 'fiado' && montoPagado !== undefined && saldoPendiente !== undefined) {
+      updates.monto_pagado = montoPagado
+      updates.saldo_pendiente = saldoPendiente
+    }
+
     await sql`
       UPDATE pedidos 
-      SET estado = ${estado},
-          entregado_en = ${estado === "entregado" ? new Date().toISOString() : null},
+      SET estado = ${updates.estado},
+          entregado_en = ${updates.entregado_en},
+          monto_pagado = ${updates.monto_pagado ?? null},
+          saldo_pendiente = ${updates.saldo_pendiente ?? null},
           updated_at = NOW()
       WHERE id = ${pedidoId}
     `
@@ -76,7 +95,6 @@ export async function updatePedidoEstado(pedidoId: string, estado: string) {
     throw error
   }
 }
-
 export async function updateProductoDevuelto(pedidoId: string, codigo: string, devuelto: boolean) {
   const sql = getDB()
   try {
