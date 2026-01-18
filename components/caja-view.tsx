@@ -468,21 +468,32 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const actualizarProducto = (productoId: string, field: keyof Omit<NuevoProducto, 'id'>, value: any) => {
   setProductosNuevoPedido(prevProductos => 
     prevProductos.map(producto => {
-      if (producto.id !== productoId) return producto  // ⭐ Solo actualiza el correcto
+      // ✅ Solo actualizar el producto correcto
+      if (producto.id !== productoId) return producto
       
-      const actualizado = { ...producto, [field]: value }
-      
-      if (field === "cantidad" || field === "precioUnitario") {
-        const cantidad = field === "cantidad" ? Number(value) : actualizado.cantidad
-        const precio = field === "precioUnitario" ? Number(value) : actualizado.precioUnitario
-        actualizado.subtotal = Math.round(cantidad * precio * 100) / 100
+      // ✅ Crear un NUEVO objeto completamente independiente
+      let nuevoProducto = {
+        ...producto,
+        [field]: value
       }
       
-      return actualizado
+      // ✅ Recalcular subtotal si cambió cantidad o precio
+      if (field === "cantidad" || field === "precioUnitario") {
+        const cantidad = field === "cantidad" ? Number(value) : nuevoProducto.cantidad
+        const precio = field === "precioUnitario" ? Number(value) : nuevoProducto.precioUnitario
+        nuevoProducto.subtotal = Math.round(cantidad * precio * 100) / 100
+      }
+      
+      return nuevoProducto
     })
   )
 }
 
+const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
+  if (productosNuevoPedido.length > 1) {
+    setProductosNuevoPedido(productosNuevoPedido.filter(p => p.id !== productoId))
+  }
+}
   const calcularTotalNuevoPedido = () => {
     return productosNuevoPedido.reduce((total, prod) => total + prod.subtotal, 0)
   }
@@ -2084,7 +2095,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     />
     <div className="flex items-center justify-end gap-2">
       <span className="font-medium text-sm">{formatCOP(producto.subtotal)}</span>
-      <Button variant="ghost" size="icon" onClick={() => eliminarProducto(productosNuevoPedido.findIndex(p => p.id === producto.id))}>
+      onClick={() => eliminarProducto(producto.id)}
         <X className="h-4 w-4 text-red-500" />
       </Button>
     </div>
