@@ -335,105 +335,182 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const handleItemReturn = async (orderId: string, codigo: string, currentDevuelto: boolean) => {
-    try {
-      await updateProductoDevuelto(orderId, codigo, !currentDevuelto)
-      await loadData()
+  try {
+    // Actualizar estado local primero (lo que ve el usuario)
+    setRouteSheets(prevSheets => 
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(order => {
+          if (order.id !== orderId) return order
+          
+          return {
+            ...order,
+            items: order.items.map(item => 
+              item.codigo === codigo 
+                ? { ...item, devuelto: !currentDevuelto }
+                : item
+            )
+          }
+        })
+      }))
+    )
 
-      toast({
-        title: currentDevuelto ? "Producto activado" : "Producto devuelto",
-        description: `El producto ha sido marcado como ${!currentDevuelto ? "devuelto" : "activo"}`,
-      })
-    } catch (err) {
-      console.error("[CAJA] Error updating product return:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el producto",
-        variant: "destructive",
-      })
-    }
+    // Guardar en el servidor
+    await updateProductoDevuelto(orderId, codigo, !currentDevuelto)
+
+    toast({
+      title: currentDevuelto ? "Producto activado" : "Producto devuelto",
+      description: `El producto ha sido marcado como ${!currentDevuelto ? "devuelto" : "activo"}`,
+    })
+  } catch (err) {
+    console.error("[CAJA] Error updating product return:", err)
+    await loadData()
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar el producto",
+      variant: "destructive",
+    })
   }
+}
 
   const handleCantidadChange = async (orderId: string, codigo: string, cantidad: number, cantidadOriginal: number) => {
-    if (cantidad < 0 || cantidad > cantidadOriginal) {
-      toast({
-        title: "Error",
-        description: `La cantidad debe estar entre 0 y ${cantidadOriginal}`,
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const result = await updateCantidadEntregada(orderId, codigo, cantidad)
-      await loadData()
-
-      const estadoMsg =
-        result.estadoProducto === "agotado"
-          ? "🚫 Marcado como Agotado"
-          : result.estadoProducto === "parcial"
-            ? "📦 Entrega Parcial"
-            : "✓ Entrega Completa"
-
-      toast({
-        title: "Cantidad actualizada",
-        description: estadoMsg,
-      })
-    } catch (err) {
-      console.error("[CAJA] Error updating quantity:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar la cantidad",
-        variant: "destructive",
-      })
-    }
+  if (cantidad < 0 || cantidad > cantidadOriginal) {
+    toast({
+      title: "Error",
+      description: `La cantidad debe estar entre 0 y ${cantidadOriginal}`,
+      variant: "destructive",
+    })
+    return
   }
+
+  try {
+    setRouteSheets(prevSheets => 
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(order => {
+          if (order.id !== orderId) return order
+          
+          return {
+            ...order,
+            items: order.items.map(item => 
+              item.codigo === codigo 
+                ? { 
+                    ...item, 
+                    cantidadEntregada: cantidad,
+                    estadoProducto: cantidad === 0 ? "agotado" : cantidad < cantidadOriginal ? "parcial" : "normal"
+                  }
+                : item
+            )
+          }
+        })
+      }))
+    )
+
+    const result = await updateCantidadEntregada(orderId, codigo, cantidad)
+
+    const estadoMsg =
+      result.estadoProducto === "agotado"
+        ? "🚫 Marcado como Agotado"
+        : result.estadoProducto === "parcial"
+          ? "📦 Entrega Parcial"
+          : "✓ Entrega Completa"
+
+    toast({
+      title: "Cantidad actualizada",
+      description: estadoMsg,
+    })
+  } catch (err) {
+    console.error("[CAJA] Error updating quantity:", err)
+    await loadData()
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar la cantidad",
+      variant: "destructive",
+    })
+  }
+}
 
   const handleSubtotalChange = async (orderId: string, codigo: string, nuevoSubtotal: number) => {
-    if (nuevoSubtotal < 0) {
-      toast({
-        title: "Error",
-        description: "El subtotal no puede ser negativo",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      await updateSubtotalAjustado(orderId, codigo, nuevoSubtotal)
-      await loadData()
-
-      toast({
-        title: "💰 Subtotal ajustado",
-        description: "El valor ha sido actualizado manualmente",
-      })
-    } catch (err) {
-      console.error("[CAJA] Error updating subtotal:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el subtotal",
-        variant: "destructive",
-      })
-    }
+  if (nuevoSubtotal < 0) {
+    toast({
+      title: "Error",
+      description: "El subtotal no puede ser negativo",
+      variant: "destructive",
+    })
+    return
   }
+
+  try {
+    setRouteSheets(prevSheets => 
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(order => {
+          if (order.id !== orderId) return order
+          
+          return {
+            ...order,
+            items: order.items.map(item => 
+              item.codigo === codigo 
+                ? { ...item, subtotalAjustado: nuevoSubtotal }
+                : item
+            )
+          }
+        })
+      }))
+    )
+
+    await updateSubtotalAjustado(orderId, codigo, nuevoSubtotal)
+
+    toast({
+      title: "💰 Subtotal ajustado",
+      description: "El valor ha sido actualizado manualmente",
+    })
+  } catch (err) {
+    console.error("[CAJA] Error updating subtotal:", err)
+    await loadData()
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar el subtotal",
+      variant: "destructive",
+    })
+  }
+}
 
   const handleOrderStatusChange = async (orderId: string, newStatus: Order["estado"]) => {
-    try {
-      await updatePedidoEstado(orderId, newStatus)
-      await loadData()
+  try {
+    // PASO 1: Actualizar lo que VE el usuario (estado local React)
+    setRouteSheets(prevSheets => 
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(order => 
+          order.id === orderId 
+            ? { ...order, estado: newStatus }  // ← Cambiar el estado del pedido
+            : order
+        )
+      }))
+    )
 
-      toast({
-        title: "Actualizado",
-        description: `Pedido marcado como ${newStatus}`,
-      })
-    } catch (err) {
-      console.error("[CAJA] Error updating order status:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el pedido",
-        variant: "destructive",
-      })
-    }
+    // PASO 2: Guardar en el servidor (en segundo plano)
+    await updatePedidoEstado(orderId, newStatus)
+
+    // PASO 3: Mostrar confirmación
+    toast({
+      title: "✅ Actualizado",
+      description: `Pedido marcado como ${newStatus}`,
+    })
+  } catch (err) {
+    console.error("[CAJA] Error updating order status:", err)
+    
+    // PASO 4: Si falla, recargar desde el servidor
+    await loadData()
+    
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar el pedido",
+      variant: "destructive",
+    })
   }
+}
 
   const handleOpenNuevoPedidoModal = (ruta: RouteSheet) => {
     setRutaParaNuevoPedido(ruta)
@@ -1359,21 +1436,21 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
                                               <h3 className="font-semibold text-sm md:text-base truncate">
                                                 {order.cliente}
                                               </h3>
-                                              <span
-                                                className={`text-xs px-2 py-1 rounded-full shrink-0 font-medium ${
-                                                  order.estado === "pendiente"
-                                                    ? "bg-yellow-100 text-yellow-700"
-                                                    : order.estado === "entregado"
-                                                      ? "bg-green-100 text-green-700"
-                                                      : order.estado === "fiado"
-                                                        ? "bg-orange-100 text-orange-700"
-                                                        : order.estado === "repaso"
-                                                          ? "bg-blue-100 text-blue-700"
-                                                          : "bg-red-100 text-red-700"
+                                              <Badge
+                                                className={`shrink-0 font-bold text-xs border-2 ${
+                                                  order.estado === "entregado"
+                                                     ? "bg-green-100 text-green-800 border-green-400"
+                                                    : order.estado === "fiado"
+                                                      ? "bg-orange-100 text-orange-800 border-orange-400"
+                                                      : order.estado === "repaso"
+                                                        ? "bg-blue-100 text-blue-800 border-blue-400"
+                                                        : order.estado === "devolucion"
+                                                          ? "bg-red-100 text-red-800 border-red-400"
+                                                          : "bg-yellow-100 text-yellow-800 border-yellow-400"
                                                 }`}
                                               >
-                                                {order.estado}
-                                              </span>
+                                                {order.estado.toUpperCase()}
+                                              </Badge>
                                             </div>
 
                                             <p className="text-xs md:text-sm text-muted-foreground">
