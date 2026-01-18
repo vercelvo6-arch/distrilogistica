@@ -143,47 +143,62 @@ export async function GET(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
+    
     const { searchParams } = new URL(request.url);
     const planilla_id = searchParams.get('planilla_id');
     const entregador = searchParams.get('entregador');
+    const estado = searchParams.get('estado'); // ✅ AGREGAR ESTO
+    const codigo = searchParams.get('codigo'); // ✅ AGREGAR ESTO
+    const fecha_inicio = searchParams.get('fecha_inicio'); // ✅ AGREGAR ESTO
+    const fecha_fin = searchParams.get('fecha_fin'); // ✅ AGREGAR ESTO
+    
     const sql = getDB();
-    let faltantes;
+    
+    // Construir condiciones dinámicamente
+    let conditions = [];
+    let params: any = {};
+    
     if (planilla_id) {
-      faltantes = await sql`
-        SELECT 
-          f.*,
-          u.nombre as marcado_por_nombre
-        FROM faltantes f
-        LEFT JOIN usuarios u ON f.marcado_por = u.id
-        WHERE f.planilla_id = ${planilla_id}
-        ORDER BY f.fecha_marcado DESC
-      `;
-    } else if (entregador) {
-      faltantes = await sql`
-        SELECT 
-          f.*,
-          u.nombre as marcado_por_nombre,
-          pl.fecha as planilla_fecha
-        FROM faltantes f
-        LEFT JOIN usuarios u ON f.marcado_por = u.id
-        LEFT JOIN planillas pl ON f.planilla_id = pl.id
-        WHERE f.entregador = ${entregador}
-        ORDER BY f.fecha_marcado DESC
-        LIMIT 100
-      `;
-    } else {
-      faltantes = await sql`
-        SELECT 
-          f.*,
-          u.nombre as marcado_por_nombre,
-          pl.fecha as planilla_fecha
-        FROM faltantes f
-        LEFT JOIN usuarios u ON f.marcado_por = u.id
-        LEFT JOIN planillas pl ON f.planilla_id = pl.id
-        ORDER BY f.fecha_marcado DESC
-        LIMIT 100
-      `;
+      conditions.push(`f.planilla_id = ${planilla_id}`);
     }
+    
+    if (entregador && entregador !== 'all') {
+      conditions.push(`f.entregador = ${entregador}`);
+    }
+    
+    if (estado && estado !== 'all') {
+      conditions.push(`f.estado = ${estado}`);
+    }
+    
+    if (codigo) {
+      conditions.push(`f.codigo ILIKE ${'%' + codigo + '%'}`);
+    }
+    
+    if (fecha_inicio) {
+      conditions.push(`f.fecha_marcado >= ${fecha_inicio}`);
+    }
+    
+    if (fecha_fin) {
+      conditions.push(`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'`);
+    }
+    
+    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+    
+    const faltantes = await sql`
+      SELECT 
+        f.*,
+        u.nombre as marcado_por_nombre,
+        u2.nombre as resuelto_por_nombre,
+        pl.fecha as planilla_fecha
+      FROM faltantes f
+      LEFT JOIN usuarios u ON f.marcado_por = u.id
+      LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
+      LEFT JOIN planillas pl ON f.planilla_id = pl.id
+      ${sql.unsafe(whereClause)}
+      ORDER BY f.fecha_marcado DESC
+      LIMIT 500
+    `;
+    
     return NextResponse.json({ 
       success: true,
       faltantes
