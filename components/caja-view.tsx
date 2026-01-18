@@ -479,6 +479,60 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 }
 
+const handleDescuentoChange = async (orderId: string, descuento: number) => {
+  try {
+    // Actualizar estado local (optimista)
+    setRouteSheets(prevSheets => 
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(order => 
+          order.id === orderId 
+            ? { ...order, descuento: descuento }
+            : order
+        )
+      }))
+    )
+
+    // Guardar en el servidor
+    await updateDescuentoPedido(orderId, descuento)
+
+    toast({
+      title: "💰 Descuento aplicado",
+      description: `Descuento de ${formatCOP(descuento)} registrado`,
+    })
+  } catch (err) {
+    console.error("[CAJA] Error updating descuento:", err)
+    await loadData()
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar el descuento",
+      variant: "destructive",
+    })
+  }
+}
+
+const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
+  try {
+    // Actualizar estado local (optimista)
+    setRouteSheets(prevSheets => 
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(order => 
+          order.id === orderId 
+            ? { ...order, motivoDescuento: motivo }
+            : order
+        )
+      }))
+    )
+
+    // Guardar en el servidor
+    await updateMotivoDescuentoPedido(orderId, motivo)
+  } catch (err) {
+    console.error("[CAJA] Error updating motivo descuento:", err)
+    await loadData()
+  }
+}
+  
   const handleOrderStatusChange = async (orderId: string, newStatus: Order["estado"]) => {
   // Si es "fiado", abrir modal para registrar pago parcial
   if (newStatus === "fiado") {
@@ -1730,15 +1784,71 @@ const handleSubmitFiado = async () => {
                                             </table>
                                           </div>
 
+                                          {/* Campos de Descuento por Pedido */}
+<div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+  <h4 className="font-semibold text-sm mb-3 text-orange-800">
+    💰 Descuento (Opcional)
+  </h4>
+  
+  <div className="grid grid-cols-2 gap-3">
+    <div>
+      <Label htmlFor={`descuento-${order.id}`} className="text-xs text-muted-foreground">
+        Monto del Descuento
+      </Label>
+      <Input
+        id={`descuento-${order.id}`}
+        type="number"
+        min="0"
+        max={effectiveTotal}
+        placeholder="0"
+        defaultValue={order.descuento || 0}
+        onBlur={(e) => {
+          const descuento = Number(e.target.value) || 0
+          if (descuento > effectiveTotal) {
+            toast({
+              title: "Error",
+              description: `El descuento no puede ser mayor al total (${formatCOP(effectiveTotal)})`,
+              variant: "destructive",
+            })
+            e.target.value = "0"
+            return
+          }
+          handleDescuentoChange(order.id, descuento)
+        }}
+        disabled={route.cuadradoEnCaja}
+        className="mt-1"
+      />
+    </div>
+    
+    <div>
+      <Label htmlFor={`motivo-descuento-${order.id}`} className="text-xs text-muted-foreground">
+        Motivo del Descuento
+      </Label>
+      <Input
+        id={`motivo-descuento-${order.id}`}
+        type="text"
+        placeholder="Ej: Producto averiado"
+        defaultValue={order.motivoDescuento || ""}
+        onBlur={(e) => handleMotivoDescuentoChange(order.id, e.target.value)}
+        disabled={route.cuadradoEnCaja}
+        className="mt-1"
+      />
+    </div>
+  </div>
+  
+  {order.descuento && Number(order.descuento) > 0 && (
+    <div className="mt-3 pt-3 border-t border-orange-300 flex justify-between items-center">
+      <span className="text-sm font-medium text-orange-700">
+        Total con Descuento:
+      </span>
+      <span className="text-lg font-bold text-orange-800">
+        {formatCOP(effectiveTotal - (Number(order.descuento) || 0))}
+      </span>
+    </div>
+  )}
+</div>
+
                                           <div className="flex flex-wrap gap-2">
-                                            <Button
-                                              size="sm"
-                                              onClick={() => handleOrderStatusChange(order.id, "entregado")}
-                                              className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
-                                              disabled={route.cuadradoEnCaja}
-                                            >
-                                              Entregado
-                                            </Button>
                                             <Button
                                               size="sm"
                                               variant="outline"
