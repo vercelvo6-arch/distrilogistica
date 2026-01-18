@@ -1103,15 +1103,17 @@ const handleSubmitFiado = async () => {
     totalDevoluciones += totals.devoluciones
     totalRepasos += totals.repasos
   })
- // Calcular descuentos desde recepciones del día filtrado
- // Calcular descuentos desde recepciones del rango de fechas
-  recepciones.forEach((rec) => {
-    const recDate = new Date(rec.fecha_recepcion).toISOString().split("T")[0]
-    if (filterFechaDesde && recDate < filterFechaDesde) return
-    if (filterFechaHasta && recDate > filterFechaHasta) return
-    totalDescuentos += Number(rec.descuento || 0)
-
-  })
+  
+ // Calcular descuentos de todos los pedidos de las rutas filtradas
+filteredRoutes.forEach((route) => {
+  if (Array.isArray(route.orders)) {
+    route.orders.forEach((order) => {
+      if (order.descuento) {
+        totalDescuentos += Number(order.descuento)
+      }
+    })
+  }
+})
 
   const totalRecibido = selectedPlanilla
     ? Number(formData.efectivoRecibido || 0) +
