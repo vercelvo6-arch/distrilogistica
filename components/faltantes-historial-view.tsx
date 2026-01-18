@@ -92,7 +92,7 @@ export function FaltantesHistorialView() {
   }
 
   const hasActiveFilters = filterEntregador !== "all" || 
-                           filterEstado !== "pendiente" || 
+                           filterEstado !== "all" || 
                            filterFechaInicio !== "" || 
                            filterFechaFin !== "" || 
                            filterCodigo !== ""
