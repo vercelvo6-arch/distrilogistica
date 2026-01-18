@@ -290,7 +290,8 @@ if (order.estado === "entregado") {
 } else if (order.estado === "repaso") {
   repasos += effectiveTotal
 }
-
+})
+    
   return {
     entregado: Math.round(entregado * 100) / 100,
     fiado: Math.round(fiado * 100) / 100,
