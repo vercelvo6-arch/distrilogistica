@@ -11,6 +11,8 @@ import {
   updateProductoDevuelto,
   updateCantidadEntregada,
   updateSubtotalAjustado,
+  updateDescuentoPedido,
+  updateMotivoDescuentoPedido,
 } from "@/lib/actions/planillas"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -269,18 +271,25 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     // ✅ SUMAR DEVOLUCIONES PARCIALES (productos individuales con checkbox)
     devoluciones += returnedTotal
 
-    // ✅ Sumar según el estado del pedido COMPLETO
-    if (order.estado === "entregado") {
-      entregado += effectiveTotal
-    } else if (order.estado === "fiado") {
-      fiado += effectiveTotal
-    } else if (order.estado === "devolucion") {
-      // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
-      devoluciones += effectiveTotal
-    } else if (order.estado === "repaso") {
-      repasos += effectiveTotal
-    }
-  })
+  // ✅ Sumar según el estado del pedido COMPLETO
+if (order.estado === "entregado") {
+  entregado += effectiveTotal
+  // Restar descuento del pedido si existe
+  if (order.descuento) {
+    entregado -= Number(order.descuento)
+  }
+} else if (order.estado === "fiado") {
+  fiado += effectiveTotal
+  // Restar descuento del pedido si existe
+  if (order.descuento) {
+    fiado -= Number(order.descuento)
+  }
+} else if (order.estado === "devolucion") {
+  // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
+  devoluciones += effectiveTotal
+} else if (order.estado === "repaso") {
+  repasos += effectiveTotal
+}
 
   return {
     entregado: Math.round(entregado * 100) / 100,
