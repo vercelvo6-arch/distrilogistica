@@ -156,52 +156,97 @@ export async function GET(request: NextRequest) {
     
     const sql = getDB();
     
-    // Construir condiciones
-    const conditions = [];
+    // Construir query con condicionales simples
+    let faltantes;
     
-    if (planilla_id) {
-      conditions.push(sql`f.planilla_id = ${planilla_id}`);
+    if (!planilla_id && entregador === 'all' && estado === 'all' && !codigo && !fecha_inicio && !fecha_fin) {
+      // Sin filtros - traer todos
+      faltantes = await sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre,
+          u2.nombre as resuelto_por_nombre,
+          pl.fecha as planilla_fecha
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
+        LEFT JOIN planillas pl ON f.planilla_id = pl.id
+        ORDER BY f.fecha_marcado DESC 
+        LIMIT 500
+      `;
+    } else {
+      // Con filtros
+      const baseQuery = sql`
+        SELECT 
+          f.*,
+          u.nombre as marcado_por_nombre,
+          u2.nombre as resuelto_por_nombre,
+          pl.fecha as planilla_fecha
+        FROM faltantes f
+        LEFT JOIN usuarios u ON f.marcado_por = u.id
+        LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
+        LEFT JOIN planillas pl ON f.planilla_id = pl.id
+        WHERE 1=1
+      `;
+      
+      const filters = [];
+      
+      if (planilla_id) {
+        filters.push(sql`AND f.planilla_id = ${planilla_id}`);
+      }
+      
+      if (entregador && entregador !== 'all') {
+        filters.push(sql`AND f.entregador = ${entregador}`);
+      }
+      
+      if (estado && estado !== 'all') {
+        filters.push(sql`AND f.estado = ${estado}`);
+      }
+      
+      if (codigo) {
+        filters.push(sql`AND f.codigo ILIKE ${`%${codigo}%`}`);
+      }
+      
+      if (fecha_inicio) {
+        filters.push(sql`AND f.fecha_marcado >= ${fecha_inicio}::date`);
+      }
+      
+      if (fecha_fin) {
+        filters.push(sql`AND f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'`);
+      }
+      
+      faltantes = await sql`
+        ${baseQuery}
+        ${sql(filters.map(f => f.strings[0] + ' ' + (f.values[0] || '')).join(' '))}
+        ORDER BY f.fecha_marcado DESC 
+        LIMIT 500
+      `.catch(async () => {
+        // Fallback: construir query manualmente
+        let query = `
+          SELECT 
+            f.*,
+            u.nombre as marcado_por_nombre,
+            u2.nombre as resuelto_por_nombre,
+            pl.fecha as planilla_fecha
+          FROM faltantes f
+          LEFT JOIN usuarios u ON f.marcado_por = u.id
+          LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
+          LEFT JOIN planillas pl ON f.planilla_id = pl.id
+          WHERE 1=1
+        `;
+        
+        if (planilla_id) query += ` AND f.planilla_id = '${planilla_id}'`;
+        if (entregador && entregador !== 'all') query += ` AND f.entregador = '${entregador}'`;
+        if (estado && estado !== 'all') query += ` AND f.estado = '${estado}'`;
+        if (codigo) query += ` AND f.codigo ILIKE '%${codigo}%'`;
+        if (fecha_inicio) query += ` AND f.fecha_marcado >= '${fecha_inicio}'::date`;
+        if (fecha_fin) query += ` AND f.fecha_marcado <= '${fecha_fin}'::date + interval '1 day'`;
+        
+        query += ` ORDER BY f.fecha_marcado DESC LIMIT 500`;
+        
+        return await sql.unsafe(query);
+      });
     }
-    
-    if (entregador && entregador !== 'all') {
-      conditions.push(sql`f.entregador = ${entregador}`);
-    }
-    
-    if (estado && estado !== 'all') {
-      conditions.push(sql`f.estado = ${estado}`);
-    }
-    
-    if (codigo) {
-      conditions.push(sql`f.codigo ILIKE ${`%${codigo}%`}`);
-    }
-    
-    if (fecha_inicio) {
-      conditions.push(sql`f.fecha_marcado >= ${fecha_inicio}::date`);
-    }
-    
-    if (fecha_fin) {
-      conditions.push(sql`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'`);
-    }
-    
-    // Construir query final
-    const whereClause = conditions.length > 0 
-      ? sql` WHERE ${sql.join(conditions, sql` AND `)}` 
-      : sql``;
-    
-    const faltantes = await sql`
-      SELECT 
-        f.*,
-        u.nombre as marcado_por_nombre,
-        u2.nombre as resuelto_por_nombre,
-        pl.fecha as planilla_fecha
-      FROM faltantes f
-      LEFT JOIN usuarios u ON f.marcado_por = u.id
-      LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
-      LEFT JOIN planillas pl ON f.planilla_id = pl.id
-      ${whereClause}
-      ORDER BY f.fecha_marcado DESC 
-      LIMIT 500
-    `;
     
     console.log('[FALTANTES GET] ✅ Encontrados:', faltantes.length);
     
@@ -212,7 +257,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[FALTANTES GET] ERROR:', error);
     return NextResponse.json(
-      { error: 'Error al obtener faltantes' },
+      { error: error instanceof Error ? error.message : 'Error al obtener faltantes' },
       { status: 500 }
     );
   }
