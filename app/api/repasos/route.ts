@@ -16,27 +16,31 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB()
 
-    // Obtener todos los pedidos con estado 'repaso'
+    // Obtener todos los pedidos con estado 'repaso' con datos de la planilla origen
     const repasos = await sql`
       SELECT 
-        id,
-        planilla_id,
-        cliente,
-        direccion,
-        telefono,
-        barrio,
-        secuencia,
-        total,
-        estado,
-        observaciones,
-        entregado_en,
-        created_at,
-        updated_at,
-        monto_pagado,
-        saldo_pendiente
-      FROM pedidos
-      WHERE estado = 'repaso'
-      ORDER BY created_at DESC
+        p.id,
+        p.planilla_id,
+        p.cliente,
+        p.direccion,
+        p.telefono,
+        p.barrio,
+        p.secuencia,
+        p.total,
+        p.estado,
+        p.observaciones,
+        p.entregado_en,
+        p.created_at,
+        p.updated_at,
+        p.monto_pagado,
+        p.saldo_pendiente,
+        pl.tipo_ruta as ruta_origen,
+        pl.fecha as fecha_origen,
+        pl.entregador as entregador_origen
+      FROM pedidos p
+      LEFT JOIN planillas pl ON p.planilla_id = pl.id
+      WHERE p.estado = 'repaso'
+      ORDER BY p.created_at DESC
     `
 
     // Obtener los productos de cada repaso
@@ -58,29 +62,19 @@ export async function GET(request: NextRequest) {
 
         return {
           id: repaso.id,
-          planilla_id: repaso.planilla_id,
-          cliente: {
-            nombre: repaso.cliente,
-            direccion: repaso.direccion,
-            telefono: repaso.telefono,
-            barrio: repaso.barrio
-          },
-          numero_pedido: repaso.secuencia,
+          cliente: repaso.cliente,
+          planilla_origen_id: repaso.planilla_id,
+          ruta_origen: repaso.ruta_origen || 'N/A',
+          fecha_origen: repaso.fecha_origen || new Date().toISOString(),
+          entregador_origen: repaso.entregador_origen || 'N/A',
           total: Number(repaso.total),
-          estado: repaso.estado,
           observaciones: repaso.observaciones,
-          entregador: repaso.entregado_en,
-          created_at: repaso.created_at,
-          updated_at: repaso.updated_at,
-          monto_pagado: Number(repaso.monto_pagado || 0),
-          saldo_pendiente: Number(repaso.saldo_pendiente || 0),
           productos: productos.map((p) => ({
-            id: p.id,
             codigo: p.codigo,
-            descripcion: p.nombre,
+            nombre: p.nombre,
             cantidad: Number(p.cantidad),
             precio_unitario: Number(p.precio_unitario),
-            subtotal: Number(p.total)
+            total: Number(p.total)
           }))
         }
       })
