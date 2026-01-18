@@ -69,7 +69,9 @@ export async function POST(request: NextRequest) {
         barrio,
         total,
         estado,
-        observaciones
+        observaciones,
+        monto_pagado,
+        saldo_pendiente
       ) VALUES (
         ${pedidoId},
         ${planillaId},
@@ -79,8 +81,10 @@ export async function POST(request: NextRequest) {
         ${""}, -- telefono vacío
         ${""}, -- barrio vacío
         ${Number(total) || 0},
-        'pendiente',
-        ${observaciones || null}
+        'entregado',
+        ${observaciones || null},
+        0,
+        0
       )
       RETURNING id, secuencia
     `;
