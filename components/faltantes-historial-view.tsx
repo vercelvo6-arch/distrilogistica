@@ -35,14 +35,25 @@ export function FaltantesHistorialView() {
       if (filterFechaFin) params.append("fecha_fin", filterFechaFin)
       if (filterCodigo) params.append("codigo", filterCodigo)
 
-      const response = await fetch(`/api/faltantes?${params.toString()}`)
+      const url = `/api/faltantes?${params.toString()}`
+      console.log('🔍 Cargando faltantes desde:', url)
+
+      const response = await fetch(url)
       
-      if (!response.ok) throw new Error('Error al cargar faltantes')
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al cargar faltantes')
+      }
       
       const data = await response.json()
-      setFaltantes(Array.isArray(data.faltantes) ? data.faltantes : [])
+      console.log('📦 Faltantes recibidos:', data)
+      
+      const faltantesArray = Array.isArray(data.faltantes) ? data.faltantes : []
+      console.log('✅ Total faltantes:', faltantesArray.length)
+      
+      setFaltantes(faltantesArray)
     } catch (err) {
-      console.error('[FALTANTES] Error:', err)
+      console.error('❌ [FALTANTES] Error:', err)
       setFaltantes([])
     } finally {
       setLoading(false)
@@ -111,6 +122,23 @@ export function FaltantesHistorialView() {
     }
   }
 
+  // Entregadores únicos
+  const entregadores = Array.from(
+    new Set(
+      faltantes
+        .map(f => f?.entregador)
+        .filter((e): e is string => Boolean(e) && typeof e === 'string')
+    )
+  ).sort()
+
+  // Estadísticas
+  const stats = {
+    total: faltantes.length,
+    pendientes: faltantes.filter(f => f.estado === 'pendiente').length,
+    resueltos: faltantes.filter(f => f.estado === 'resuelto').length,
+    totalUnidades: faltantes.reduce((sum, f) => sum + (f.cantidad_faltante || 0), 0)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -119,22 +147,9 @@ export function FaltantesHistorialView() {
     )
   }
 
-  const entregadores = Array.isArray(faltantes) 
-    ? [...new Set(faltantes
-        .map(f => f?.entregador)
-        .filter((e): e is string => Boolean(e) && typeof e === 'string'))]
-        .sort()
-    : []
-  
-  const stats = {
-    total: faltantes.length,
-    pendientes: faltantes.filter(f => f.estado === 'pendiente').length,
-    resueltos: faltantes.filter(f => f.estado === 'resuelto').length,
-    totalUnidades: faltantes.reduce((sum, f) => sum + (f.cantidad_faltante || 0), 0)
-  }
-
   return (
     <div className="space-y-6">
+      {/* Tarjetas de estadísticas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center justify-between">
@@ -177,6 +192,7 @@ export function FaltantesHistorialView() {
         </Card>
       </div>
 
+      {/* Panel de filtros */}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -200,7 +216,7 @@ export function FaltantesHistorialView() {
               <SelectValue placeholder="Entregador" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="all">Todos los entregadores</SelectItem>
               {entregadores.map(e => (
                 <SelectItem key={e} value={e}>{e}</SelectItem>
               ))}
@@ -212,7 +228,7 @@ export function FaltantesHistorialView() {
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="all">Todos los estados</SelectItem>
               <SelectItem value="pendiente">⏳ Pendientes</SelectItem>
               <SelectItem value="resuelto">✅ Resueltos</SelectItem>
             </SelectContent>
@@ -220,14 +236,14 @@ export function FaltantesHistorialView() {
 
           <Input
             type="date"
-            placeholder="Desde"
+            placeholder="Fecha inicio"
             value={filterFechaInicio}
             onChange={(e) => setFilterFechaInicio(e.target.value)}
           />
 
           <Input
             type="date"
-            placeholder="Hasta"
+            placeholder="Fecha fin"
             value={filterFechaFin}
             onChange={(e) => setFilterFechaFin(e.target.value)}
           />
@@ -244,11 +260,12 @@ export function FaltantesHistorialView() {
             className="w-full"
           >
             <Download className="h-4 w-4 mr-2" />
-            {exporting ? 'Exportando...' : 'CSV'}
+            {exporting ? 'Exportando...' : 'Exportar CSV'}
           </Button>
         </div>
       </Card>
 
+      {/* Tabla de faltantes */}
       {faltantes.length === 0 ? (
         <Card className="p-12 text-center">
           <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -256,7 +273,7 @@ export function FaltantesHistorialView() {
             {hasActiveFilters ? 'No hay faltantes con estos filtros' : 'No hay faltantes registrados'}
           </h3>
           <p className="text-muted-foreground">
-            {hasActiveFilters ? 'Ajusta los filtros' : 'Los faltantes aparecerán aquí'}
+            {hasActiveFilters ? 'Intenta ajustar los filtros' : 'Los faltantes de inventario aparecerán aquí'}
           </p>
         </Card>
       ) : (
@@ -280,41 +297,53 @@ export function FaltantesHistorialView() {
                 {faltantes.map((f) => (
                   <tr 
                     key={f.id}
-                    className={`border-b hover:bg-muted/50 ${f.estado === 'pendiente' ? 'bg-orange-50' : ''}`}
+                    className={`border-b hover:bg-muted/50 transition-colors ${
+                      f.estado === 'pendiente' ? 'bg-orange-50' : ''
+                    }`}
                   >
-                    <td className="py-3 px-4 text-xs whitespace-nowrap">{formatFecha(f.fecha_marcado)}</td>
+                    <td className="py-3 px-4 text-xs whitespace-nowrap">
+                      {formatFecha(f.fecha_marcado)}
+                    </td>
                     <td className="py-3 px-4">{f.entregador || '-'}</td>
                     <td className="py-3 px-4 font-mono text-xs">{f.codigo || '-'}</td>
                     <td className="py-3 px-4">
-                      {f.descripcion || '-'}
-                      {f.unidad_incompleta && (
-                        <span className="ml-2 text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded">
-                          Incompleta
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span>{f.descripcion || '-'}</span>
+                        {f.unidad_incompleta && (
+                          <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full">
+                            Incompleta
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="text-right py-3 px-4 font-bold">{f.cantidad_solicitada || 0}</td>
                     <td className="text-right py-3 px-4">{f.cantidad_disponible || 0}</td>
-                    <td className="text-right py-3 px-4 font-bold text-red-600">{f.cantidad_faltante || 0}</td>
+                    <td className="text-right py-3 px-4 font-bold text-red-600">
+                      {f.cantidad_faltante || 0}
+                    </td>
                     <td className="text-center py-3 px-4">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        f.estado === 'pendiente' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
+                      <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+                        f.estado === 'pendiente' 
+                          ? 'bg-orange-100 text-orange-700' 
+                          : 'bg-green-100 text-green-700'
                       }`}>
-                        {f.estado === 'pendiente' ? '⏳ PENDIENTE' : '✅ RESUELTO'}
+                        {f.estado === 'pendiente' ? '⏳ Pendiente' : '✅ Resuelto'}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-xs max-w-md">
                       <div className="space-y-1">
-                        {f.observaciones && <p className="text-muted-foreground">📝 {f.observaciones}</p>}
+                        {f.observaciones && (
+                          <p className="text-muted-foreground">📝 {f.observaciones}</p>
+                        )}
                         {f.estado === 'resuelto' && f.observaciones_resolucion && (
-                          <p className="text-green-700">
-                            ✅ {f.observaciones_resolucion}
+                          <div className="text-green-700">
+                            <p>✅ {f.observaciones_resolucion}</p>
                             {f.resuelto_por_nombre && f.fecha_resolucion && (
-                              <span className="block text-xs mt-1">
-                                Por: {f.resuelto_por_nombre} - {formatFecha(f.fecha_resolucion)}
-                              </span>
+                              <p className="text-xs mt-1 text-muted-foreground">
+                                Resuelto por: {f.resuelto_por_nombre} el {formatFecha(f.fecha_resolucion)}
+                              </p>
                             )}
-                          </p>
+                          </div>
                         )}
                       </div>
                     </td>
