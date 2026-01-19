@@ -21,30 +21,41 @@ export async function POST(request: NextRequest) {
     
     const { pedidoId, planillaDestinoId } = body
 
-    // ✅ VALIDACIÓN MEJORADA - Convertir a número y validar
-    const pedidoIdNum = Number(pedidoId)
-    const planillaIdNum = Number(planillaDestinoId)
-
-    if (!pedidoId || !planillaDestinoId || isNaN(pedidoIdNum) || isNaN(planillaIdNum)) {
+    // ✅ VALIDACIÓN MEJORADA - Soportar IDs alfanuméricos
+    if (!pedidoId || !planillaDestinoId) {
       console.error('[API asignar-repaso] ❌ Validación falló:', {
         pedidoId,
         planillaDestinoId,
-        pedidoIdNum,
+        pedidoIdTipo: typeof pedidoId,
+        planillaDestinoIdTipo: typeof planillaDestinoId
+      })
+      return NextResponse.json(
+        { error: 'Datos incompletos: pedidoId y planillaDestinoId son requeridos' },
+        { status: 400 }
+      )
+    }
+
+    // Convertir planillaDestinoId a número
+    const planillaIdNum = Number(planillaDestinoId)
+    
+    if (isNaN(planillaIdNum) || planillaIdNum <= 0) {
+      console.error('[API asignar-repaso] ❌ planillaDestinoId inválido:', {
+        planillaDestinoId,
         planillaIdNum
       })
       return NextResponse.json(
-        { error: 'Datos incompletos o inválidos' },
+        { error: 'planillaDestinoId debe ser un número válido' },
         { status: 400 }
       )
     }
 
     const sql = getDB()
 
-    // ✅ USAR NÚMEROS EN LAS CONSULTAS
+    // ✅ ACEPTAR pedidoId como STRING (UUID o alfanumérico)
     const pedido = await sql`
       SELECT id, total, estado, planilla_id
       FROM pedidos
-      WHERE id = ${pedidoIdNum} AND estado = 'repaso'
+      WHERE id = ${pedidoId} AND estado = 'repaso'
     `
 
     if (pedido.length === 0) {
@@ -81,7 +92,7 @@ export async function POST(request: NextRequest) {
         planilla_id = ${planillaIdNum},
         estado = 'pendiente',
         updated_at = NOW()
-      WHERE id = ${pedidoIdNum}
+      WHERE id = ${pedidoId}
     `
 
     // Actualizar el total_cargue de la planilla destino
@@ -96,7 +107,7 @@ export async function POST(request: NextRequest) {
     `
 
     console.log('[API asignar-repaso] ✅ Repaso asignado exitosamente:', {
-      pedidoId: pedidoIdNum,
+      pedidoId: pedidoId,
       planillaDestinoId: planillaIdNum,
       totalPedido,
       totalCargueAnterior: totalCargueActual,
