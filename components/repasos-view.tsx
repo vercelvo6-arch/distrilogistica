@@ -101,14 +101,19 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
 
   async function loadPlanillasDisponibles() {
     try {
-      const response = await fetch("/api/planillas?estado=activo")
+      // ✅ CAMBIO: Traer TODAS las planillas sin filtro de estado
+      const response = await fetch("/api/planillas")
       if (!response.ok) throw new Error("Error al cargar planillas")
 
       const data = await response.json()
+      
+      // ✅ NUEVO FILTRO: Solo excluir planillas ya cuadradas en caja
       const planillasFuturas = (data.planillas || [])
-        .filter((p: any) => 
-          p.estado === "activo" || p.estado === "pendiente"
-        )
+        .filter((p: any) => !p.cuadrado_en_caja) // ← Solo esto importa
+        .sort((a: any, b: any) => {
+          // ✅ Ordenar por fecha (más recientes primero)
+          return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+        })
         .map((p: any) => ({
           id: p.id,
           tipo_ruta: p.tipo_ruta,
@@ -334,11 +339,11 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
                   ) : (
                     planillasDisponibles.map((planilla) => (
                       <SelectItem key={planilla.id} value={planilla.id.toString()}>
-                        <div className="flex items-center justify-between w-full">
-                          <span>
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <span className="font-medium">
                             Ruta {planilla.tipo_ruta} - {planilla.entregador}
                           </span>
-                          <span className="text-xs text-muted-foreground ml-4">
+                          <span className="text-xs text-muted-foreground">
                             {new Date(planilla.fecha).toLocaleDateString("es-CO")}
                           </span>
                         </div>
