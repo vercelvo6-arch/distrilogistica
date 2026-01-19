@@ -1,0 +1,128 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getDB } from '@/lib/db'
+import { getSession } from '@/lib/session'
+
+/**
+ * Este endpoint se llama desde caja-view cuando se marca un pedido tipo COBRO como "entregado"
+ * Actualiza el fiado original marcándolo como pagado
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession()
+    
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+
+    if (!['caja'].includes(session.user.rol)) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    }
+
+    const body = await request.json()
+    console.log('[API marcar-cobro-completado] 📥 Datos recibidos:', body)
+    
+    const { cobroId } = body
+
+    if (!cobroId) {
+      return NextResponse.json(
+        { error: 'cobroId es requerido' },
+        { status: 400 }
+      )
+    }
+
+    const sql = getDB()
+
+    // Obtener el pedido de cobro y su relación con el fiado
+    const cobro = await sql`
+      SELECT 
+        id,
+        pedido_fiado_id,
+        total,
+        estado,
+        es_cobro
+      FROM pedidos
+      WHERE id = ${cobroId}
+        AND es_cobro = true
+    `
+
+    if (cobro.length === 0) {
+      return NextResponse.json(
+        { error: 'Cobro no encontrado' },
+        { status: 404 }
+      )
+    }
+
+    const pedidoFiadoId = cobro[0].pedido_fiado_id
+
+    if (!pedidoFiadoId) {
+      return NextResponse.json(
+        { error: 'Este cobro no tiene un fiado asociado' },
+        { status: 400 }
+      )
+    }
+
+    // Obtener el fiado original
+    const fiado = await sql`
+      SELECT id, total, monto_pagado, saldo_pendiente
+      FROM pedidos
+      WHERE id = ${pedidoFiadoId}
+    `
+
+    if (fiado.length === 0) {
+      return NextResponse.json(
+        { error: 'Fiado original no encontrado' },
+        { status: 404 }
+      )
+    }
+
+    const montoCobrado = Number(cobro[0].total)
+    const nuevoMontoPagado = Number(fiado[0].monto_pagado || 0) + montoCobrado
+    const nuevoSaldoPendiente = Number(fiado[0].total) - nuevoMontoPagado
+
+    // Determinar nuevo estado del fiado
+    let nuevoEstado = 'fiado'
+    if (nuevoSaldoPendiente <= 0) {
+      nuevoEstado = 'pagado'
+    }
+
+    // Actualizar el fiado original
+    await sql`
+      UPDATE pedidos
+      SET 
+        monto_pagado = ${nuevoMontoPagado},
+        saldo_pendiente = ${nuevoSaldoPendiente},
+        estado = ${nuevoEstado},
+        updated_at = NOW()
+      WHERE id = ${pedidoFiadoId}
+    `
+
+    console.log('[API marcar-cobro-completado] ✅ Fiado actualizado:', {
+      pedidoFiadoId,
+      montoCobrado,
+      nuevoMontoPagado,
+      nuevoSaldoPendiente,
+      nuevoEstado
+    })
+
+    return NextResponse.json({
+      success: true,
+      mensaje: 'Cobro registrado y fiado actualizado',
+      fiado: {
+        id: pedidoFiadoId,
+        monto_pagado: nuevoMontoPagado,
+        saldo_pendiente: nuevoSaldoPendiente,
+        estado: nuevoEstado
+      }
+    })
+
+  } catch (error) {
+    console.error('[API marcar-cobro-completado] ❌ Error:', error)
+    return NextResponse.json(
+      { 
+        error: 'Error al marcar cobro como completado',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
+  }
+}
