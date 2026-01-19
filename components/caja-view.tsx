@@ -247,51 +247,60 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     if (!order || !Array.isArray(order.items)) return
 
     let effectiveTotal = 0
-    let returnedTotal = 0  // ← Para acumular productos devueltos individualmente
+    let returnedTotal = 0
 
     order.items.forEach((item) => {
       if (!item) return
 
-      if (item.devuelto) {
-        // ✅ Producto marcado como devuelto individualmente
-        returnedTotal += Number(item.subtotal) || 0
+      // ✅ Calcular el subtotal real del producto (ajustado o calculado)
+      let subtotalReal = 0
+      
+      if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+        // Si tiene ajuste manual, usar ese valor
+        subtotalReal = Number(item.subtotalAjustado) || 0
+      } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
+        // Si tiene cantidad entregada diferente, calcular con esa
+        subtotalReal = (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
       } else {
+        // Si no, usar el subtotal original
+        subtotalReal = Number(item.subtotal) || 0
+      }
+
+      // ✅ Si está marcado como devuelto, sumar a devoluciones
+      if (item.devuelto) {
+        returnedTotal += subtotalReal
+      } else {
+        // Si no está devuelto, verificar si está agotado
         const estadoProd = item.estadoProducto || "normal"
         if (estadoProd === "agotado") return
 
-        if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-          effectiveTotal += Number(item.subtotalAjustado) || 0
-        } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
-          effectiveTotal += (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
-        } else {
-          effectiveTotal += Number(item.subtotal) || 0
-        }
+        effectiveTotal += subtotalReal
       }
     })
 
-    // ✅ SUMAR DEVOLUCIONES PARCIALES (productos individuales con checkbox)
+    // ✅ Sumar devoluciones parciales (productos individuales con checkbox)
     devoluciones += returnedTotal
 
-  // ✅ Sumar según el estado del pedido COMPLETO
-if (order.estado === "entregado") {
-  entregado += effectiveTotal
-  // Restar descuento del pedido si existe
-  if (order.descuento) {
-    entregado -= Number(order.descuento)
-  }
-} else if (order.estado === "fiado") {
-  fiado += effectiveTotal
-  // Restar descuento del pedido si existe
-  if (order.descuento) {
-    fiado -= Number(order.descuento)
-  }
-} else if (order.estado === "devolucion") {
-  // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
-  devoluciones += effectiveTotal
-} else if (order.estado === "repaso") {
-  repasos += effectiveTotal
-}
-})
+    // ✅ Sumar según el estado del pedido COMPLETO
+    if (order.estado === "entregado") {
+      entregado += effectiveTotal
+      // Restar descuento del pedido si existe
+      if (order.descuento) {
+        entregado -= Number(order.descuento)
+      }
+    } else if (order.estado === "fiado") {
+      fiado += effectiveTotal
+      // Restar descuento del pedido si existe
+      if (order.descuento) {
+        fiado -= Number(order.descuento)
+      }
+    } else if (order.estado === "devolucion") {
+      // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
+      devoluciones += effectiveTotal
+    } else if (order.estado === "repaso") {
+      repasos += effectiveTotal
+    }
+  })
     
   return {
     entregado: Math.round(entregado * 100) / 100,
