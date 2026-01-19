@@ -235,13 +235,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
   if (!route || !Array.isArray(route.orders)) {
-    return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0 }
+    return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0, agotados: 0 }
   }
 
   let entregado = 0
   let fiado = 0
   let devoluciones = 0
   let repasos = 0
+  let agotados = 0
 
   route.orders.forEach((order) => {
     if (!order || !Array.isArray(order.items)) return
@@ -252,50 +253,48 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     order.items.forEach((item) => {
       if (!item) return
 
-      // ✅ Calcular el subtotal real del producto (ajustado o calculado)
+      // Calcular el subtotal real del producto
       let subtotalReal = 0
       
       if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-        // Si tiene ajuste manual, usar ese valor
         subtotalReal = Number(item.subtotalAjustado) || 0
       } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
-        // Si tiene cantidad entregada diferente, calcular con esa
         subtotalReal = (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
       } else {
-        // Si no, usar el subtotal original
         subtotalReal = Number(item.subtotal) || 0
       }
 
-      // ✅ Si está marcado como devuelto, sumar a devoluciones
+      // Si está marcado como devuelto
       if (item.devuelto) {
         returnedTotal += subtotalReal
       } else {
-        // Si no está devuelto, verificar si está agotado
         const estadoProd = item.estadoProducto || "normal"
-        if (estadoProd === "agotado") return
-
-        effectiveTotal += subtotalReal
+        
+        // Si está agotado, sumar a agotados
+        if (estadoProd === "agotado") {
+          agotados += subtotalReal
+        } else {
+          // Si no está agotado ni devuelto, sumar al efectivo
+          effectiveTotal += subtotalReal
+        }
       }
     })
 
-    // ✅ Sumar devoluciones parciales (productos individuales con checkbox)
+    // Sumar devoluciones parciales
     devoluciones += returnedTotal
 
-    // ✅ Sumar según el estado del pedido COMPLETO
+    // Sumar según el estado del pedido COMPLETO
     if (order.estado === "entregado") {
       entregado += effectiveTotal
-      // Restar descuento del pedido si existe
       if (order.descuento) {
         entregado -= Number(order.descuento)
       }
     } else if (order.estado === "fiado") {
       fiado += effectiveTotal
-      // Restar descuento del pedido si existe
       if (order.descuento) {
         fiado -= Number(order.descuento)
       }
     } else if (order.estado === "devolucion") {
-      // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
       devoluciones += effectiveTotal
     } else if (order.estado === "repaso") {
       repasos += effectiveTotal
@@ -303,11 +302,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
     
   return {
-  entregado: Math.round(entregado * 100) / 100,
-  fiado: Math.round(fiado * 100) / 100,
-  devoluciones: Math.round(devoluciones * 100) / 100,
-  repasos: Math.round(repasos * 100) / 100,
-  agotados: Math.round(agotados * 100) / 100,  // ← AGREGAR ESTA LÍNEA
+    entregado: Math.round(entregado * 100) / 100,
+    fiado: Math.round(fiado * 100) / 100,
+    devoluciones: Math.round(devoluciones * 100) / 100,
+    repasos: Math.round(repasos * 100) / 100,
+    agotados: Math.round(agotados * 100) / 100,
+  }
 }
 
   const toggleRouteExpansion = (routeId: number) => {
