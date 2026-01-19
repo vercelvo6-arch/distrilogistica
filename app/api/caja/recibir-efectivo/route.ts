@@ -145,6 +145,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[API recibir-efectivo] ✓ Planilla actualizada como cuadrada')
 
+    // ✅ CÁLCULO DE COMISIÓN CORREGIDO
     const configComision = await sql`
       SELECT porcentaje_comision 
       FROM comisiones_config 
@@ -155,7 +156,10 @@ export async function POST(request: NextRequest) {
     if (configComision.length > 0) {
       const porcentaje = Number(configComision[0].porcentaje_comision)
       const totalDevoluciones = Number(planilla[0].total_devolucion) || 0
-      const baseComisionable = Math.round((Number(efectivoRecibido) - totalDevoluciones) * 100) / 100
+      
+      // ✅ FIX: Base = efectivo recibido (SIN restar devoluciones)
+      // Las devoluciones YA están excluidas del efectivo esperado/recibido
+      const baseComisionable = Math.round(Number(efectivoRecibido) * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
       const yaExisteComision = await sql`
