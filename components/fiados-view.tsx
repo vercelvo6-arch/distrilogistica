@@ -200,6 +200,12 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     try {
       setAsignandoCobro(true)
 
+      console.log('🔍 DATOS A ENVIAR:', {
+        pedidoFiadoId: selectedFiadoParaCobro.id,
+        planillaDestinoId: planillaCobroId,
+        selectedFiadoCompleto: selectedFiadoParaCobro
+       })
+      
       const response = await fetch("/api/fiados/asignar-cobro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
