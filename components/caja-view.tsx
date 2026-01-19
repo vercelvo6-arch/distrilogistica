@@ -303,11 +303,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
     
   return {
-    entregado: Math.round(entregado * 100) / 100,
-    fiado: Math.round(fiado * 100) / 100,
-    devoluciones: Math.round(devoluciones * 100) / 100,
-    repasos: Math.round(repasos * 100) / 100,
-  }
+  entregado: Math.round(entregado * 100) / 100,
+  fiado: Math.round(fiado * 100) / 100,
+  devoluciones: Math.round(devoluciones * 100) / 100,
+  repasos: Math.round(repasos * 100) / 100,
+  agotados: Math.round(agotados * 100) / 100,  // ← AGREGAR ESTA LÍNEA
 }
 
   const toggleRouteExpansion = (routeId: number) => {
@@ -1150,6 +1150,7 @@ const handleSubmitFiado = async () => {
   let totalDevoluciones = 0
   let totalRepasos = 0
   let totalDescuentos = 0
+  let totalAgotados = 0 
 
   filteredRoutes.forEach((route) => {
     const totals = calculateRouteTotals(route)
@@ -1157,6 +1158,7 @@ const handleSubmitFiado = async () => {
     totalFiado += totals.fiado
     totalDevoluciones += totals.devoluciones
     totalRepasos += totals.repasos
+    totalAgotados += totals.agotados
   })
   
  // Calcular descuentos de todos los pedidos de las rutas filtradas
@@ -1393,7 +1395,7 @@ filteredRoutes.forEach((route) => {
                 </div>
               </Card>
 
-              <div className="grid grid-cols-6 gap-4">
+              <div className="grid grid-cols-7 gap-4">
                 <Card className="p-4">
                   <p className="text-sm text-muted-foreground mb-1">Total Cargue</p>
                   <p className="text-2xl font-bold">{formatCOP(totalCargue)}</p>
@@ -1413,6 +1415,10 @@ filteredRoutes.forEach((route) => {
                 <Card className="p-4 bg-blue-50 border-blue-200">
                   <p className="text-sm text-blue-700 mb-1">Repasos</p>
                   <p className="text-2xl font-bold text-blue-600">{formatCOP(totalRepasos)}</p>
+                </Card>
+                <Card className="p-4 bg-gray-50 border-gray-200">
+                  <p className="text-sm text-gray-700 mb-1">Agotados</p>
+                  <p className="text-2xl font-bold text-gray-600">{formatCOP(totalAgotados)}</p>
                 </Card>
                 <Card className="p-4 bg-purple-50 border-purple-200">
                 <p className="text-sm text-purple-700 mb-1">Descuentos</p>
@@ -1542,7 +1548,7 @@ filteredRoutes.forEach((route) => {
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-5 gap-3 text-sm">
+                             <div className="grid grid-cols-6 gap-3 text-sm">
                               <div>
                                 <p className="text-muted-foreground">Cargue</p>
                                 <p className="font-semibold">{formatCOP(route.totalAmount)}</p>
@@ -1563,6 +1569,10 @@ filteredRoutes.forEach((route) => {
                                 <p className="text-muted-foreground">Repasos</p>
                                 <p className="font-semibold text-blue-600">{formatCOP(totals.repasos)}</p>
                               </div>
+                               <div>
+                            <p className="text-muted-foreground">Agotados</p>
+                            <p className="font-semibold text-gray-600">{formatCOP(totals.agotados)}</p>
+                          </div>
                             </div>
                           </div>
 
