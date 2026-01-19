@@ -93,6 +93,8 @@ export async function POST(request: Request) {
       `
     }
 
+    console.log('[CUADRE CAJA] ✓ Planillas actualizadas:', planillaIds.length)
+
     // ✅ CREAR COMISIÓN PARA CUADRE AGRUPADO
     const configComision = await sql`
       SELECT porcentaje_comision 
@@ -108,11 +110,7 @@ export async function POST(request: Request) {
       const baseComisionable = Math.round(totalEfectivo * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
-      // Obtener fecha de la primera planilla
-      const primeraFecha = await sql`
-        SELECT fecha FROM planillas WHERE id = ${planillaIds[0]}
-      `
-
+      // ✅ CREAR COMISIÓN CON FECHA ACTUAL DEL CUADRE (NO fecha de planillas)
       await sql`
         INSERT INTO comisiones (
           entregador,
@@ -127,7 +125,7 @@ export async function POST(request: Request) {
           cuadre_agrupado_id
         ) VALUES (
           ${entregador},
-          ${primeraFecha[0].fecha},
+          NOW(),
           ${planillaIds[0]},
           ${totalEfectivo},
           ${0},
@@ -141,13 +139,17 @@ export async function POST(request: Request) {
 
       console.log('[CUADRE CAJA] ✓ Comisión agrupada creada:', {
         entregador,
+        fechaCuadre: 'NOW() - fecha actual',
+        planillasIncluidas: planillaIds.length,
         base: baseComisionable,
         porcentaje,
         comision: montoComision
       })
+    } else {
+      console.log('[CUADRE CAJA] ⚠️ No hay configuración de comisión para:', entregador)
     }
 
-    console.log('[CUADRE CAJA] ✓ Cuadre registrado:', cuadreId)
+    console.log('[CUADRE CAJA] ✓ Cuadre registrado exitosamente:', cuadreId)
 
     return NextResponse.json({
       success: true,
