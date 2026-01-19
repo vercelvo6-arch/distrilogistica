@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session'
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
+    
     if (!session?.user) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
@@ -14,42 +15,58 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    
+    // ✅ AGREGAR LOGGING PARA DEBUG
+    console.log('[API asignar-repaso] 📥 Datos recibidos:', body)
+    
     const { pedidoId, planillaDestinoId } = body
 
-    if (!pedidoId || !planillaDestinoId) {
+    // ✅ VALIDACIÓN MEJORADA - Convertir a número y validar
+    const pedidoIdNum = Number(pedidoId)
+    const planillaIdNum = Number(planillaDestinoId)
+
+    if (!pedidoId || !planillaDestinoId || isNaN(pedidoIdNum) || isNaN(planillaIdNum)) {
+      console.error('[API asignar-repaso] ❌ Validación falló:', {
+        pedidoId,
+        planillaDestinoId,
+        pedidoIdNum,
+        planillaIdNum
+      })
       return NextResponse.json(
-        { error: 'Datos incompletos' },
+        { error: 'Datos incompletos o inválidos' },
         { status: 400 }
       )
     }
 
     const sql = getDB()
 
-    // Verificar que el pedido existe y es un repaso
+    // ✅ USAR NÚMEROS EN LAS CONSULTAS
     const pedido = await sql`
       SELECT id, total, estado, planilla_id
       FROM pedidos
-      WHERE id = ${pedidoId} AND estado = 'repaso'
+      WHERE id = ${pedidoIdNum} AND estado = 'repaso'
     `
 
     if (pedido.length === 0) {
+      console.error('[API asignar-repaso] ❌ Pedido no encontrado:', pedidoIdNum)
       return NextResponse.json(
         { error: 'Pedido no encontrado o no es un repaso' },
         { status: 404 }
       )
     }
 
-    // Verificar que la planilla destino existe y está activa
+    // ✅ MEJORAR VALIDACIÓN - Aceptar cualquier planilla que NO esté cuadrada
     const planillaDestino = await sql`
-      SELECT id, tipo_ruta, total_cargue, estado
+      SELECT id, tipo_ruta, total_cargue, estado, cuadrado_en_caja
       FROM planillas
-      WHERE id = ${planillaDestinoId}
-        AND estado IN ('activo', 'pendiente', 'alistado')
+      WHERE id = ${planillaIdNum}
+        AND (cuadrado_en_caja IS NULL OR cuadrado_en_caja = false)
     `
 
     if (planillaDestino.length === 0) {
+      console.error('[API asignar-repaso] ❌ Planilla no encontrada o ya cuadrada:', planillaIdNum)
       return NextResponse.json(
-        { error: 'Planilla destino no encontrada o no está disponible' },
+        { error: 'Planilla destino no encontrada o ya fue cuadrada en caja' },
         { status: 404 }
       )
     }
@@ -61,26 +78,26 @@ export async function POST(request: NextRequest) {
     await sql`
       UPDATE pedidos
       SET 
-        planilla_id = ${planillaDestinoId},
+        planilla_id = ${planillaIdNum},
         estado = 'pendiente',
         updated_at = NOW()
-      WHERE id = ${pedidoId}
+      WHERE id = ${pedidoIdNum}
     `
 
     // Actualizar el total_cargue de la planilla destino
     const nuevoTotalCargue = totalCargueActual + totalPedido
-
+    
     await sql`
       UPDATE planillas
       SET 
         total_cargue = ${nuevoTotalCargue},
         updated_at = NOW()
-      WHERE id = ${planillaDestinoId}
+      WHERE id = ${planillaIdNum}
     `
 
-    console.log('[API asignar-repaso] ✓ Repaso asignado exitosamente:', {
-      pedidoId,
-      planillaDestinoId,
+    console.log('[API asignar-repaso] ✅ Repaso asignado exitosamente:', {
+      pedidoId: pedidoIdNum,
+      planillaDestinoId: planillaIdNum,
       totalPedido,
       totalCargueAnterior: totalCargueActual,
       nuevoTotalCargue
@@ -98,7 +115,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[API asignar-repaso] Error:', error)
+    console.error('[API asignar-repaso] ❌ Error:', error)
     return NextResponse.json(
       { 
         error: 'Error al asignar repaso',
