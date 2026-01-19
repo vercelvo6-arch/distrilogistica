@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     // Construir query dinámicamente
     const fiados = await sql`
       SELECT 
-        p.id,
+        p.id::text as id,
         p.cliente,
         p.direccion,
         p.telefono,
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         pl.fecha,
         pl.entregador,
         pl.tipo_ruta,
-        pl.id as planilla_id
+        pl.id::text as planilla_id
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.estado IN ('fiado', 'pagado')
@@ -45,11 +45,17 @@ export async function GET(request: NextRequest) {
     // Obtener abonos
     const pedidosIds = fiados.map((f: any) => f.id)
     let abonos: any[] = []
-
+    
     if (pedidosIds.length > 0) {
       abonos = await sql`
         SELECT 
-          a.*,
+          a.id::text as id,
+          a.pedido_id::text as pedido_id,
+          a.monto,
+          a.fecha_abono,
+          a.metodo_pago,
+          a.observaciones,
+          a.registrado_por,
           u.nombre as registrado_por_nombre
         FROM abonos_fiados a
         LEFT JOIN usuarios u ON a.registrado_por = u.id
@@ -66,11 +72,11 @@ export async function GET(request: NextRequest) {
 
     // Calcular resumen
     const resumenMap = new Map<string, { total_fiados: number; monto_total: number }>()
-
+    
     fiadosConAbonos.forEach((fiado: any) => {
       const entregadorNombre = fiado.entregador
       const saldo = Number(fiado.saldo_pendiente)
-
+      
       if (saldo > 0) {
         if (!resumenMap.has(entregadorNombre)) {
           resumenMap.set(entregadorNombre, { total_fiados: 0, monto_total: 0 })
