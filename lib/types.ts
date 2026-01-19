@@ -33,6 +33,7 @@ export interface Order {
   total: number
   estado: "pendiente" | "entregado" | "fiado" | "repaso" | "devolucion"
   comentarios?: string
+  esCobro?: boolean
   montoPagado: number
   saldoPendiente: number
   entregador?: string | null
