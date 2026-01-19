@@ -1396,35 +1396,41 @@ filteredRoutes.forEach((route) => {
               </Card>
 
               <div className="grid grid-cols-7 gap-4">
-                <Card className="p-4">
-                  <p className="text-sm text-muted-foreground mb-1">Total Cargue</p>
-                  <p className="text-2xl font-bold">{formatCOP(totalCargue)}</p>
-                </Card>
-                <Card className="p-4 bg-green-50 border-green-200">
-                  <p className="text-sm text-green-700 mb-1">Entregado</p>
-                  <p className="text-2xl font-bold text-green-600">{formatCOP(totalEntregado)}</p>
-                </Card>
-                <Card className="p-4 bg-yellow-50 border-yellow-200">
-                  <p className="text-sm text-yellow-700 mb-1">Fiado (CxC)</p>
-                  <p className="text-2xl font-bold text-yellow-600">{formatCOP(totalFiado)}</p>
-                </Card>
-                <Card className="p-4 bg-red-50 border-red-200">
-                  <p className="text-sm text-red-700 mb-1">Devoluciones</p>
-                  <p className="text-2xl font-bold text-red-600">{formatCOP(totalDevoluciones)}</p>
-                </Card>
-                <Card className="p-4 bg-blue-50 border-blue-200">
-                  <p className="text-sm text-blue-700 mb-1">Repasos</p>
-                  <p className="text-2xl font-bold text-blue-600">{formatCOP(totalRepasos)}</p>
-                </Card>
-                <Card className="p-4 bg-gray-50 border-gray-200">
-                  <p className="text-sm text-gray-700 mb-1">Agotados</p>
-                  <p className="text-2xl font-bold text-gray-600">{formatCOP(totalAgotados)}</p>
-                </Card>
-                <Card className="p-4 bg-purple-50 border-purple-200">
-                <p className="text-sm text-purple-700 mb-1">Descuentos</p>
-                <p className="text-2xl font-bold text-purple-600">{formatCOP(totalDescuentos)}</p>
-            </Card>
-              </div>
+  <Card className="p-4 hover:shadow-md transition-shadow">
+    <p className="text-xs font-medium text-muted-foreground mb-2">Total Cargue</p>
+    <p className="text-xl font-bold tracking-tight">{formatCOP(totalCargue)}</p>
+  </Card>
+  
+  <Card className="p-4 bg-green-50 border-green-200 hover:shadow-md transition-shadow">
+    <p className="text-xs font-medium text-green-700 mb-2">Entregado</p>
+    <p className="text-xl font-bold text-green-700 tracking-tight">{formatCOP(totalEntregado)}</p>
+  </Card>
+  
+  <Card className="p-4 bg-yellow-50 border-yellow-200 hover:shadow-md transition-shadow">
+    <p className="text-xs font-medium text-yellow-700 mb-2">Fiado (CxC)</p>
+    <p className="text-xl font-bold text-yellow-700 tracking-tight">{formatCOP(totalFiado)}</p>
+  </Card>
+  
+  <Card className="p-4 bg-red-50 border-red-200 hover:shadow-md transition-shadow">
+    <p className="text-xs font-medium text-red-700 mb-2">Devoluciones</p>
+    <p className="text-xl font-bold text-red-700 tracking-tight">{formatCOP(totalDevoluciones)}</p>
+  </Card>
+  
+  <Card className="p-4 bg-blue-50 border-blue-200 hover:shadow-md transition-shadow">
+    <p className="text-xs font-medium text-blue-700 mb-2">Repasos</p>
+    <p className="text-xl font-bold text-blue-700 tracking-tight">{formatCOP(totalRepasos)}</p>
+  </Card>
+  
+  <Card className="p-4 bg-gray-50 border-gray-200 hover:shadow-md transition-shadow">
+    <p className="text-xs font-medium text-gray-700 mb-2">Agotados</p>
+    <p className="text-xl font-bold text-gray-700 tracking-tight">{formatCOP(totalAgotados)}</p>
+  </Card>
+  
+  <Card className="p-4 bg-purple-50 border-purple-200 hover:shadow-md transition-shadow">
+    <p className="text-xs font-medium text-purple-700 mb-2">Descuentos</p>
+    <p className="text-xl font-bold text-purple-700 tracking-tight">{formatCOP(totalDescuentos)}</p>
+  </Card>
+</div>
 
               <Card className="p-6">
                 <h2 className="text-lg font-semibold mb-4">Entregas Pendientes de Cuadrar</h2>
