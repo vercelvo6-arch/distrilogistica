@@ -134,6 +134,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           montoPagado: 0,
           saldoPendiente: Number(ped.total) || 0,
           comentarios: ped.observaciones,
+          esCobro: ped.es_cobro || false,
           items: (Array.isArray(ped.productos) ? ped.productos : []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
@@ -544,12 +545,57 @@ const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
 }
   
   const handleOrderStatusChange = async (orderId: string, newStatus: Order["estado"]) => {
+  // Obtener el pedido
+  const order = routeSheets
+    .flatMap(sheet => sheet.orders)
+    .find(o => o.id === orderId)
+
+  // ✅ SI ES UN COBRO y se marca como "entregado", actualizar el fiado original
+  if (order?.esCobro && newStatus === "entregado") {
+    try {
+      const response = await fetch("/api/fiados/marcar-cobro-completado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cobroId: orderId }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al marcar cobro completado")
+      }
+
+      toast({
+        title: "✅ Cobro Registrado",
+        description: `Fiado actualizado. Nuevo saldo: ${formatCOP(data.fiado.saldo_pendiente)}`,
+      })
+
+      // Actualizar estado local
+      setRouteSheets(prevSheets => 
+        prevSheets.map(sheet => ({
+          ...sheet,
+          orders: sheet.orders.map(o => 
+            o.id === orderId 
+              ? { ...o, estado: newStatus }
+              : o
+          )
+        }))
+      )
+
+      return
+    } catch (err) {
+      console.error("[CAJA] Error al marcar cobro completado:", err)
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Error al marcar cobro",
+        variant: "destructive",
+      })
+      return
+    }
+  }
+
   // Si es "fiado", abrir modal para registrar pago parcial
   if (newStatus === "fiado") {
-    const order = routeSheets
-      .flatMap(sheet => sheet.orders)
-      .find(o => o.id === orderId)
-    
     if (order) {
       setSelectedOrderForFiado(order)
       setMontoPagadoFiado("")
@@ -1565,21 +1611,28 @@ filteredRoutes.forEach((route) => {
                                               <h3 className="font-semibold text-sm md:text-base truncate">
                                                 {order.cliente}
                                               </h3>
-                                              <Badge
-                                                className={`shrink-0 font-bold text-xs border-2 ${
-                                                  order.estado === "entregado"
-                                                     ? "bg-green-100 text-green-800 border-green-400"
-                                                    : order.estado === "fiado"
-                                                      ? "bg-orange-100 text-orange-800 border-orange-400"
-                                                      : order.estado === "repaso"
-                                                        ? "bg-blue-100 text-blue-800 border-blue-400"
-                                                        : order.estado === "devolucion"
-                                                          ? "bg-red-100 text-red-800 border-red-400"
-                                                          : "bg-yellow-100 text-yellow-800 border-yellow-400"
-                                                }`}
-                                              >
-                                                {order.estado.toUpperCase()}
-                                              </Badge>
+                                              {/* ✅ Mostrar badge especial si es un COBRO */}
+{order.esCobro ? (
+  <Badge className="shrink-0 font-bold text-xs border-2 bg-purple-100 text-purple-800 border-purple-400">
+    💰 COBRO
+  </Badge>
+) : (
+  <Badge
+    className={`shrink-0 font-bold text-xs border-2 ${
+      order.estado === "entregado"
+         ? "bg-green-100 text-green-800 border-green-400"
+        : order.estado === "fiado"
+          ? "bg-orange-100 text-orange-800 border-orange-400"
+        : order.estado === "repaso"
+          ? "bg-blue-100 text-blue-800 border-blue-400"
+          : order.estado === "devolucion"
+            ? "bg-red-100 text-red-800 border-red-400"
+            : "bg-yellow-100 text-yellow-800 border-yellow-400"
+    }`}
+  >
+    {order.estado.toUpperCase()}
+  </Badge>
+)}
                                             </div>
 
                                             <p className="text-xs md:text-sm text-muted-foreground">
