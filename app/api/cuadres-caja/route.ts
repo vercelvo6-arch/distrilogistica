@@ -1,10 +1,16 @@
 import { neon } from '@neondatabase/serverless'
 import { NextResponse } from 'next/server'
+import { getSession } from '@/lib/session'
 
 const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: Request) {
   try {
+    const session = await getSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+
     const body = await request.json()
     const {
       planillaIds,
@@ -26,7 +32,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // 🔧 FIX 1: Cálculos corregidos - manejo de null/undefined
+    // Cálculos corregidos
     const totalConsignado = Number(montoConsignacion || 0)
     const totalEfectivo = Number(efectivoRecibido) || 0
     const totalEsperadoNum = Number(totalEsperado) || 0
@@ -43,7 +49,7 @@ export async function POST(request: Request) {
       estado
     })
 
-    // 🔧 FIX 2: Insertar cuadre con valores validados
+    // Insertar cuadre
     const result = await sql`
       INSERT INTO cuadres_caja (
         entregador,
@@ -75,7 +81,9 @@ export async function POST(request: Request) {
       RETURNING id
     `
 
-    // Actualizar planillas una por una
+    const cuadreId = result[0].id
+
+    // Actualizar planillas
     for (const planillaId of planillaIds) {
       await sql`
         UPDATE planillas
@@ -85,13 +93,68 @@ export async function POST(request: Request) {
       `
     }
 
-    console.log('[CUADRE CAJA] ✓ Cuadre registrado:', result[0].id)
+    // ✅ CREAR COMISIÓN PARA CUADRE AGRUPADO
+    const configComision = await sql`
+      SELECT porcentaje_comision 
+      FROM comisiones_config 
+      WHERE entregador = ${entregador} 
+        AND activo = true
+    `
+
+    if (configComision.length > 0) {
+      const porcentaje = Number(configComision[0].porcentaje_comision)
+      
+      // ✅ Base = efectivo recibido (sin restar devoluciones)
+      const baseComisionable = Math.round(totalEfectivo * 100) / 100
+      const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
+
+      // Obtener fecha de la primera planilla
+      const primeraFecha = await sql`
+        SELECT fecha FROM planillas WHERE id = ${planillaIds[0]}
+      `
+
+      await sql`
+        INSERT INTO comisiones (
+          entregador,
+          fecha,
+          planilla_id,
+          total_entregas_efectivas,
+          total_devoluciones,
+          base_comisionable,
+          porcentaje_aplicado,
+          monto_comision,
+          estado,
+          cuadre_agrupado_id
+        ) VALUES (
+          ${entregador},
+          ${primeraFecha[0].fecha},
+          ${planillaIds[0]},
+          ${totalEfectivo},
+          ${0},
+          ${baseComisionable},
+          ${porcentaje},
+          ${montoComision},
+          'pendiente',
+          ${cuadreId}
+        )
+      `
+
+      console.log('[CUADRE CAJA] ✓ Comisión agrupada creada:', {
+        entregador,
+        base: baseComisionable,
+        porcentaje,
+        comision: montoComision
+      })
+    }
+
+    console.log('[CUADRE CAJA] ✓ Cuadre registrado:', cuadreId)
 
     return NextResponse.json({
       success: true,
-      cuadreId: result[0].id,
+      cuadreId,
       mensaje: `✅ Cuadre registrado para ${planillaIds.length} ruta${planillaIds.length > 1 ? 's' : ''}`
     })
+
   } catch (error) {
     console.error('[CUADRE CAJA] ERROR:', error)
     return NextResponse.json(
