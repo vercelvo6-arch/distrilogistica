@@ -101,7 +101,7 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
 
   async function loadPlanillasDisponibles() {
     try {
-      // ✅ CAMBIO: Traer TODAS las planillas sin filtro de estado
+      // ✅ TRAER TODAS las planillas sin filtro de estado
       const response = await fetch("/api/planillas")
       if (!response.ok) throw new Error("Error al cargar planillas")
 
@@ -109,9 +109,9 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
       
       // ✅ NUEVO FILTRO: Solo excluir planillas ya cuadradas en caja
       const planillasFuturas = (data.planillas || [])
-        .filter((p: any) => !p.cuadrado_en_caja) // ← Solo esto importa
+        .filter((p: any) => !p.cuadrado_en_caja)
         .sort((a: any, b: any) => {
-          // ✅ Ordenar por fecha (más recientes primero)
+          // Ordenar por fecha (más recientes primero)
           return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
         })
         .map((p: any) => ({
@@ -132,7 +132,7 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
 
   function openAsignarModal(repaso: RepasosPedido) {
     setSelectedRepaso(repaso)
-    setPlanillaDestinoId("")
+    setPlanillaDestinoId("") // ✅ RESETEAR a string vacío
     setShowAsignarModal(true)
   }
 
@@ -149,16 +149,23 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
     try {
       setAsignando(true)
 
+      // ✅ DEBUG: Ver qué se está enviando
+      const payload = {
+        pedidoId: selectedRepaso.id,
+        planillaDestinoId: planillaDestinoId, // ✅ Enviar como string, el backend lo convertirá
+      }
+      
+      console.log('🔍 Enviando payload:', payload)
+
       const response = await fetch("/api/repasos/asignar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pedidoId: selectedRepaso.id,
-          planillaDestinoId: Number(planillaDestinoId),
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
+      
+      console.log('📥 Respuesta:', data)
 
       if (!response.ok) {
         throw new Error(data.error || "Error al asignar repaso")
@@ -171,6 +178,7 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
 
       setShowAsignarModal(false)
       setSelectedRepaso(null)
+      setPlanillaDestinoId("")
       await loadData()
     } catch (error) {
       console.error("Error asignando repaso:", error)
@@ -327,7 +335,13 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="planillaDestino">Planilla de Destino</Label>
-              <Select value={planillaDestinoId} onValueChange={setPlanillaDestinoId}>
+              <Select 
+                value={planillaDestinoId} 
+                onValueChange={(value) => {
+                  console.log('✅ Select cambió a:', value)
+                  setPlanillaDestinoId(value)
+                }}
+              >
                 <SelectTrigger id="planillaDestino">
                   <SelectValue placeholder="Selecciona una planilla" />
                 </SelectTrigger>
@@ -352,6 +366,11 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
                   )}
                 </SelectContent>
               </Select>
+              
+              {/* ✅ DEBUG: Mostrar valor actual */}
+              <p className="text-xs text-muted-foreground mt-2">
+                Planilla seleccionada: {planillaDestinoId || 'Ninguna'}
+              </p>
             </div>
 
             {planillaDestinoId && (
@@ -370,7 +389,10 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setShowAsignarModal(false)}
+              onClick={() => {
+                setShowAsignarModal(false)
+                setPlanillaDestinoId("")
+              }}
               disabled={asignando}
             >
               Cancelar
