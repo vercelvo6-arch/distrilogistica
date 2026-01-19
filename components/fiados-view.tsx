@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Edit, Plus } from "lucide-react"
+import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Plus, ArrowRight } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -55,6 +55,15 @@ interface ResumenFiados {
   monto_total: number
 }
 
+interface PlanillaDestino {
+  id: string
+  tipo_ruta: string
+  fecha: string
+  entregador: string
+  estado: string
+  total_cargue: number
+}
+
 interface FiadosViewProps {
   onLogout: () => void
   userRole: "administrador" | "coordinador" | "caja"
@@ -78,6 +87,13 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     observaciones: ""
   })
   const [submittingAbono, setSubmittingAbono] = useState(false)
+
+  // ✅ NUEVOS ESTADOS PARA ASIGNAR COBROS
+  const [showCobroModal, setShowCobroModal] = useState(false)
+  const [selectedFiadoParaCobro, setSelectedFiadoParaCobro] = useState<Fiado | null>(null)
+  const [planillasDisponibles, setPlanillasDisponibles] = useState<PlanillaDestino[]>([])
+  const [planillaCobroId, setPlanillaCobroId] = useState<string>("")
+  const [asignandoCobro, setAsignandoCobro] = useState(false)
 
   // Filtros
   const [entregadorFilter, setEntregadorFilter] = useState("all")
@@ -131,6 +147,92 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ✅ CARGAR PLANILLAS DISPONIBLES
+  const loadPlanillasDisponibles = async () => {
+    try {
+      const response = await fetch("/api/planillas")
+      if (!response.ok) throw new Error("Error al cargar planillas")
+
+      const data = await response.json()
+      
+      const planillas = (data.planillas || [])
+        .filter((p: any) => !p.cuadrado_en_caja)
+        .sort((a: any, b: any) => {
+          return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+        })
+        .map((p: any) => ({
+          id: p.id,
+          tipo_ruta: p.tipo_ruta,
+          fecha: p.fecha,
+          entregador: p.entregador,
+          estado: p.estado,
+          total_cargue: Number(p.total_cargue) || 0,
+        }))
+
+      setPlanillasDisponibles(planillas)
+    } catch (err) {
+      console.error("Error loading planillas:", err)
+    }
+  }
+
+  // ✅ ABRIR MODAL PARA ASIGNAR COBRO
+  const openCobroModal = async (fiado: Fiado) => {
+    setSelectedFiadoParaCobro(fiado)
+    setPlanillaCobroId("")
+    await loadPlanillasDisponibles()
+    setShowCobroModal(true)
+  }
+
+  // ✅ ASIGNAR FIADO COMO COBRO
+  const handleAsignarCobro = async () => {
+    if (!selectedFiadoParaCobro || !planillaCobroId) {
+      toast({
+        title: "Error",
+        description: "Selecciona una planilla de destino",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setAsignandoCobro(true)
+
+      const response = await fetch("/api/fiados/asignar-cobro", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pedidoFiadoId: selectedFiadoParaCobro.id,
+          planillaDestinoId: planillaCobroId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al asignar cobro")
+      }
+
+      toast({
+        title: "✅ Cobro Asignado",
+        description: `Cobro de ${formatCOP(data.cobro.monto)} asignado a ${data.planilla.entregador}`,
+      })
+
+      setShowCobroModal(false)
+      setSelectedFiadoParaCobro(null)
+      setPlanillaCobroId("")
+      await loadFiados()
+    } catch (error) {
+      console.error("Error asignando cobro:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al asignar cobro",
+        variant: "destructive",
+      })
+    } finally {
+      setAsignandoCobro(false)
     }
   }
 
@@ -292,7 +394,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
               </div>
               <div>
                 <h1 className="text-lg sm:text-xl font-bold">Cuentas por Cobrar (Fiados)</h1>
-                <p className="text-xs text-muted-foreground">Gestión de créditos y abonos</p>
+                <p className="text-xs text-muted-foreground">Gestión de créditos y asignación de cobros</p>
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={onLogout}>
@@ -471,16 +573,32 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            {fiado.estado === "fiado" && saldo > 0 && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openAbonoModal(fiado)}
-                              >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Abono
-                              </Button>
-                            )}
+                            <div className="flex gap-2 justify-center">
+                              {fiado.estado === "fiado" && saldo > 0 && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openAbonoModal(fiado)}
+                                  >
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Abono
+                                  </Button>
+                                  {/* ✅ NUEVO BOTÓN PARA ASIGNAR A COBRAR */}
+                                  {userRole === "administrador" && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => openCobroModal(fiado)}
+                                      className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                    >
+                                      <ArrowRight className="h-3 w-3 mr-1" />
+                                      Asignar a Cobrar
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
@@ -592,6 +710,97 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
             </Button>
             <Button onClick={handleRegistrarAbono} disabled={submittingAbono}>
               {submittingAbono ? "Registrando..." : "Registrar Abono"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ✅ NUEVO MODAL PARA ASIGNAR COBRO */}
+      <Dialog open={showCobroModal} onOpenChange={setShowCobroModal}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Asignar Fiado a Cobrar</DialogTitle>
+            <DialogDescription>
+              Cliente: {selectedFiadoParaCobro?.cliente} - Saldo: {formatCOP(selectedFiadoParaCobro?.saldo_pendiente || 0)}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg">
+              <p className="text-sm font-medium text-orange-900 mb-2">
+                💰 Monto a Cobrar
+              </p>
+              <p className="text-3xl font-bold text-orange-600">
+                {formatCOP(selectedFiadoParaCobro?.saldo_pendiente || 0)}
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="planillaCobro">Asignar a Planilla / Entregador</Label>
+              <Select 
+                value={planillaCobroId} 
+                onValueChange={(value) => {
+                  console.log('✅ Planilla seleccionada:', value)
+                  setPlanillaCobroId(value)
+                }}
+              >
+                <SelectTrigger id="planillaCobro">
+                  <SelectValue placeholder="Selecciona una planilla" />
+                </SelectTrigger>
+                <SelectContent>
+                  {planillasDisponibles.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      No hay planillas disponibles
+                    </div>
+                  ) : (
+                    planillasDisponibles.map((planilla) => (
+                      <SelectItem key={planilla.id} value={planilla.id}>
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <span className="font-medium">
+                            Ruta {planilla.tipo_ruta} - {planilla.entregador}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(planilla.fecha).toLocaleDateString("es-CO")}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {planillaCobroId && (
+              <Card className="p-4 bg-green-50 border-green-200">
+                <p className="text-sm font-medium text-green-900 mb-2">
+                  ✓ El cobro será agregado a esta planilla
+                </p>
+                <p className="text-xs text-green-700">
+                  • El monto de {formatCOP(selectedFiadoParaCobro?.saldo_pendiente || 0)} se sumará al total_cargue
+                </p>
+                <p className="text-xs text-green-700">
+                  • Aparecerá como "COBRO" en la planilla
+                </p>
+                <p className="text-xs text-green-700">
+                  • Al cobrarse, se actualizará el fiado original
+                </p>
+              </Card>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCobroModal(false)
+                setPlanillaCobroId("")
+              }}
+              disabled={asignandoCobro}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleAsignarCobro} disabled={asignandoCobro || !planillaCobroId}>
+              {asignandoCobro ? "Asignando..." : "Confirmar Asignación"}
             </Button>
           </DialogFooter>
         </DialogContent>
