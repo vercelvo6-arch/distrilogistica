@@ -381,13 +381,8 @@ export function ComisionesView({ onLogout, userRole, userId }: ComisionesViewPro
                           </td>
                           <td className="p-3 text-sm font-medium">{c.entregador}</td>
                           <td className="p-3 text-sm">
-                          {new Date(c.fecha + 'T12:00:00').toLocaleDateString('es-CO', { 
-                          year: 'numeric', 
-                          month: '2-digit', 
-                          day: '2-digit',
-                          timeZone: 'America/Bogota'
-                          })}
-                          </td>
+  {c.fecha.split('T')[0].split('-').reverse().join('/')}
+</td>
                           <td className="p-3 text-sm text-right">
                             {formatCOP(Number(c.total_entregas_efectivas))}
                           </td>
