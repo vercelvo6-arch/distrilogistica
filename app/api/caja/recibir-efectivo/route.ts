@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
             estado
           ) VALUES (
             ${planilla[0].entregador},
-            ${planilla[0].fecha},
+            (NOW() AT TIME ZONE 'America/Bogota')::date,
             ${planillaId},
             ${efectivoRecibido},
             ${totalDevoluciones},
