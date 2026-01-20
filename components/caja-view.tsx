@@ -2143,6 +2143,37 @@ filteredRoutes.forEach((route) => {
                 rows={3}
               />
             </div>
+            {/* CAMPOS DE DESCUENTO - AGREGAR DESPUÉS DE OBSERVACIONES */}
+            <div className="grid grid-cols-2 items-center gap-4">
+              <Label htmlFor="descuentoAgrupado" className="text-right">
+                Descuento Aplicado
+              </Label>
+              <Input
+                id="descuentoAgrupado"
+                value={formData.descuento}
+                onChange={(e) => setFormData({ ...formData, descuento: e.target.value })}
+                type="number"
+                min="0"
+                className="col-span-1"
+                placeholder="0"
+              />
+            </div>
+
+            {formData.descuento && Number(formData.descuento) > 0 && (
+              <div className="grid grid-cols-2 items-center gap-4">
+                <Label htmlFor="motivoDescuentoAgrupado" className="text-right">
+                  Motivo del Descuento
+                </Label>
+                <Textarea
+                  id="motivoDescuentoAgrupado"
+                  value={formData.motivoDescuento}
+                  onChange={(e) => setFormData({ ...formData, motivoDescuento: e.target.value })}
+                  className="col-span-1"
+                  rows={2}
+                  placeholder="Ej: Promoción, avería, etc."
+                />
+              </div>
+            )}
 
             {selectedPlanilla && (
               <div className="mt-4 pt-4 border-t flex flex-col gap-3">
