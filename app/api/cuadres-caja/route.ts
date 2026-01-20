@@ -21,7 +21,9 @@ export async function POST(request: Request) {
       numeroConsignacion,
       banco,
       montoConsignacion,
-      observaciones
+      observaciones,
+      descuento,           // ✅ NUEVO
+      motivoDescuento      // ✅ NUEVO
     } = body
 
     // Validación
@@ -32,24 +34,31 @@ export async function POST(request: Request) {
       )
     }
 
-    // Cálculos corregidos
+    // Cálculos corregidos con descuento
     const totalConsignado = Number(montoConsignacion || 0)
     const totalEfectivo = Number(efectivoRecibido) || 0
     const totalEsperadoNum = Number(totalEsperado) || 0
+    const descuentoNum = Number(descuento || 0)
+    
+    // ✅ Ajustar el total esperado restando el descuento
+    const totalEsperadoAjustado = totalEsperadoNum - descuentoNum
+    
     const totalRecibido = totalEfectivo + totalConsignado
-    const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
+    const diferencia = Math.round((totalRecibido - totalEsperadoAjustado) * 100) / 100
     const estado = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
     console.log('[CUADRE CAJA] Registrando cuadre:', {
       entregador,
       planillas: planillaIds.length,
       totalEsperado: totalEsperadoNum,
+      descuento: descuentoNum,
+      totalEsperadoAjustado,
       totalRecibido,
       diferencia,
       estado
     })
 
-    // Insertar cuadre
+    // Insertar cuadre con campos de descuento
     const result = await sql`
       INSERT INTO cuadres_caja (
         entregador,
@@ -63,12 +72,14 @@ export async function POST(request: Request) {
         observaciones,
         tiene_consignacion,
         numero_consignacion,
-        banco
+        banco,
+        descuento,
+        motivo_descuento
       ) VALUES (
         ${entregador},
         NOW(),
         ${planillaIds},
-        ${totalEsperadoNum},
+        ${totalEsperadoAjustado},
         ${totalEfectivo},
         ${totalConsignado || 0},
         ${diferencia},
@@ -76,7 +87,9 @@ export async function POST(request: Request) {
         ${observaciones || null},
         ${tieneConsignacion || false},
         ${numeroConsignacion || null},
-        ${banco || null}
+        ${banco || null},
+        ${descuentoNum},
+        ${motivoDescuento || null}
       )
       RETURNING id
     `
@@ -143,7 +156,8 @@ export async function POST(request: Request) {
         planillasIncluidas: planillaIds.length,
         base: baseComisionable,
         porcentaje,
-        comision: montoComision
+        comision: montoComision,
+        descuento: descuentoNum
       })
     } else {
       console.log('[CUADRE CAJA] ⚠️ No hay configuración de comisión para:', entregador)
