@@ -110,7 +110,7 @@ export async function POST(request: Request) {
       const baseComisionable = Math.round(totalEfectivo * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
-      // ✅ CREAR COMISIÓN CON FECHA ACTUAL DEL CUADRE (NO fecha de planillas)
+      // ✅ CREAR COMISIÓN CON FECHA ACTUAL DEL CUADRE EN ZONA HORARIA DE COLOMBIA
       await sql`
         INSERT INTO comisiones (
           entregador,
@@ -125,7 +125,7 @@ export async function POST(request: Request) {
           cuadre_agrupado_id
         ) VALUES (
           ${entregador},
-          NOW(),
+          (NOW() AT TIME ZONE 'America/Bogota')::date,
           ${planillaIds[0]},
           ${totalEfectivo},
           ${0},
