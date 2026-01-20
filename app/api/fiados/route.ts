@@ -43,6 +43,10 @@ export async function GET(request: NextRequest) {
     `
 
     // Obtener abonos
+    if (fiados.length === 0) {
+  return NextResponse.json({ fiados: [], resumen: [] })
+}
+
     const pedidosIds = fiados.map((f: any) => f.id)
     let abonos: any[] = []
     
@@ -97,11 +101,10 @@ export async function GET(request: NextRequest) {
       resumen
     })
 
-  } catch (error) {
-    console.error('[API fiados] Error:', error)
-    return NextResponse.json(
-      { error: 'Error al cargar fiados' },
-      { status: 500 }
-    )
-  }
+} catch (error) {
+  console.error('[API fiados] Error:', error)
+  return NextResponse.json(
+    { fiados: [], resumen: [] },
+    { status: 200 }
+  )
 }
