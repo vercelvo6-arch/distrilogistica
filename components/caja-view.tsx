@@ -1723,7 +1723,7 @@ filteredRoutes.forEach((route) => {
                                   </SelectTrigger>
                                   <SelectContent>
                                     {/* Rutas del mismo entregador */}
-                                    <SelectItem value="" disabled className="font-semibold text-xs">
+                                    <SelectItem value="header-mismo-entregador" disabled className="font-semibold text-xs">
                                       Rutas de {route.entregador}
                                     </SelectItem>
                                     {filteredRoutes
@@ -1743,7 +1743,7 @@ filteredRoutes.forEach((route) => {
                                     {filteredRoutes.some(r => 
                                       r.entregador !== route.entregador && !r.cuadradoEnCaja
                                     ) && (
-                                      <SelectItem value="" disabled className="font-semibold text-xs border-t mt-2 pt-2">
+                                      <SelectItem value="header-otros-entregadores" disabled className="font-semibold text-xs border-t mt-2 pt-2">
                                         Otros entregadores
                                       </SelectItem>
                                     )}
