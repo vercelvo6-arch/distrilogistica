@@ -1740,7 +1740,7 @@ filteredRoutes.forEach((route) => {
                                     }
                                     
                                     {/* Separador */}
-                                    {filteredRoutes.some(r => 
+                                    {routeSheets.some(r => 
                                       r.entregador !== route.entregador && !r.cuadradoEnCaja
                                     ) && (
                                       <SelectItem value="header-otros-entregadores" disabled className="font-semibold text-xs border-t mt-2 pt-2">
@@ -1749,7 +1749,7 @@ filteredRoutes.forEach((route) => {
                                     )}
                                     
                                     {/* Rutas de otros entregadores */}
-                                    {filteredRoutes
+                                    {routeSheets
                                       .filter(r => 
                                         r.entregador !== route.entregador && 
                                         !r.cuadradoEnCaja
