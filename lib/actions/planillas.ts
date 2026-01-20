@@ -473,3 +473,51 @@ export async function updateMotivoDescuentoPedido(pedidoId: string, motivo: stri
     throw error
   }
 }
+
+export async function updateDescuentoPedido(pedidoId: string, descuento: number) {
+  try {
+    const sql = getDB()
+    
+    await sql`
+      UPDATE pedidos
+      SET 
+        descuento = ${descuento},
+        updated_at = NOW()
+      WHERE id = ${pedidoId}
+    `
+    
+    console.log('[updateDescuentoPedido] ✓ Descuento actualizado:', {
+      pedidoId,
+      descuento
+    })
+    
+    return { success: true }
+  } catch (error) {
+    console.error('[updateDescuentoPedido] Error:', error)
+    throw error
+  }
+}
+
+export async function updateMotivoDescuentoPedido(pedidoId: string, motivo: string) {
+  try {
+    const sql = getDB()
+    
+    await sql`
+      UPDATE pedidos
+      SET 
+        motivo_descuento = ${motivo},
+        updated_at = NOW()
+      WHERE id = ${pedidoId}
+    `
+    
+    console.log('[updateMotivoDescuentoPedido] ✓ Motivo actualizado:', {
+      pedidoId,
+      motivo
+    })
+    
+    return { success: true }
+  } catch (error) {
+    console.error('[updateMotivoDescuentoPedido] Error:', error)
+    throw error
+  }
+}
