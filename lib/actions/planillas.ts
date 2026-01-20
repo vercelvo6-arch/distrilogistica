@@ -95,6 +95,7 @@ export async function updatePedidoEstado(
     throw error
   }
 }
+
 export async function updateProductoDevuelto(pedidoId: string, codigo: string, devuelto: boolean) {
   const sql = getDB()
   try {
@@ -339,6 +340,7 @@ export async function completarPlanilla(planillaId: string) {
     throw new Error(error.message || "Error al completar la planilla")
   }
 }
+
 export async function updateCantidadEntregada(
   pedidoId: string, 
   codigo: string, 
@@ -417,6 +419,7 @@ export async function updateCantidadEntregada(
     throw error
   }
 }
+
 export async function updateSubtotalAjustado(pedidoId: string, codigo: string, subtotalAjustado: number) {
   const sql = getDB()
   try {
@@ -446,6 +449,11 @@ export async function updateDescuentoPedido(pedidoId: string, descuento: number)
       WHERE id = ${pedidoId}
     `
 
+    console.log('[updateDescuentoPedido] ✓ Descuento actualizado:', {
+      pedidoId,
+      descuento
+    })
+
     revalidatePath("/")
     return { success: true, descuento }
     
@@ -465,59 +473,16 @@ export async function updateMotivoDescuentoPedido(pedidoId: string, motivo: stri
       WHERE id = ${pedidoId}
     `
 
+    console.log('[updateMotivoDescuentoPedido] ✓ Motivo actualizado:', {
+      pedidoId,
+      motivo
+    })
+
     revalidatePath("/")
     return { success: true, motivo }
     
   } catch (error) {
     console.error("[updateMotivoDescuentoPedido] ❌ ERROR:", error)
-    throw error
-  }
-}
-
-export async function updateDescuentoPedido(pedidoId: string, descuento: number) {
-  try {
-    const sql = getDB()
-    
-    await sql`
-      UPDATE pedidos
-      SET 
-        descuento = ${descuento},
-        updated_at = NOW()
-      WHERE id = ${pedidoId}
-    `
-    
-    console.log('[updateDescuentoPedido] ✓ Descuento actualizado:', {
-      pedidoId,
-      descuento
-    })
-    
-    return { success: true }
-  } catch (error) {
-    console.error('[updateDescuentoPedido] Error:', error)
-    throw error
-  }
-}
-
-export async function updateMotivoDescuentoPedido(pedidoId: string, motivo: string) {
-  try {
-    const sql = getDB()
-    
-    await sql`
-      UPDATE pedidos
-      SET 
-        motivo_descuento = ${motivo},
-        updated_at = NOW()
-      WHERE id = ${pedidoId}
-    `
-    
-    console.log('[updateMotivoDescuentoPedido] ✓ Motivo actualizado:', {
-      pedidoId,
-      motivo
-    })
-    
-    return { success: true }
-  } catch (error) {
-    console.error('[updateMotivoDescuentoPedido] Error:', error)
     throw error
   }
 }
