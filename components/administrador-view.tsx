@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { BarChart3, LogOut, Filter, Download, Users, LayoutDashboard, CreditCard, RefreshCw } from "lucide-react"
+import { BarChart3, LogOut, Filter, Download, Users, LayoutDashboard, CreditCard, RefreshCw, TrendingUp } from "lucide-react"
 import type { RouteSheet, User } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -13,6 +13,7 @@ import { ComisionesView } from "@/components/comisiones-view"
 import { DashboardOverview } from "@/components/dashboard-overview"
 import { FiadosView } from "@/components/fiados-view"
 import { RepassosView } from "@/components/repasos-view"
+import { RendimientoView } from "@/components/rendimiento-view"
 
 interface AdministradorViewProps {
   onLogout: () => void
@@ -20,7 +21,7 @@ interface AdministradorViewProps {
 }
 
 export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
-  const [selectedView, setSelectedView] = useState<"dashboard" | "general" | "fiados" | "repasos" | "devoluciones" | "productos-devueltos" | "usuarios" | "comisiones">("dashboard")
+  const [selectedView, setSelectedView] = useState<"dashboard" | "general" | "fiados" | "repasos" | "devoluciones" | "productos-devueltos" | "usuarios" | "comisiones" | "rendimiento">("dashboard")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
   const [filterEntregador, setFilterEntregador] = useState<string>("all")
@@ -195,9 +196,16 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
               variant={selectedView === "repasos" ? "default" : "outline"}
               onClick={() => setSelectedView("repasos")}
             >
-             <RefreshCw className="h-4 w-4 mr-2" />
-             Repasos
-             </Button>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Repasos
+            </Button>
+            <Button
+              variant={selectedView === "rendimiento" ? "default" : "outline"}
+              onClick={() => setSelectedView("rendimiento")}
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Rendimiento
+            </Button>
           </div>
 
           {selectedView === "dashboard" && <DashboardOverview />}
@@ -208,10 +216,12 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
           {selectedView === "fiados" && (
             <FiadosView onLogout={onLogout} userRole="administrador" userId={user.id} />
           )}
-           {selectedView === "repasos" && (
+          {selectedView === "repasos" && (
             <RepassosView onLogout={onLogout} userRole="administrador" />
-           )}
-          
+          )}
+          {selectedView === "rendimiento" && (
+            <RendimientoView onLogout={onLogout} userRole="administrador" />
+          )}
         </div>
       </main>
     </div>
