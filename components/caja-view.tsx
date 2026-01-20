@@ -380,6 +380,45 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
+  const [reasignandoPedido, setReasignandoPedido] = useState<string | null>(null)
+
+  const handleReasignarPedido = async (pedidoId: string, nuevaPlanillaId: string) => {
+    try {
+      setReasignandoPedido(pedidoId)
+
+      const response = await fetch("/api/pedidos/reasignar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pedidoId,
+          nuevaPlanillaId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al reasignar pedido")
+      }
+
+      toast({
+        title: "✅ Pedido Reasignado",
+        description: `${data.pedido.cliente} movido a ruta ${data.pedido.rutaNueva}`,
+      })
+
+      await loadData()
+    } catch (error) {
+      console.error("Error al reasignar pedido:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al reasignar pedido",
+        variant: "destructive",
+      })
+    } finally {
+      setReasignandoPedido(null)
+    }
+  }
+
   const handleItemReturn = async (orderId: string, codigo: string, currentDevuelto: boolean) => {
   try {
     // Actualizar estado local primero (lo que ve el usuario)
@@ -1660,6 +1699,71 @@ filteredRoutes.forEach((route) => {
                                                 {order.cliente}
                                               </h3>
                                               {/* ✅ Mostrar badge especial si es un COBRO */}
+
+                                              {/* ✅ AGREGAR DESPUÉS DE LA LÍNEA 1660 (después de {order.cliente}) */}
+                            
+                            {/* Dropdown para reasignar pedido */}
+                            {!route.cuadradoEnCaja && (
+                              <div className="mt-2">
+                                <Label className="text-xs text-muted-foreground mb-1 block">
+                                  Reasignar pedido a:
+                                </Label>
+                                <Select
+                                  disabled={reasignandoPedido === order.id}
+                                  onValueChange={(nuevaPlanillaId) => handleReasignarPedido(order.id, nuevaPlanillaId)}
+                                >
+                                  <SelectTrigger className="w-full text-xs">
+                                    <SelectValue 
+                                      placeholder={
+                                        reasignandoPedido === order.id 
+                                          ? "Reasignando..." 
+                                          : "Seleccionar ruta destino"
+                                      } 
+                                    />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {/* Rutas del mismo entregador */}
+                                    <SelectItem value="" disabled className="font-semibold text-xs">
+                                      Rutas de {route.entregador}
+                                    </SelectItem>
+                                    {filteredRoutes
+                                      .filter(r => 
+                                        r.entregador === route.entregador && 
+                                        r.id !== route.id &&
+                                        !r.cuadradoEnCaja
+                                      )
+                                      .map(r => (
+                                        <SelectItem key={r.id} value={r.id.toString()}>
+                                          Ruta {r.ruta} - {new Date(r.fecha).toLocaleDateString('es-CO')}
+                                        </SelectItem>
+                                      ))
+                                    }
+                                    
+                                    {/* Separador */}
+                                    {filteredRoutes.some(r => 
+                                      r.entregador !== route.entregador && !r.cuadradoEnCaja
+                                    ) && (
+                                      <SelectItem value="" disabled className="font-semibold text-xs border-t mt-2 pt-2">
+                                        Otros entregadores
+                                      </SelectItem>
+                                    )}
+                                    
+                                    {/* Rutas de otros entregadores */}
+                                    {filteredRoutes
+                                      .filter(r => 
+                                        r.entregador !== route.entregador && 
+                                        !r.cuadradoEnCaja
+                                      )
+                                      .map(r => (
+                                        <SelectItem key={r.id} value={r.id.toString()}>
+                                          {r.entregador} - Ruta {r.ruta} - {new Date(r.fecha).toLocaleDateString('es-CO')}
+                                        </SelectItem>
+                                      ))
+                                    }
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
 {order.esCobro ? (
   <Badge className="shrink-0 font-bold text-xs border-2 bg-purple-100 text-purple-800 border-purple-400">
     💰 COBRO
