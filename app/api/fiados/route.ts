@@ -55,7 +55,6 @@ export async function GET(request: NextRequest) {
         SELECT 
           a.id::text as id,
           a.pedido_id::text as pedido_id,
-          a.monto,
           a.fecha_abono,
           a.metodo_pago,
           a.observaciones,
