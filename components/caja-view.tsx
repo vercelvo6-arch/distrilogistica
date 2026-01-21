@@ -1781,40 +1781,46 @@ filteredRoutes.forEach((route) => {
                               </div>
                             </div>
 
-                             <div className="grid grid-cols-6 gap-3 text-sm">
-                              <div>
-                                <p className="text-muted-foreground">Cargue</p>
-                                <p className="font-semibold">{formatCOP(route.totalAmount)}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Entregado</p>
-                                <p className="font-semibold text-green-600">{formatCOP(totals.entregado)}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Fiado</p>
-                                <p className="font-semibold text-yellow-600">{formatCOP(totals.fiado)}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Devoluciones</p>
-                                <p className="font-semibold text-red-600">{formatCOP(totals.devoluciones)}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">Repasos</p>
-                                <p className="font-semibold text-blue-600">{formatCOP(totals.repasos)}</p>
-                              </div>
-                               <div>
-                            <p className="text-muted-foreground">Agotados</p>
-                            <p className="font-semibold text-gray-600">{formatCOP(totals.agotados)}</p>
-                          </div>
-                            </div>
-                          </div>
+                             {/* Totales con mejor espaciado y fondos de colores */}
+<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+  <div className="bg-gray-100 p-3 rounded-lg border border-gray-200">
+    <p className="text-xs text-gray-600 mb-1">Cargue</p>
+    <p className="text-sm font-bold text-gray-800">{formatCOP(route.totalAmount)}</p>
+  </div>
+  
+  <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+    <p className="text-xs text-green-700 mb-1">Entregado</p>
+    <p className="text-sm font-bold text-green-700">{formatCOP(totals.entregado)}</p>
+  </div>
+  
+  <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+    <p className="text-xs text-yellow-700 mb-1">Fiado</p>
+    <p className="text-sm font-bold text-yellow-700">{formatCOP(totals.fiado)}</p>
+  </div>
+  
+  <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+    <p className="text-xs text-red-700 mb-1">Devoluciones</p>
+    <p className="text-sm font-bold text-red-700">{formatCOP(totals.devoluciones)}</p>
+  </div>
+  
+  <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+    <p className="text-xs text-blue-700 mb-1">Repasos</p>
+    <p className="text-sm font-bold text-blue-700">{formatCOP(totals.repasos)}</p>
+  </div>
+  
+  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+    <p className="text-xs text-gray-700 mb-1">Agotados</p>
+    <p className="text-sm font-bold text-gray-700">{formatCOP(totals.agotados)}</p>
+  </div>
+</div>
 
-                          <div className="mt-4 pt-4 border-t bg-white -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
-                            <div className="flex items-center justify-between">
-                              <p className="text-sm font-medium">Efectivo Esperado:</p>
-                              <p className="text-xl font-bold text-green-600">{formatCOP(totals.entregado)}</p>
-                            </div>
-                          </div>
+{/* Efectivo Esperado - MANTENER IGUAL */}
+<div className="mt-4 pt-4 border-t bg-white -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
+  <div className="flex items-center justify-between">
+    <p className="text-sm font-medium">Efectivo Esperado:</p>
+    <p className="text-xl font-bold text-green-600">{formatCOP(totals.entregado)}</p>
+  </div>
+</div>
 
                           {expandedRoutes.has(route.id) && Array.isArray(route.orders) && (
                             <div className="mt-4 pt-4 border-t">
