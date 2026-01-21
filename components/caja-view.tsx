@@ -2222,16 +2222,15 @@ filteredRoutes.forEach((route) => {
   </div>
   
   {order.descuento && Number(order.descuento) > 0 && (
-    <div className="mt-3 pt-3 border-t border-orange-300 flex justify-between items-center">
-      <span className="text-sm font-medium text-orange-700">
-        Total con Descuento:
-      </span>
-      <span className="text-lg font-bold text-orange-800">
-        {formatCOP(effectiveTotal - (Number(order.descuento) || 0))}
-      </span>
-    </div>
-  )}
-</div>
+  <div className="mt-3 pt-3 border-t border-orange-300 flex justify-between items-center">
+    <span className="text-sm font-medium text-orange-700">
+      Total con Descuento:
+    </span>
+    <span className="text-lg font-bold text-orange-800">
+      {formatCOP(effectiveTotal - (Number(order.descuento) || 0))}
+    </span>
+  </div>
+)}
 
                                           <div className="flex flex-wrap gap-2">
                                             <Button
