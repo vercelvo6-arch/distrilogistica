@@ -2272,7 +2272,6 @@ filteredRoutes.forEach((route) => {
                                             </Button>
                                           </div>
                                         </div>
-                                      )}
                                     </Card>
                                   )
                                 })}
