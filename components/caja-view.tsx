@@ -303,24 +303,25 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     devoluciones += returnedTotal
 
     // ✅ Sumar según el estado del pedido COMPLETO
-    if (order.estado === "entregado") {
-      entregado += effectiveTotal
-      // Restar descuento del pedido si existe
-      if (order.descuento) {
-        entregado -= Number(order.descuento)
-      }
-    } else if (order.estado === "fiado") {
-      fiado += effectiveTotal
-      // Restar descuento del pedido si existe
-      if (order.descuento) {
-        fiado -= Number(order.descuento)
-      }
-    } else if (order.estado === "devolucion") {
-      // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
-      devoluciones += effectiveTotal
-    } else if (order.estado === "repaso") {
-      repasos += effectiveTotal
-    }
+if (order.estado === "fiado") {
+  fiado += effectiveTotal
+  // Restar descuento del pedido si existe
+  if (order.descuento) {
+    fiado -= Number(order.descuento)
+  }
+} else if (order.estado === "repaso") {
+  repasos += effectiveTotal
+} else if (order.estado === "devolucion") {
+  // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
+  devoluciones += effectiveTotal
+} else {
+  // ✅ TODO LO DEMÁS (pendiente, entregado, null) = ENTREGADO
+  entregado += effectiveTotal
+  // Restar descuento del pedido si existe
+  if (order.descuento) {
+    entregado -= Number(order.descuento)
+  }
+}
   })
     
   return {
@@ -936,40 +937,13 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
 
       totalCargueAgrupado += route.totalAmount
 
-      if (!Array.isArray(route.orders)) return
-
-      route.orders.forEach((order) => {
-        if (!order || !Array.isArray(order.items)) return
-
-        let effectiveTotal = 0
-
-        order.items.forEach((item) => {
-          if (!item || item.devuelto) return
-
-          const estadoProd = item.estadoProducto || "normal"
-          if (estadoProd === "agotado") return
-
-          if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-            effectiveTotal += Number(item.subtotalAjustado)
-          } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
-            effectiveTotal += Number(item.cantidadEntregada) * Number(item.valorUnidad)
-          } else {
-            effectiveTotal += Number(item.subtotal)
-          }
-        })
-
-        if (order.estado === "entregado") {
-          totalEntregadoAgrupado += effectiveTotal
-        } else if (order.estado === "fiado") {
-          totalFiadoAgrupado += effectiveTotal
-        } else if (order.estado === "devolucion") {
-          totalDevolucionesAgrupado += effectiveTotal
-        } else if (order.estado === "repaso") {
-          totalRepasosAgrupado += effectiveTotal
-        }
-      })
+      // ✅ USAR LA MISMA FUNCIÓN (ya corregida)
+      const totals = calculateRouteTotals(route)
+      totalEntregadoAgrupado += totals.entregado
+      totalFiadoAgrupado += totals.fiado
+      totalDevolucionesAgrupado += totals.devoluciones
+      totalRepasosAgrupado += totals.repasos
     })
-
     const nombresRutas = rutasSeleccionadas.map((r) => r.ruta)
 
     const agrupado = {
