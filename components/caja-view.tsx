@@ -1114,6 +1114,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
     let totalDevolucionesAgrupado = 0
     let totalRepasosAgrupado = 0
     let totalAgotadosAgrupado = 0
+    let totalDescuentosAgrupado = 0
 
     rutasSeleccionadas.forEach((route) => {
       if (!route) return
@@ -1127,6 +1128,15 @@ const handleOpenModal = (planilla: RouteSheet) => {
       totalDevolucionesAgrupado += totals.devoluciones
       totalRepasosAgrupado += totals.repasos
       totalAgotadosAgrupado += totals.agotados
+
+      // Sumar descuentos de cada pedido (igual que la vista principal)
+      if (Array.isArray(route.orders)) {
+        route.orders.forEach((order) => {
+          if (order.descuento) {
+            totalDescuentosAgrupado += Number(order.descuento)
+          }
+        })
+      }
     })
     const nombresRutas = rutasSeleccionadas.map((r) => r.ruta)
 
@@ -1143,6 +1153,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
         devoluciones: totalDevolucionesAgrupado,
         repasos: totalRepasosAgrupado,
         agotados: totalAgotadosAgrupado,
+        descuentos: totalDescuentosAgrupado,
       },
     }
 
@@ -1190,19 +1201,26 @@ const handleOpenModal = (planilla: RouteSheet) => {
     try {
       setSubmitting(true)
 
+      // Calcular totalEsperado = cargue - novedades (fiado + devoluciones + repasos + agotados + descuentos)
+      const cargue = agrupadoData.totales.cargue || 0
+      const novedades = (agrupadoData.totales.fiado || 0) + (agrupadoData.totales.devoluciones || 0) + (agrupadoData.totales.repasos || 0) + (agrupadoData.totales.agotados || 0) + (agrupadoData.totales.descuentos || 0)
+      const totalEsperadoCalculado = cargue - novedades
+
       const response = await fetch("/api/cuadres-caja", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           planillaIds: agrupadoData.planillaIds,
           entregador: agrupadoData.entregador,
-          totalEsperado: agrupadoData.totales.entregado,
+          totalEsperado: totalEsperadoCalculado,
           efectivoRecibido: Number(formData.efectivoRecibido),
           tieneConsignacion: formData.tieneConsignacion,
           numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
           banco: formData.tieneConsignacion ? formData.banco : null,
           montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
           observaciones: formData.observaciones || null,
+          descuento: agrupadoData.totales.descuentos || 0,
+          agotados: agrupadoData.totales.agotados || 0,
         }),
       })
 
@@ -1322,13 +1340,18 @@ const handleSubmitFiado = async () => {
       setSubmitting(true)
 
       const totals = calculateRouteTotals(selectedPlanilla)
+      
+      // Calcular totalEsperado = cargue - novedades (fiado + devoluciones + repasos + agotados + descuentos)
+      const cargue = selectedPlanilla.montoCargue || 0
+      const novedades = totals.fiado + totals.devoluciones + totals.repasos + totals.agotados + Number(formData.descuento || 0)
+      const totalEsperadoCalculado = cargue - novedades
 
       const response = await fetch("/api/caja/recibir-efectivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           planillaId: selectedPlanilla.id,
-          efectivoEsperado: totals.entregado,
+          efectivoEsperado: totalEsperadoCalculado,
           efectivoRecibido: Number(formData.efectivoRecibido),
           tieneConsignacion: formData.tieneConsignacion,
           numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
@@ -1337,7 +1360,8 @@ const handleSubmitFiado = async () => {
           fechaConsignacion: formData.tieneConsignacion ? formData.fechaConsignacion : null,
           observaciones: formData.observaciones || null,
           descuento: Number(formData.descuento || 0),             
-          motivoDescuento: formData.motivoDescuento || null,  
+          motivoDescuento: formData.motivoDescuento || null,
+          agotados: totals.agotados || 0,
         }),
       })
 
@@ -2641,7 +2665,7 @@ filteredRoutes.forEach((route) => {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Descuentos</p>
-                  <p className="font-semibold text-pink-600">{formatCOP(Number(formData.descuento || 0))}</p>
+                  <p className="font-semibold text-pink-600">{formatCOP(agrupadoData?.totales.descuentos || 0)}</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3 text-xs">
@@ -2649,7 +2673,7 @@ filteredRoutes.forEach((route) => {
                   <p className="text-muted-foreground">Diferencia Esperada</p>
                   {(() => {
                     const cargue = agrupadoData?.totales.cargue || 0
-                    const novedades = (agrupadoData?.totales.fiado || 0) + (agrupadoData?.totales.devoluciones || 0) + (agrupadoData?.totales.repasos || 0) + (agrupadoData?.totales.agotados || 0) + Number(formData.descuento || 0)
+                    const novedades = (agrupadoData?.totales.fiado || 0) + (agrupadoData?.totales.devoluciones || 0) + (agrupadoData?.totales.repasos || 0) + (agrupadoData?.totales.agotados || 0) + (agrupadoData?.totales.descuentos || 0)
                     const totalEsperado = cargue - novedades
                     const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
                     const diferencia = Math.round((totalRecibido - totalEsperado) * 100) / 100
