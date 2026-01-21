@@ -2273,7 +2273,6 @@ filteredRoutes.forEach((route) => {
                                           </div>
                                         </div>
                                     </Card>
-                                  )
                                 })}
                               </div>
                             </div>
