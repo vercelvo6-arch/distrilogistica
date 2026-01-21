@@ -1605,41 +1605,41 @@ filteredRoutes.forEach((route) => {
               </Card>
 
               <div className="grid grid-cols-7 gap-4">
-  <Card className="p-4 hover:shadow-md transition-shadow">
-    <p className="text-xs font-medium text-muted-foreground mb-2">Total Cargue</p>
-    <p className="text-xl font-bold tracking-tight">{formatCOP(totalCargue)}</p>
-  </Card>
-  
-  <Card className="p-4 bg-green-50 border-green-200 hover:shadow-md transition-shadow">
-    <p className="text-xs font-medium text-green-700 mb-2">Entregado</p>
-    <p className="text-xl font-bold text-green-700 tracking-tight">{formatCOP(totalEntregado)}</p>
-  </Card>
-  
-  <Card className="p-4 bg-yellow-50 border-yellow-200 hover:shadow-md transition-shadow">
-    <p className="text-xs font-medium text-yellow-700 mb-2">Fiado (CxC)</p>
-    <p className="text-xl font-bold text-yellow-700 tracking-tight">{formatCOP(totalFiado)}</p>
-  </Card>
-  
-  <Card className="p-4 bg-red-50 border-red-200 hover:shadow-md transition-shadow">
-    <p className="text-xs font-medium text-red-700 mb-2">Devoluciones</p>
-    <p className="text-xl font-bold text-red-700 tracking-tight">{formatCOP(totalDevoluciones)}</p>
-  </Card>
-  
-  <Card className="p-4 bg-blue-50 border-blue-200 hover:shadow-md transition-shadow">
-    <p className="text-xs font-medium text-blue-700 mb-2">Repasos</p>
-    <p className="text-xl font-bold text-blue-700 tracking-tight">{formatCOP(totalRepasos)}</p>
-  </Card>
-  
-  <Card className="p-4 bg-gray-50 border-gray-200 hover:shadow-md transition-shadow">
-    <p className="text-xs font-medium text-gray-700 mb-2">Agotados</p>
-    <p className="text-xl font-bold text-gray-700 tracking-tight">{formatCOP(totalAgotados)}</p>
-  </Card>
-  
-  <Card className="p-4 bg-purple-50 border-purple-200 hover:shadow-md transition-shadow">
-    <p className="text-xs font-medium text-purple-700 mb-2">Descuentos</p>
-    <p className="text-xl font-bold text-purple-700 tracking-tight">{formatCOP(totalDescuentos)}</p>
-  </Card>
-</div>
+                <Card className="p-4 hover:shadow-md transition-shadow">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Total Cargue</p>
+                  <p className="text-xl font-bold tracking-tight">{formatCOP(totalCargue)}</p>
+                </Card>
+
+                <Card className="p-4 bg-green-50 border-green-200 hover:shadow-md transition-shadow">
+                  <p className="text-xs font-medium text-green-700 mb-2">Entregado</p>
+                  <p className="text-xl font-bold text-green-700 tracking-tight">{formatCOP(totalEntregado)}</p>
+                </Card>
+
+                <Card className="p-4 bg-yellow-50 border-yellow-200 hover:shadow-md transition-shadow">
+                  <p className="text-xs font-medium text-yellow-700 mb-2">{"Fiado (CxC)"}</p>
+                  <p className="text-xl font-bold text-yellow-700 tracking-tight">{formatCOP(totalFiado)}</p>
+                </Card>
+
+                <Card className="p-4 bg-red-50 border-red-200 hover:shadow-md transition-shadow">
+                  <p className="text-xs font-medium text-red-700 mb-2">Devoluciones</p>
+                  <p className="text-xl font-bold text-red-700 tracking-tight">{formatCOP(totalDevoluciones)}</p>
+                </Card>
+
+                <Card className="p-4 bg-blue-50 border-blue-200 hover:shadow-md transition-shadow">
+                  <p className="text-xs font-medium text-blue-700 mb-2">Repasos</p>
+                  <p className="text-xl font-bold text-blue-700 tracking-tight">{formatCOP(totalRepasos)}</p>
+                </Card>
+
+                <Card className="p-4 bg-gray-50 border-gray-200 hover:shadow-md transition-shadow">
+                  <p className="text-xs font-medium text-gray-700 mb-2">Agotados</p>
+                  <p className="text-xl font-bold text-gray-700 tracking-tight">{formatCOP(totalAgotados)}</p>
+                </Card>
+
+                <Card className="p-4 bg-purple-50 border-purple-200 hover:shadow-md transition-shadow">
+                  <p className="text-xs font-medium text-purple-700 mb-2">Descuentos</p>
+                  <p className="text-xl font-bold text-purple-700 tracking-tight">{formatCOP(totalDescuentos)}</p>
+                </Card>
+              </div>
 
               <Card className="p-6">
                 <h2 className="text-lg font-semibold mb-4">Entregas Pendientes de Cuadrar</h2>
@@ -1756,7 +1756,7 @@ filteredRoutes.forEach((route) => {
                                   <Plus className="h-4 w-4 mr-2" />
                                   Nuevo Pedido
                                 </Button>
-<Button onClick={() => handleOpenModal(route)} size="sm">
+                                <Button onClick={() => handleOpenModal(route)} size="sm">
                                   <DollarSign className="h-4 w-4 mr-2" />
                                   Recibir Efectivo
                                 </Button>
@@ -1780,47 +1780,48 @@ filteredRoutes.forEach((route) => {
                                 </Button>
                               </div>
                             </div>
+                          </div>
 
-                             {/* Totales con mejor espaciado y fondos de colores */}
-<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-  <div className="bg-gray-100 p-3 rounded-lg border border-gray-200">
-    <p className="text-xs text-gray-600 mb-1">Cargue</p>
-    <p className="text-sm font-bold text-gray-800">{formatCOP(route.totalAmount)}</p>
-  </div>
-  
-  <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-    <p className="text-xs text-green-700 mb-1">Entregado</p>
-    <p className="text-sm font-bold text-green-700">{formatCOP(totals.entregado)}</p>
-  </div>
-  
-  <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-    <p className="text-xs text-yellow-700 mb-1">Fiado</p>
-    <p className="text-sm font-bold text-yellow-700">{formatCOP(totals.fiado)}</p>
-  </div>
-  
-  <div className="bg-red-50 p-3 rounded-lg border border-red-200">
-    <p className="text-xs text-red-700 mb-1">Devoluciones</p>
-    <p className="text-sm font-bold text-red-700">{formatCOP(totals.devoluciones)}</p>
-  </div>
-  
-  <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-    <p className="text-xs text-blue-700 mb-1">Repasos</p>
-    <p className="text-sm font-bold text-blue-700">{formatCOP(totals.repasos)}</p>
-  </div>
-  
-  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-    <p className="text-xs text-gray-700 mb-1">Agotados</p>
-    <p className="text-sm font-bold text-gray-700">{formatCOP(totals.agotados)}</p>
-  </div>
-</div>
+                          {/* Totales con mejor espaciado y fondos de colores */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4 mt-4">
+                            <div className="bg-gray-100 p-3 rounded-lg border border-gray-200">
+                              <p className="text-xs text-gray-600 mb-1">Cargue</p>
+                              <p className="text-sm font-bold text-gray-800">{formatCOP(route.totalAmount)}</p>
+                            </div>
 
-{/* Efectivo Esperado - MANTENER IGUAL */}
-<div className="mt-4 pt-4 border-t bg-white -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
-  <div className="flex items-center justify-between">
-    <p className="text-sm font-medium">Efectivo Esperado:</p>
-    <p className="text-xl font-bold text-green-600">{formatCOP(totals.entregado)}</p>
-  </div>
-</div>
+                            <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                              <p className="text-xs text-green-700 mb-1">Entregado</p>
+                              <p className="text-sm font-bold text-green-700">{formatCOP(totals.entregado)}</p>
+                            </div>
+
+                            <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                              <p className="text-xs text-yellow-700 mb-1">Fiado</p>
+                              <p className="text-sm font-bold text-yellow-700">{formatCOP(totals.fiado)}</p>
+                            </div>
+
+                            <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                              <p className="text-xs text-red-700 mb-1">Devoluciones</p>
+                              <p className="text-sm font-bold text-red-700">{formatCOP(totals.devoluciones)}</p>
+                            </div>
+
+                            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                              <p className="text-xs text-blue-700 mb-1">Repasos</p>
+                              <p className="text-sm font-bold text-blue-700">{formatCOP(totals.repasos)}</p>
+                            </div>
+
+                            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                              <p className="text-xs text-gray-700 mb-1">Agotados</p>
+                              <p className="text-sm font-bold text-gray-700">{formatCOP(totals.agotados)}</p>
+                            </div>
+                          </div>
+
+                          {/* Efectivo Esperado */}
+                          <div className="mt-4 pt-4 border-t bg-white -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium">Efectivo Esperado:</p>
+                              <p className="text-xl font-bold text-green-600">{formatCOP(totals.entregado)}</p>
+                            </div>
+                          </div>
 
                           {expandedRoutes.has(route.id) && Array.isArray(route.orders) && (
                             <div className="mt-4 pt-4 border-t">
@@ -2751,7 +2752,7 @@ filteredRoutes.forEach((route) => {
                 </div>
               ))}
             </div>
-            </div>
+
             <Button variant="outline" onClick={agregarProducto} className="w-full mt-3 bg-transparent">
               <Plus className="h-4 w-4 mr-2" />
               Agregar Otro Producto
@@ -2770,7 +2771,7 @@ filteredRoutes.forEach((route) => {
       </Dialog>
 
       {/* Modal para Fiado Parcial */}
-<Dialog open={showFiadoModal} onOpenChange={setShowFiadoModal}>
+      <Dialog open={showFiadoModal} onOpenChange={setShowFiadoModal}>
   <DialogContent className="sm:max-w-[425px]">
     <DialogHeader>
       <DialogTitle>Registrar Pago Parcial (Fiado)</DialogTitle>
