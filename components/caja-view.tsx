@@ -249,7 +249,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     let effectiveTotal = 0
     let returnedTotal = 0
-    let agotadosEnPedido = 0  // ✅ NUEVO: rastrear agotados por pedido
+    let agotadosEnPedido = 0
 
     order.items.forEach((item) => {
       if (!item) return
@@ -258,24 +258,23 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       const precioUnit = Number(item.valorUnidad) || 0
       const subtotalOriginal = cantOriginal * precioUnit
 
-      // ✅ Si está marcado como devuelto (checkbox)
+      // Si está marcado como devuelto (checkbox)
       if (item.devuelto) {
         returnedTotal += subtotalOriginal
         return
       }
 
-      // ✅ Verificar si está agotado
+      // Verificar si está agotado
       const cantEntregada = item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
         ? Number(item.cantidadEntregada)
         : cantOriginal
 
       if (cantEntregada === 0 || item.estadoProducto === "agotado") {
-        // 🚫 AGOTADO: cuenta en "Agotados" pero NO en "Entregado"
         agotadosEnPedido += subtotalOriginal
         return
       }
 
-      // ✅ Calcular subtotal real (considerando ajustes manuales)
+      // Calcular subtotal real (considerando ajustes manuales)
       let subtotalReal = 0
       if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
         subtotalReal = Number(item.subtotalAjustado)
@@ -286,13 +285,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       effectiveTotal += subtotalReal
     })
 
-    // ✅ Sumar agotados del pedido
+    // Sumar agotados del pedido
     agotados += agotadosEnPedido
 
-    // ✅ Sumar devoluciones parciales
+    // Sumar devoluciones parciales
     devoluciones += returnedTotal
 
-    // ✅ Clasificar según estado del PEDIDO
+    // Clasificar según estado del PEDIDO
     if (order.estado === "fiado") {
       fiado += effectiveTotal
       if (order.descuento) {
@@ -303,13 +302,21 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     } else if (order.estado === "devolucion") {
       devoluciones += effectiveTotal
     } else {
-      // ✅ TODO LO DEMÁS = ENTREGADO
       entregado += effectiveTotal
       if (order.descuento) {
         entregado -= Number(order.descuento)
       }
     }
   })
+
+  return {
+    entregado: Math.round(entregado * 100) / 100,
+    fiado: Math.round(fiado * 100) / 100,
+    devoluciones: Math.round(devoluciones * 100) / 100,
+    repasos: Math.round(repasos * 100) / 100,
+    agotados: Math.round(agotados * 100) / 100,
+  }
+}
 
   return {
     entregado: Math.round(entregado * 100) / 100,
