@@ -238,7 +238,12 @@ export async function GET() {
             pe.total,
             pe.estado,
             pe.observaciones,
-            pe.entregado_en
+            pe.entregado_en,
+            pe.descuento,
+            pe.motivo_descuento,
+            pe.monto_pagado,
+            pe.saldo_pendiente,
+            pe.es_cobro
           FROM pedidos pe
           WHERE pe.planilla_id = ${planilla.id}
           ORDER BY pe.secuencia
@@ -249,26 +254,26 @@ export async function GET() {
         const pedidosConProductos = await Promise.all(
           pedidos.map(async (pedido) => {
             const productos = await sql`
-  SELECT 
-    codigo,
-    nombre,
-    categoria,
-    cantidad,
-    precio_unitario,
-    total,
-    devuelto,
-    estado_alistamiento,
-    cantidad_disponible,
-    cantidad_faltante,
-    unidad_incompleta,
-    observaciones_faltante,
-    cantidad_entregada,
-    subtotal_ajustado,
-    estado_producto
-  FROM pedido_productos
-  WHERE pedido_id = ${pedido.id}
-  ORDER BY codigo
-`;
+              SELECT 
+                codigo,
+                nombre,
+                categoria,
+                cantidad,
+                precio_unitario,
+                total,
+                devuelto,
+                estado_alistamiento,
+                cantidad_disponible,
+                cantidad_faltante,
+                unidad_incompleta,
+                observaciones_faltante,
+                cantidad_entregada,
+                subtotal_ajustado,
+                estado_producto
+              FROM pedido_productos
+              WHERE pedido_id = ${pedido.id}
+              ORDER BY codigo
+            `;
 
             return {
               ...pedido,
