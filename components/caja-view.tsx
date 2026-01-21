@@ -1113,6 +1113,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
     let totalFiadoAgrupado = 0
     let totalDevolucionesAgrupado = 0
     let totalRepasosAgrupado = 0
+    let totalAgotadosAgrupado = 0
 
     rutasSeleccionadas.forEach((route) => {
       if (!route) return
@@ -1125,6 +1126,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
       totalFiadoAgrupado += totals.fiado
       totalDevolucionesAgrupado += totals.devoluciones
       totalRepasosAgrupado += totals.repasos
+      totalAgotadosAgrupado += totals.agotados
     })
     const nombresRutas = rutasSeleccionadas.map((r) => r.ruta)
 
@@ -1140,6 +1142,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
         fiado: totalFiadoAgrupado,
         devoluciones: totalDevolucionesAgrupado,
         repasos: totalRepasosAgrupado,
+        agotados: totalAgotadosAgrupado,
       },
     }
 
@@ -2636,7 +2639,7 @@ filteredRoutes.forEach((route) => {
                   <p className="text-muted-foreground">Diferencia Esperada</p>
                   {(() => {
                     const cargue = agrupadoData?.totales.cargue || 0
-                    const novedades = (agrupadoData?.totales.fiado || 0) + (agrupadoData?.totales.devoluciones || 0) + (agrupadoData?.totales.repasos || 0)
+                    const novedades = (agrupadoData?.totales.fiado || 0) + (agrupadoData?.totales.devoluciones || 0) + (agrupadoData?.totales.repasos || 0) + (agrupadoData?.totales.agotados || 0) + Number(formData.descuento || 0)
                     const totalEsperado = cargue - novedades
                     const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
                     const diferencia = Math.round((totalRecibido - totalEsperado) * 100) / 100
