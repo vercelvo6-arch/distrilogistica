@@ -258,54 +258,42 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       const precioUnit = Number(item.valorUnidad) || 0
       const subtotalOriginal = cantOriginal * precioUnit
 
-      // Si está marcado como devuelto (checkbox)
       if (item.devuelto) {
         returnedTotal += subtotalOriginal
         return
       }
 
-      // Verificar si está agotado
-      const cantEntregada = item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
-        ? Number(item.cantidadEntregada)
-        : cantOriginal
+      const cantEntregada =
+        item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+          ? Number(item.cantidadEntregada)
+          : cantOriginal
 
       if (cantEntregada === 0 || item.estadoProducto === "agotado") {
         agotadosEnPedido += subtotalOriginal
         return
       }
 
-      // Calcular subtotal real (considerando ajustes manuales)
-      let subtotalReal = 0
-      if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-        subtotalReal = Number(item.subtotalAjustado)
-      } else {
-        subtotalReal = cantEntregada * precioUnit
-      }
+      const subtotalReal =
+        item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+          ? Number(item.subtotalAjustado)
+          : cantEntregada * precioUnit
 
       effectiveTotal += subtotalReal
     })
 
-    // Sumar agotados del pedido
     agotados += agotadosEnPedido
-
-    // Sumar devoluciones parciales
     devoluciones += returnedTotal
 
-    // Clasificar según estado del PEDIDO
     if (order.estado === "fiado") {
       fiado += effectiveTotal
-      if (order.descuento) {
-        fiado -= Number(order.descuento)
-      }
+      if (order.descuento) fiado -= Number(order.descuento)
     } else if (order.estado === "repaso") {
       repasos += effectiveTotal
     } else if (order.estado === "devolucion") {
       devoluciones += effectiveTotal
     } else {
       entregado += effectiveTotal
-      if (order.descuento) {
-        entregado -= Number(order.descuento)
-      }
+      if (order.descuento) entregado -= Number(order.descuento)
     }
   })
 
@@ -317,6 +305,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     agotados: Math.round(agotados * 100) / 100,
   }
 }
+
 
   return {
     entregado: Math.round(entregado * 100) / 100,
