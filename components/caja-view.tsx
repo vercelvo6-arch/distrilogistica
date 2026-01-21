@@ -61,7 +61,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [showFiadoModal, setShowFiadoModal] = useState(false)
   const [selectedOrderForFiado, setSelectedOrderForFiado] = useState<Order | null>(null)
   const [montoPagadoFiado, setMontoPagadoFiado] = useState("")
-  const [formData, setFormData] = useState({
+const [formData, setFormData] = useState({
     efectivoRecibido: "",
     tieneConsignacion: false,
     numeroConsignacion: "",
@@ -71,6 +71,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     observaciones: "",
     descuento: "",
     motivoDescuento: "",
+    // Campos para cuadre de caja por novedades
+    devolucionesParciales: "",
+    devolucionesCompletas: "",
+    repasos: "",
+    fiados: "",
+    agotados: "",
   })
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
@@ -1005,11 +1011,11 @@ const eliminarProducto = (productoId: string) => {
     }
   }
 
-  const handleOpenModal = (planilla: RouteSheet) => {
+const handleOpenModal = (planilla: RouteSheet) => {
     const totals = calculateRouteTotals(planilla)
     setSelectedPlanilla(planilla)
     setFormData({
-      efectivoRecibido: totals.entregado.toString(),
+      efectivoRecibido: "",
       tieneConsignacion: false,
       numeroConsignacion: "",
       banco: "",
@@ -1018,6 +1024,11 @@ const eliminarProducto = (productoId: string) => {
       observaciones: "",
       descuento: "",
       motivoDescuento: "",
+      devolucionesParciales: totals.devoluciones.toString(),
+      devolucionesCompletas: "0",
+      repasos: totals.repasos.toString(),
+      fiados: totals.fiado.toString(),
+      agotados: totals.agotados.toString(),
     })
     setShowModal(true)
   }
@@ -2463,29 +2474,19 @@ filteredRoutes.forEach((route) => {
                   </div>
                   <div>
                     <p className="text-muted-foreground">Diferencia Esperada</p>
-                    <p
-                      className={`font-semibold ${
-                        Math.round(
-                          (Number(formData.efectivoRecibido || 0) +
-                            (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                            (calculateRouteTotals(selectedPlanilla).entregado - Number(formData.descuento || 0))) *
-                            100,
-                        ) /
-                          100 ===
-                        0
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {formatCOP(
-                        Math.round(
-                          (Number(formData.efectivoRecibido || 0) +
-                            (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                            calculateRouteTotals(selectedPlanilla).entregado) *
-                            100,
-                        ) / 100,
-                      )}
-                    </p>
+                    {(() => {
+                      const totals = calculateRouteTotals(selectedPlanilla)
+                      const cargue = selectedPlanilla?.montoCargue || 0
+                      const novedades = totals.fiado + totals.devoluciones + totals.repasos + totals.agotados + Number(formData.descuento || 0)
+                      const totalEsperado = cargue - novedades
+                      const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
+                      const diferencia = Math.round((totalRecibido - totalEsperado) * 100) / 100
+                      return (
+                        <p className={`font-semibold ${diferencia === 0 ? "text-green-600" : "text-red-600"}`}>
+                          {formatCOP(diferencia)}
+                        </p>
+                      )
+                    })()}
                   </div>
                 </div>
               </div>
@@ -2633,29 +2634,18 @@ filteredRoutes.forEach((route) => {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Diferencia Esperada</p>
-                  <p
-                    className={`font-semibold ${
-                      Math.round(
-                        (Number(formData.efectivoRecibido || 0) +
-                          (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                          (agrupadoData?.totales.entregado || 0)) *
-                          100,
-                      ) /
-                        100 ===
-                      0
-                        ? "text-green-600"
-                        : "text-red-600"
-                    }`}
-                  >
-                    {formatCOP(
-                      Math.round(
-                        (Number(formData.efectivoRecibido || 0) +
-                          (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0) -
-                          (agrupadoData?.totales.entregado || 0)) *
-                          100,
-                      ) / 100,
-                    )}
-                  </p>
+                  {(() => {
+                    const cargue = agrupadoData?.totales.cargue || 0
+                    const novedades = (agrupadoData?.totales.fiado || 0) + (agrupadoData?.totales.devoluciones || 0) + (agrupadoData?.totales.repasos || 0)
+                    const totalEsperado = cargue - novedades
+                    const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
+                    const diferencia = Math.round((totalRecibido - totalEsperado) * 100) / 100
+                    return (
+                      <p className={`font-semibold ${diferencia === 0 ? "text-green-600" : "text-red-600"}`}>
+                        {formatCOP(diferencia)}
+                      </p>
+                    )
+                  })()}
                 </div>
               </div>
             </div>
