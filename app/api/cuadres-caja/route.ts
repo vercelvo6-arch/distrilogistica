@@ -22,8 +22,9 @@ export async function POST(request: Request) {
       banco,
       montoConsignacion,
       observaciones,
-      descuento,           // ✅ NUEVO
-      motivoDescuento      // ✅ NUEVO
+      descuento,
+      motivoDescuento,
+      agotados            // ✅ NUEVO - Recibir agotados del frontend
     } = body
 
     // Validación
@@ -34,14 +35,15 @@ export async function POST(request: Request) {
       )
     }
 
-    // Cálculos corregidos con descuento
+    // Cálculos corregidos con descuento Y agotados
     const totalConsignado = Number(montoConsignacion || 0)
     const totalEfectivo = Number(efectivoRecibido) || 0
     const totalEsperadoNum = Number(totalEsperado) || 0
     const descuentoNum = Number(descuento || 0)
+    const agotadosNum = Number(agotados || 0)  // ✅ Convertir agotados a número
     
-    // ✅ Ajustar el total esperado restando el descuento
-    const totalEsperadoAjustado = totalEsperadoNum - descuentoNum
+    // ✅ Ajustar el total esperado restando descuento Y agotados
+    const totalEsperadoAjustado = totalEsperadoNum - descuentoNum - agotadosNum
     
     const totalRecibido = totalEfectivo + totalConsignado
     const diferencia = Math.round((totalRecibido - totalEsperadoAjustado) * 100) / 100
@@ -52,13 +54,14 @@ export async function POST(request: Request) {
       planillas: planillaIds.length,
       totalEsperado: totalEsperadoNum,
       descuento: descuentoNum,
+      agotados: agotadosNum,
       totalEsperadoAjustado,
       totalRecibido,
       diferencia,
       estado
     })
 
-    // Insertar cuadre con campos de descuento
+    // Insertar cuadre con campos de descuento Y agotados
     const result = await sql`
       INSERT INTO cuadres_caja (
         entregador,
@@ -74,7 +77,8 @@ export async function POST(request: Request) {
         numero_consignacion,
         banco,
         descuento,
-        motivo_descuento
+        motivo_descuento,
+        agotados
       ) VALUES (
         ${entregador},
         NOW(),
@@ -89,7 +93,8 @@ export async function POST(request: Request) {
         ${numeroConsignacion || null},
         ${banco || null},
         ${descuentoNum},
-        ${motivoDescuento || null}
+        ${motivoDescuento || null},
+        ${agotadosNum}
       )
       RETURNING id
     `
@@ -101,6 +106,7 @@ export async function POST(request: Request) {
       await sql`
         UPDATE planillas
         SET cuadrado_en_caja = true,
+            fecha_cuadre_caja = NOW(),
             updated_at = NOW()
         WHERE id = ${planillaId}
       `
@@ -119,7 +125,7 @@ export async function POST(request: Request) {
     if (configComision.length > 0) {
       const porcentaje = Number(configComision[0].porcentaje_comision)
       
-      // ✅ Base = efectivo recibido (sin restar devoluciones)
+      // ✅ Base = efectivo recibido (sin restar devoluciones ni agotados)
       const baseComisionable = Math.round(totalEfectivo * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
@@ -157,7 +163,8 @@ export async function POST(request: Request) {
         base: baseComisionable,
         porcentaje,
         comision: montoComision,
-        descuento: descuentoNum
+        descuento: descuentoNum,
+        agotados: agotadosNum
       })
     } else {
       console.log('[CUADRE CAJA] ⚠️ No hay configuración de comisión para:', entregador)
@@ -168,7 +175,16 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       cuadreId,
-      mensaje: `✅ Cuadre registrado para ${planillaIds.length} ruta${planillaIds.length > 1 ? 's' : ''}`
+      mensaje: `✅ Cuadre registrado para ${planillaIds.length} ruta${planillaIds.length > 1 ? 's' : ''}`,
+      detalles: {
+        totalEsperado: totalEsperadoNum,
+        descuento: descuentoNum,
+        agotados: agotadosNum,
+        totalAjustado: totalEsperadoAjustado,
+        totalRecibido,
+        diferencia,
+        estado
+      }
     })
 
   } catch (error) {
