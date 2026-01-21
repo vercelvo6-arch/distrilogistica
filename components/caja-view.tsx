@@ -2740,14 +2740,15 @@ filteredRoutes.forEach((route) => {
     />
     <div className="flex items-center justify-end gap-2">
       <span className="font-medium text-sm">{formatCOP(producto.subtotal)}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => eliminarProducto(producto.id)}>
-              <X className="h-4 w-4 text-red-500" />
-            </Button>
-        </div>
-     </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => eliminarProducto(producto.id)}
+      >
+        <X className="h-4 w-4 text-red-500" />
+      </Button>
+    </div>
+  </div>
 ))}
             </div>
             <Button variant="outline" onClick={agregarProducto} className="w-full mt-3 bg-transparent">
