@@ -2626,7 +2626,7 @@ filteredRoutes.forEach((route) => {
                   <p className="font-semibold text-yellow-600">{formatCOP(agrupadoData?.totales.fiado || 0)}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-4 gap-3 text-xs">
                 <div>
                   <p className="text-muted-foreground">Devoluciones</p>
                   <p className="font-semibold text-red-600">{formatCOP(agrupadoData?.totales.devoluciones || 0)}</p>
@@ -2635,6 +2635,16 @@ filteredRoutes.forEach((route) => {
                   <p className="text-muted-foreground">Repasos</p>
                   <p className="font-semibold text-blue-600">{formatCOP(agrupadoData?.totales.repasos || 0)}</p>
                 </div>
+                <div>
+                  <p className="text-muted-foreground">Agotados</p>
+                  <p className="font-semibold text-purple-600">{formatCOP(agrupadoData?.totales.agotados || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Descuentos</p>
+                  <p className="font-semibold text-pink-600">{formatCOP(Number(formData.descuento || 0))}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-xs">
                 <div>
                   <p className="text-muted-foreground">Diferencia Esperada</p>
                   {(() => {
