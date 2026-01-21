@@ -235,7 +235,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
   if (!route || !Array.isArray(route.orders)) {
-    return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0, agotados: 0 }
+    return {
+      entregado: 0,
+      fiado: 0,
+      devoluciones: 0,
+      repasos: 0,
+      agotados: 0,
+    }
   }
 
   let entregado = 0
@@ -258,11 +264,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       const precioUnit = Number(item.valorUnidad) || 0
       const subtotalOriginal = cantOriginal * precioUnit
 
+      // Producto devuelto
       if (item.devuelto) {
         returnedTotal += subtotalOriginal
         return
       }
 
+      // Cantidad entregada o agotado
       const cantEntregada =
         item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
           ? Number(item.cantidadEntregada)
@@ -273,6 +281,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         return
       }
 
+      // Subtotal real
       const subtotalReal =
         item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
           ? Number(item.subtotalAjustado)
@@ -305,6 +314,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     agotados: Math.round(agotados * 100) / 100,
   }
 }
+
 
 
   return {
