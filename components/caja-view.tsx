@@ -249,56 +249,76 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     let effectiveTotal = 0
     let returnedTotal = 0
+    let agotadosEnPedido = 0  // ✅ NUEVO: rastrear agotados por pedido
 
     order.items.forEach((item) => {
       if (!item) return
 
-      // ✅ Calcular el subtotal real del producto
-      let subtotalReal = 0
-      let subtotalParaCargue = 0  // Para productos agotados
-      
-      if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-        // Si tiene ajuste manual, usar ese valor
-        subtotalReal = Number(item.subtotalAjustado) || 0
-        subtotalParaCargue = subtotalReal
-      } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
-        // Si tiene cantidad entregada diferente
-        const cantEntregada = Number(item.cantidadEntregada) || 0
-        const cantOriginal = Number(item.cantidad) || 0
-        const precioUnit = Number(item.valorUnidad) || 0
-        
-        if (cantEntregada === 0) {
-          // AGOTADO: mantener subtotal original para cuadrar cargue
-          subtotalReal = 0  // No cuenta para comisión
-          subtotalParaCargue = cantOriginal * precioUnit  // Mantiene valor original
-        } else {
-          // PARCIAL o COMPLETO: calcular con cantidad entregada
-          subtotalReal = cantEntregada * precioUnit
-          subtotalParaCargue = subtotalReal
-        }
-      } else {
-        // Si no hay ajustes, usar el subtotal original
-        subtotalReal = Number(item.subtotal) || 0
-        subtotalParaCargue = subtotalReal
-      }
+      const cantOriginal = Number(item.cantidad) || 0
+      const precioUnit = Number(item.valorUnidad) || 0
+      const subtotalOriginal = cantOriginal * precioUnit
 
       // ✅ Si está marcado como devuelto (checkbox)
       if (item.devuelto) {
-        returnedTotal += subtotalParaCargue
-      } else {
-        const estadoProd = item.estadoProducto || "normal"
-        
-        // ✅ Si está agotado (cantidad = 0)
-        if (estadoProd === "agotado") {
-          agotados += subtotalParaCargue  // Cuenta en "Agotados" con valor original
-          // NO suma a effectiveTotal (no cuenta para comisión)
-        } else {
-          // NORMAL o PARCIAL
-          effectiveTotal += subtotalReal  // Cuenta para comisión
-        }
+        returnedTotal += subtotalOriginal
+        return
       }
+
+      // ✅ Verificar si está agotado
+      const cantEntregada = item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+        ? Number(item.cantidadEntregada)
+        : cantOriginal
+
+      if (cantEntregada === 0 || item.estadoProducto === "agotado") {
+        // 🚫 AGOTADO: cuenta en "Agotados" pero NO en "Entregado"
+        agotadosEnPedido += subtotalOriginal
+        return
+      }
+
+      // ✅ Calcular subtotal real (considerando ajustes manuales)
+      let subtotalReal = 0
+      if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+        subtotalReal = Number(item.subtotalAjustado)
+      } else {
+        subtotalReal = cantEntregada * precioUnit
+      }
+
+      effectiveTotal += subtotalReal
     })
 
+    // ✅ Sumar agotados del pedido
+    agotados += agotadosEnPedido
+
+    // ✅ Sumar devoluciones parciales
+    devoluciones += returnedTotal
+
+    // ✅ Clasificar según estado del PEDIDO
+    if (order.estado === "fiado") {
+      fiado += effectiveTotal
+      if (order.descuento) {
+        fiado -= Number(order.descuento)
+      }
+    } else if (order.estado === "repaso") {
+      repasos += effectiveTotal
+    } else if (order.estado === "devolucion") {
+      devoluciones += effectiveTotal
+    } else {
+      // ✅ TODO LO DEMÁS = ENTREGADO
+      entregado += effectiveTotal
+      if (order.descuento) {
+        entregado -= Number(order.descuento)
+      }
+    }
+  })
+
+  return {
+    entregado: Math.round(entregado * 100) / 100,
+    fiado: Math.round(fiado * 100) / 100,
+    devoluciones: Math.round(devoluciones * 100) / 100,
+    repasos: Math.round(repasos * 100) / 100,
+    agotados: Math.round(agotados * 100) / 100,
+  }
+}
     // ✅ Sumar devoluciones parciales (productos individuales con checkbox)
     devoluciones += returnedTotal
 
