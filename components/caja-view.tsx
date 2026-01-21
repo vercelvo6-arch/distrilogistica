@@ -330,26 +330,27 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     devoluciones += returnedTotal
 
     // ✅ Sumar según el estado del pedido COMPLETO
-if (order.estado === "fiado") {
-  fiado += effectiveTotal
-  // Restar descuento del pedido si existe
-  if (order.descuento) {
-    fiado -= Number(order.descuento)
-  }
-} else if (order.estado === "repaso") {
-  repasos += effectiveTotal
-} else if (order.estado === "devolucion") {
-  // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
-  devoluciones += effectiveTotal
-} else {
-  // ✅ TODO LO DEMÁS (pendiente, entregado, null) = ENTREGADO
-  entregado += effectiveTotal
-  // Restar descuento del pedido si existe
-  if (order.descuento) {
-    entregado -= Number(order.descuento)
-  }
-}
-    
+    if (order.estado === "fiado") {
+      fiado += effectiveTotal
+      // Restar descuento del pedido si existe
+      if (order.descuento) {
+        fiado -= Number(order.descuento)
+      }
+    } else if (order.estado === "repaso") {
+      repasos += effectiveTotal
+    } else if (order.estado === "devolucion") {
+      // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
+      devoluciones += effectiveTotal
+    } else {
+      // ✅ TODO LO DEMÁS (pendiente, entregado, null) = ENTREGADO
+      entregado += effectiveTotal
+      // Restar descuento del pedido si existe
+      if (order.descuento) {
+        entregado -= Number(order.descuento)
+      }
+    }
+  })
+
   return {
     entregado: Math.round(entregado * 100) / 100,
     fiado: Math.round(fiado * 100) / 100,
