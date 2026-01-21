@@ -349,7 +349,6 @@ if (order.estado === "fiado") {
     entregado -= Number(order.descuento)
   }
 }
-  })
     
   return {
     entregado: Math.round(entregado * 100) / 100,
