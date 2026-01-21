@@ -2229,8 +2229,9 @@ filteredRoutes.forEach((route) => {
     <span className="text-lg font-bold text-orange-800">
       {formatCOP(effectiveTotal - (Number(order.descuento) || 0))}
     </span>
-  </div>
-)}
+                                            </div>
+                                          )}
+                                        </div>
 
                                           <div className="flex flex-wrap gap-2">
                                             <Button
@@ -2251,7 +2252,7 @@ filteredRoutes.forEach((route) => {
                                             >
                                               Repaso
                                             </Button>
-<Button
+                                            <Button
                                               size="sm"
                                               variant="destructive"
                                               onClick={() => handleOrderStatusChange(order.id, "devolucion")}
@@ -2272,7 +2273,9 @@ filteredRoutes.forEach((route) => {
                                             </Button>
                                           </div>
                                         </div>
+                                      )}
                                     </Card>
+                                  )
                                 })}
                               </div>
                             </div>
