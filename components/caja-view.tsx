@@ -2707,49 +2707,50 @@ filteredRoutes.forEach((route) => {
             <h3 className="font-semibold mt-4">Productos del Pedido</h3>
             <div className="space-y-4">
               {productosNuevoPedido.map((producto) => (
-  <div key={producto.id} className="grid grid-cols-6 gap-3 items-center border-b pb-3">
-    <Input
-      placeholder="Código"
-      value={producto.codigo}
-      onChange={(e) => actualizarProducto(producto.id, "codigo", e.target.value)}
-      className="col-span-1 text-xs"
-    />
-    <Input
-      placeholder="Descripción"
-      value={producto.descripcion}
-      onChange={(e) => actualizarProducto(producto.id, "descripcion", e.target.value)}
-      className="col-span-2 text-xs"
-    />
-    <Input
-      placeholder="Cantidad"
-      type="number"
-      min="1"
-      value={producto.cantidad}
-      onChange={(e) => actualizarProducto(producto.id, "cantidad", Number.parseInt(e.target.value) || 1)}
-      className="col-span-1 text-xs text-right"
-    />
-    <Input
-      placeholder="Precio Unit."
-      type="number"
-      min="0"
-      value={producto.precioUnitario}
-      onChange={(e) =>
-        actualizarProducto(producto.id, "precioUnitario", Number.parseFloat(e.target.value) || 0)
-      }
-      className="col-span-1 text-xs text-right"
-    />
-    <div className="flex items-center justify-end gap-2">
-      <span className="font-medium text-sm">{formatCOP(producto.subtotal)}</span>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => eliminarProducto(producto.id)}
-      >
-        <X className="h-4 w-4 text-red-500" />
-      </Button>
-    </div>
-  </div>
-))}
+                <div key={producto.id} className="grid grid-cols-6 gap-3 items-center border-b pb-3">
+                  <Input
+                    placeholder="Código"
+                    value={producto.codigo}
+                    onChange={(e) => actualizarProducto(producto.id, "codigo", e.target.value)}
+                    className="col-span-1 text-xs"
+                  />
+                  <Input
+                    placeholder="Descripción"
+                    value={producto.descripcion}
+                    onChange={(e) => actualizarProducto(producto.id, "descripcion", e.target.value)}
+                    className="col-span-2 text-xs"
+                  />
+                  <Input
+                    placeholder="Cantidad"
+                    type="number"
+                    min="1"
+                    value={producto.cantidad}
+                    onChange={(e) => actualizarProducto(producto.id, "cantidad", Number.parseInt(e.target.value) || 1)}
+                    className="col-span-1 text-xs text-right"
+                  />
+                  <Input
+                    placeholder="Precio Unit."
+                    type="number"
+                    min="0"
+                    value={producto.precioUnitario}
+                    onChange={(e) =>
+                      actualizarProducto(producto.id, "precioUnitario", Number.parseFloat(e.target.value) || 0)
+                    }
+                    className="col-span-1 text-xs text-right"
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <span className="font-medium text-sm">{formatCOP(producto.subtotal)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => eliminarProducto(producto.id)}
+                    >
+                      <X className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
             </div>
             <Button variant="outline" onClick={agregarProducto} className="w-full mt-3 bg-transparent">
               <Plus className="h-4 w-4 mr-2" />
