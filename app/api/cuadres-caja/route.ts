@@ -12,6 +12,8 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
+    console.log('[CUADRE CAJA] Body recibido:', JSON.stringify(body, null, 2))
+
     const {
       planillaIds,
       entregador,
@@ -22,43 +24,62 @@ export async function POST(request: Request) {
       banco,
       montoConsignacion,
       observaciones,
-      descuento,           // ✅ NUEVO
-      motivoDescuento      // ✅ NUEVO
+      descuento,
+      motivoDescuento,
+      agotados
     } = body
 
     // Validación
     if (!planillaIds || !Array.isArray(planillaIds) || planillaIds.length === 0) {
+      console.error('[CUADRE CAJA] Error: planillaIds inválido:', planillaIds)
       return NextResponse.json(
         { error: 'No se recibieron planillas válidas' },
         { status: 400 }
       )
     }
 
-    // Cálculos corregidos con descuento
+    if (!entregador) {
+      console.error('[CUADRE CAJA] Error: entregador faltante')
+      return NextResponse.json(
+        { error: 'Entregador es requerido' },
+        { status: 400 }
+      )
+    }
+
+    if (!efectivoRecibido && efectivoRecibido !== 0) {
+      console.error('[CUADRE CAJA] Error: efectivoRecibido faltante')
+      return NextResponse.json(
+        { error: 'Efectivo recibido es requerido' },
+        { status: 400 }
+      )
+    }
+
+    // Cálculos
     const totalConsignado = Number(montoConsignacion || 0)
     const totalEfectivo = Number(efectivoRecibido) || 0
     const totalEsperadoNum = Number(totalEsperado) || 0
     const descuentoNum = Number(descuento || 0)
-    
-    // ✅ Ajustar el total esperado restando el descuento
-    const totalEsperadoAjustado = totalEsperadoNum - descuentoNum
+    const agotadosNum = Number(agotados || 0)
     
     const totalRecibido = totalEfectivo + totalConsignado
-    const diferencia = Math.round((totalRecibido - totalEsperadoAjustado) * 100) / 100
+    const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
     const estado = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
-    console.log('[CUADRE CAJA] Registrando cuadre:', {
+    console.log('[CUADRE CAJA] Valores calculados:', {
       entregador,
       planillas: planillaIds.length,
       totalEsperado: totalEsperadoNum,
       descuento: descuentoNum,
-      totalEsperadoAjustado,
+      agotados: agotadosNum,
+      efectivo: totalEfectivo,
+      consignacion: totalConsignado,
       totalRecibido,
       diferencia,
       estado
     })
 
-    // Insertar cuadre con campos de descuento
+    // Insertar cuadre
+    console.log('[CUADRE CAJA] Insertando cuadre...')
     const result = await sql`
       INSERT INTO cuadres_caja (
         entregador,
@@ -79,9 +100,9 @@ export async function POST(request: Request) {
         ${entregador},
         NOW(),
         ${planillaIds},
-        ${totalEsperadoAjustado},
+        ${totalEsperadoNum},
         ${totalEfectivo},
-        ${totalConsignado || 0},
+        ${totalConsignado},
         ${diferencia},
         ${estado},
         ${observaciones || null},
@@ -94,9 +115,15 @@ export async function POST(request: Request) {
       RETURNING id
     `
 
+    if (!result || result.length === 0) {
+      throw new Error('No se pudo insertar el cuadre en la base de datos')
+    }
+
     const cuadreId = result[0].id
+    console.log('[CUADRE CAJA] ✓ Cuadre insertado con ID:', cuadreId)
 
     // Actualizar planillas
+    console.log('[CUADRE CAJA] Actualizando planillas:', planillaIds)
     for (const planillaId of planillaIds) {
       await sql`
         UPDATE planillas
@@ -105,10 +132,10 @@ export async function POST(request: Request) {
         WHERE id = ${planillaId}
       `
     }
-
     console.log('[CUADRE CAJA] ✓ Planillas actualizadas:', planillaIds.length)
 
-    // ✅ CREAR COMISIÓN PARA CUADRE AGRUPADO
+    // Crear comisión agrupada
+    console.log('[CUADRE CAJA] Buscando config de comisión para:', entregador)
     const configComision = await sql`
       SELECT porcentaje_comision 
       FROM comisiones_config 
@@ -118,12 +145,15 @@ export async function POST(request: Request) {
 
     if (configComision.length > 0) {
       const porcentaje = Number(configComision[0].porcentaje_comision)
-      
-      // ✅ Base = efectivo recibido (sin restar devoluciones)
       const baseComisionable = Math.round(totalEfectivo * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
-      // ✅ CREAR COMISIÓN CON FECHA ACTUAL DEL CUADRE EN ZONA HORARIA DE COLOMBIA
+      console.log('[CUADRE CAJA] Creando comisión:', {
+        porcentaje,
+        base: baseComisionable,
+        monto: montoComision
+      })
+
       await sql`
         INSERT INTO comisiones (
           entregador,
@@ -150,20 +180,12 @@ export async function POST(request: Request) {
         )
       `
 
-      console.log('[CUADRE CAJA] ✓ Comisión agrupada creada:', {
-        entregador,
-        fechaCuadre: 'NOW() - fecha actual',
-        planillasIncluidas: planillaIds.length,
-        base: baseComisionable,
-        porcentaje,
-        comision: montoComision,
-        descuento: descuentoNum
-      })
+      console.log('[CUADRE CAJA] ✓ Comisión creada')
     } else {
-      console.log('[CUADRE CAJA] ⚠️ No hay configuración de comisión para:', entregador)
+      console.log('[CUADRE CAJA] ⚠️ No hay config de comisión para:', entregador)
     }
 
-    console.log('[CUADRE CAJA] ✓ Cuadre registrado exitosamente:', cuadreId)
+    console.log('[CUADRE CAJA] ✓✓✓ Proceso completado exitosamente')
 
     return NextResponse.json({
       success: true,
@@ -172,10 +194,64 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[CUADRE CAJA] ERROR:', error)
+    console.error('[CUADRE CAJA] ❌ ERROR:', error)
+    console.error('[CUADRE CAJA] Stack:', error instanceof Error ? error.stack : 'No stack')
     return NextResponse.json(
       { 
         error: 'Error al registrar cuadre',
+        details: error instanceof Error ? error.message : 'Error desconocido'
+      },
+      { status: 500 }
+    )
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    const session = await getSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+
+    console.log('[CUADRE CAJA] Obteniendo historial...')
+
+    const cuadres = await sql`
+      SELECT 
+        c.id,
+        c.entregador,
+        c.fecha_cuadre,
+        c.planillas_ids,
+        c.total_esperado,
+        c.total_efectivo,
+        c.total_consignado,
+        c.diferencia,
+        c.estado,
+        c.observaciones,
+        c.tiene_consignacion,
+        c.numero_consignacion,
+        c.banco,
+        c.descuento,
+        c.motivo_descuento,
+        array_agg(DISTINCT p.tipo_ruta) FILTER (WHERE p.tipo_ruta IS NOT NULL) as rutas_nombres
+      FROM cuadres_caja c
+      LEFT JOIN planillas p ON p.id = ANY(c.planillas_ids)
+      GROUP BY c.id
+      ORDER BY c.fecha_cuadre DESC
+      LIMIT 100
+    `
+
+    console.log('[CUADRE CAJA] ✓ Historial obtenido:', cuadres.length, 'registros')
+
+    return NextResponse.json({
+      success: true,
+      cuadres
+    })
+
+  } catch (error) {
+    console.error('[CUADRE CAJA] ERROR al obtener historial:', error)
+    return NextResponse.json(
+      { 
+        error: 'Error al cargar historial',
         details: error instanceof Error ? error.message : 'Error desconocido'
       },
       { status: 500 }
