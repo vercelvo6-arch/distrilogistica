@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X } from "lucide-react"
+import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2 } from "lucide-react"
 import type { RouteSheet, User, RecepcionCaja, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import {
@@ -92,6 +92,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [submittingNuevoPedido, setSubmittingNuevoPedido] = useState(false)
 
   const [reasignandoRuta, setReasignandoRuta] = useState<number | null>(null)
+
+  // Estado para eliminar pedidos
+  const [showEliminarPedidoModal, setShowEliminarPedidoModal] = useState(false)
+  const [pedidoAEliminar, setPedidoAEliminar] = useState<{ orderId: string; cliente: string; total: number; planillaId: number } | null>(null)
+  const [eliminandoPedido, setEliminandoPedido] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -409,8 +414,59 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         description: error instanceof Error ? error.message : "Error al reasignar pedido",
         variant: "destructive",
       })
-    } finally {
+} finally {
       setReasignandoPedido(null)
+    }
+  }
+
+  // Función para abrir modal de confirmación de eliminar pedido
+  const handleOpenEliminarPedidoModal = (orderId: string, cliente: string, total: number, planillaId: number) => {
+    setPedidoAEliminar({ orderId, cliente, total, planillaId })
+    setShowEliminarPedidoModal(true)
+  }
+
+  // Función para eliminar pedido
+  const handleEliminarPedido = async () => {
+    if (!pedidoAEliminar) return
+
+    try {
+      setEliminandoPedido(true)
+
+      const response = await fetch("/api/pedidos/eliminar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pedidoId: pedidoAEliminar.orderId,
+          planillaId: pedidoAEliminar.planillaId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al eliminar pedido")
+      }
+
+      toast({
+        title: "Pedido Eliminado",
+        description: `El pedido de ${pedidoAEliminar.cliente} ha sido eliminado y el cargue actualizado`,
+      })
+
+      // Cerrar modal y limpiar estado
+      setShowEliminarPedidoModal(false)
+      setPedidoAEliminar(null)
+
+      // Recargar datos para reflejar cambios
+      await loadData()
+    } catch (error) {
+      console.error("Error al eliminar pedido:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al eliminar pedido",
+        variant: "destructive",
+      })
+    } finally {
+      setEliminandoPedido(false)
     }
   }
 
@@ -2053,7 +2109,7 @@ filteredRoutes.forEach((route) => {
                                             >
                                               Repaso
                                             </Button>
-                                            <Button
+<Button
                                               size="sm"
                                               variant="destructive"
                                               onClick={() => handleOrderStatusChange(order.id, "devolucion")}
@@ -2061,6 +2117,16 @@ filteredRoutes.forEach((route) => {
                                               disabled={route.cuadradoEnCaja}
                                             >
                                               Devolución
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleOpenEliminarPedidoModal(order.id, order.cliente, effectiveTotal, route.id)}
+                                              className="flex-1 sm:flex-none border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-red-600 hover:border-red-400"
+                                              disabled={route.cuadradoEnCaja}
+                                            >
+                                              <Trash2 className="h-4 w-4 mr-1" />
+                                              Eliminar
                                             </Button>
                                           </div>
                                         </div>
@@ -2612,7 +2678,7 @@ filteredRoutes.forEach((route) => {
       )}
     </div>
 
-    <DialogFooter>
+<DialogFooter>
       <Button variant="outline" onClick={() => setShowFiadoModal(false)}>
         Cancelar
       </Button>
@@ -2622,6 +2688,58 @@ filteredRoutes.forEach((route) => {
     </DialogFooter>
   </DialogContent>
 </Dialog>
+
+      {/* Modal para confirmar eliminación de pedido */}
+      <Dialog open={showEliminarPedidoModal} onOpenChange={setShowEliminarPedidoModal}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Eliminar Pedido</DialogTitle>
+            <DialogDescription>
+              Esta acción no se puede deshacer. El pedido será eliminado permanentemente.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            {pedidoAEliminar && (
+              <>
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800 mb-2">
+                    <strong>Cliente:</strong> {pedidoAEliminar.cliente}
+                  </p>
+                  <p className="text-sm text-red-800">
+                    <strong>Total del pedido:</strong> {formatCOP(pedidoAEliminar.total)}
+                  </p>
+                </div>
+
+                <div className="text-xs text-muted-foreground bg-yellow-50 p-3 rounded border border-yellow-200">
+                  <strong>Importante:</strong> Al eliminar este pedido, el total del cargue de la ruta se reducirá 
+                  automáticamente en {formatCOP(pedidoAEliminar.total)}.
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowEliminarPedidoModal(false)
+                setPedidoAEliminar(null)
+              }}
+              disabled={eliminandoPedido}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleEliminarPedido}
+              disabled={eliminandoPedido}
+            >
+              {eliminandoPedido ? "Eliminando..." : "Eliminar Pedido"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
