@@ -135,6 +135,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           saldoPendiente: Number(ped.total) || 0,
           comentarios: ped.observaciones,
           esCobro: ped.es_cobro || false,
+          descuento: Number(ped.descuento) || 0,             
+          motivoDescuento: ped.motivo_descuento || "",
           items: (Array.isArray(ped.productos) ? ped.productos : []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
