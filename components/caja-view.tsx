@@ -234,140 +234,97 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 })
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
-  if (!route || !Array.isArray(route.orders)) {
-    return {
-      entregado: 0,
-      fiado: 0,
-      devoluciones: 0,
-      repasos: 0,
-      agotados: 0,
+    if (!route || !Array.isArray(route.orders)) {
+      return {
+        entregado: 0,
+        fiado: 0,
+        devoluciones: 0,
+        repasos: 0,
+        agotados: 0,
+      }
     }
-  }
 
-  let entregado = 0
-  let fiado = 0
-  let devoluciones = 0
-  let repasos = 0
-  let agotados = 0
+    let entregado = 0
+    let fiado = 0
+    let devoluciones = 0
+    let repasos = 0
+    let agotados = 0
 
-  route.orders.forEach((order) => {
-    if (!order || !Array.isArray(order.items)) return
+    route.orders.forEach((order) => {
+      if (!order || !Array.isArray(order.items)) return
 
-    let effectiveTotal = 0
-    let returnedTotal = 0
-    let agotadosEnPedido = 0
+      let effectiveTotal = 0
+      let returnedTotal = 0
+      let agotadosEnPedido = 0
 
-    order.items.forEach((item) => {
-      if (!item) return
+      order.items.forEach((item) => {
+        if (!item) return
 
-      const cantOriginal = Number(item.cantidad) || 0
-      const precioUnit = Number(item.valorUnidad) || 0
-      const subtotalOriginal = cantOriginal * precioUnit
+        const cantOriginal = Number(item.cantidad) || 0
+        const precioUnit = Number(item.valorUnidad) || 0
+        const subtotalOriginal = cantOriginal * precioUnit
 
-      // Producto devuelto
-      if (item.devuelto) {
-        returnedTotal += subtotalOriginal
-        return
+        // Producto devuelto
+        if (item.devuelto) {
+          returnedTotal += subtotalOriginal
+          return
+        }
+
+        // Cantidad entregada o agotado
+        const cantEntregada =
+          item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+            ? Number(item.cantidadEntregada)
+            : cantOriginal
+
+        if (cantEntregada === 0 || item.estadoProducto === "agotado") {
+          agotadosEnPedido += subtotalOriginal
+          return
+        }
+
+        // Subtotal real
+        const subtotalReal =
+          item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+            ? Number(item.subtotalAjustado)
+            : cantEntregada * precioUnit
+
+        effectiveTotal += subtotalReal
+      })
+
+      agotados += agotadosEnPedido
+      
+      // Sumar devoluciones parciales (productos individuales con checkbox)
+      devoluciones += returnedTotal
+
+      // Sumar según el estado del pedido COMPLETO
+      if (order.estado === "fiado") {
+        fiado += effectiveTotal
+        // Restar descuento del pedido si existe
+        if (order.descuento) {
+          fiado -= Number(order.descuento)
+        }
+      } else if (order.estado === "repaso") {
+        repasos += effectiveTotal
+      } else if (order.estado === "devolucion") {
+        // Devolución TOTAL (botón rojo) - suma todo el pedido
+        devoluciones += effectiveTotal
+      } else {
+        // TODO LO DEMÁS (pendiente, entregado, null) = ENTREGADO
+        entregado += effectiveTotal
+        // Restar descuento del pedido si existe
+        if (order.descuento) {
+          entregado -= Number(order.descuento)
+        }
       }
-
-      // Cantidad entregada o agotado
-      const cantEntregada =
-        item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
-          ? Number(item.cantidadEntregada)
-          : cantOriginal
-
-      if (cantEntregada === 0 || item.estadoProducto === "agotado") {
-        agotadosEnPedido += subtotalOriginal
-        return
-      }
-
-      // Subtotal real
-      const subtotalReal =
-        item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
-          ? Number(item.subtotalAjustado)
-          : cantEntregada * precioUnit
-
-      effectiveTotal += subtotalReal
     })
 
-    agotados += agotadosEnPedido
-    devoluciones += returnedTotal
-
-    if (order.estado === "fiado") {
-      fiado += effectiveTotal
-      if (order.descuento) fiado -= Number(order.descuento)
-    } else if (order.estado === "repaso") {
-      repasos += effectiveTotal
-    } else if (order.estado === "devolucion") {
-      devoluciones += effectiveTotal
-    } else {
-      entregado += effectiveTotal
-      if (order.descuento) entregado -= Number(order.descuento)
+    return {
+      entregado: Math.round(entregado * 100) / 100,
+      fiado: Math.round(fiado * 100) / 100,
+      devoluciones: Math.round(devoluciones * 100) / 100,
+      repasos: Math.round(repasos * 100) / 100,
+      agotados: Math.round(agotados * 100) / 100,
     }
-  })
-
-  return {
-    entregado: Math.round(entregado * 100) / 100,
-    fiado: Math.round(fiado * 100) / 100,
-    devoluciones: Math.round(devoluciones * 100) / 100,
-    repasos: Math.round(repasos * 100) / 100,
-    agotados: Math.round(agotados * 100) / 100,
   }
-}
-
-
-
-  return {
-    entregado: Math.round(entregado * 100) / 100,
-    fiado: Math.round(fiado * 100) / 100,
-    devoluciones: Math.round(devoluciones * 100) / 100,
-    repasos: Math.round(repasos * 100) / 100,
-    agotados: Math.round(agotados * 100) / 100,
-  }
-}
-
-  return {
-    entregado: Math.round(entregado * 100) / 100,
-    fiado: Math.round(fiado * 100) / 100,
-    devoluciones: Math.round(devoluciones * 100) / 100,
-    repasos: Math.round(repasos * 100) / 100,
-    agotados: Math.round(agotados * 100) / 100,
-  }
-}
-    // ✅ Sumar devoluciones parciales (productos individuales con checkbox)
-    devoluciones += returnedTotal
-
-    // ✅ Sumar según el estado del pedido COMPLETO
-    if (order.estado === "fiado") {
-      fiado += effectiveTotal
-      // Restar descuento del pedido si existe
-      if (order.descuento) {
-        fiado -= Number(order.descuento)
-      }
-    } else if (order.estado === "repaso") {
-      repasos += effectiveTotal
-    } else if (order.estado === "devolucion") {
-      // ✅ Devolución TOTAL (botón rojo) - suma todo el pedido
-      devoluciones += effectiveTotal
-    } else {
-      // ✅ TODO LO DEMÁS (pendiente, entregado, null) = ENTREGADO
-      entregado += effectiveTotal
-      // Restar descuento del pedido si existe
-      if (order.descuento) {
-        entregado -= Number(order.descuento)
-      }
-    }
-  })
-
-  return {
-    entregado: Math.round(entregado * 100) / 100,
-    fiado: Math.round(fiado * 100) / 100,
-    devoluciones: Math.round(devoluciones * 100) / 100,
-    repasos: Math.round(repasos * 100) / 100,
-    agotados: Math.round(agotados * 100) / 100,
-  }
-}
-  
 
   const toggleRouteExpansion = (routeId: number) => {
     const newExpanded = new Set(expandedRoutes)
@@ -438,7 +395,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
 
       toast({
-        title: "✅ Pedido Reasignado",
+        title: "Pedido Reasignado",
         description: `${data.pedido.cliente} movido a ruta ${data.pedido.rutaNueva}`,
       })
 
@@ -531,10 +488,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     const estadoMsg =
       result.estadoProducto === "agotado"
-        ? "🚫 Marcado como Agotado"
+        ? "Marcado como Agotado"
         : result.estadoProducto === "parcial"
-          ? "📦 Entrega Parcial"
-          : "✓ Entrega Completa"
+          ? "Entrega Parcial"
+          : "Entrega Completa"
 
     toast({
       title: "Cantidad actualizada",
@@ -583,7 +540,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     await updateSubtotalAjustado(orderId, codigo, nuevoSubtotal)
 
     toast({
-      title: "💰 Subtotal ajustado",
+      title: "Subtotal ajustado",
       description: "El valor ha sido actualizado manualmente",
     })
   } catch (err) {
@@ -615,7 +572,7 @@ const handleDescuentoChange = async (orderId: string, descuento: number) => {
     await updateDescuentoPedido(orderId, descuento)
 
     toast({
-      title: "💰 Descuento aplicado",
+      title: "Descuento aplicado",
       description: `Descuento de ${formatCOP(descuento)} registrado`,
     })
   } catch (err) {
@@ -657,7 +614,7 @@ const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
     .flatMap(sheet => sheet.orders)
     .find(o => o.id === orderId)
 
-  // ✅ SI ES UN COBRO y se marca como "entregado", actualizar el fiado original
+  // SI ES UN COBRO y se marca como "entregado", actualizar el fiado original
   if (order?.esCobro && newStatus === "entregado") {
     try {
       const response = await fetch("/api/fiados/marcar-cobro-completado", {
@@ -673,7 +630,7 @@ const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
       }
 
       toast({
-        title: "✅ Cobro Registrado",
+        title: "Cobro Registrado",
         description: `Fiado actualizado. Nuevo saldo: ${formatCOP(data.fiado.saldo_pendiente)}`,
       })
 
@@ -727,7 +684,7 @@ const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
     await updatePedidoEstado(orderId, newStatus)
 
     toast({
-      title: "✅ Actualizado",
+      title: "Actualizado",
       description: `Pedido marcado como ${newStatus}`,
     })
   } catch (err) {
@@ -768,16 +725,16 @@ const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
   const actualizarProducto = (productoId: string, field: keyof Omit<NuevoProducto, 'id'>, value: any) => {
   setProductosNuevoPedido(prevProductos => 
     prevProductos.map(producto => {
-      // ✅ Solo actualizar el producto correcto
+      // Solo actualizar el producto correcto
       if (producto.id !== productoId) return producto
       
-      // ✅ Crear un NUEVO objeto completamente independiente
+      // Crear un NUEVO objeto completamente independiente
       let nuevoProducto = {
         ...producto,
         [field]: value
       }
       
-      // ✅ Recalcular subtotal si cambió cantidad o precio
+      // Recalcular subtotal si cambió cantidad o precio
       if (field === "cantidad" || field === "precioUnitario") {
         const cantidad = field === "cantidad" ? Number(value) : nuevoProducto.cantidad
         const precio = field === "precioUnitario" ? Number(value) : nuevoProducto.precioUnitario
@@ -789,7 +746,7 @@ const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
   )
 }
 
-const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
+const eliminarProducto = (productoId: string) => {
   if (productosNuevoPedido.length > 1) {
     setProductosNuevoPedido(productosNuevoPedido.filter(p => p.id !== productoId))
   }
@@ -853,7 +810,7 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
       }
 
       toast({
-        title: "✅ Pedido Creado",
+        title: "Pedido Creado",
         description: `Pedido agregado exitosamente a la ruta ${rutaParaNuevoPedido.ruta}`,
       })
 
@@ -882,6 +839,8 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
       montoConsignacion: "",
       fechaConsignacion: new Date().toISOString().split("T")[0],
       observaciones: "",
+      descuento: "",
+      motivoDescuento: "",
     })
     setShowModal(true)
   }
@@ -917,7 +876,7 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
 
       if (data.existe) {
         toast({
-          title: "⚠️ Consignación Duplicada",
+          title: "Consignación Duplicada",
           description: "Este número de consignación ya fue registrado anteriormente",
           variant: "destructive",
         })
@@ -972,7 +931,7 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
 
       totalCargueAgrupado += route.totalAmount
 
-      // ✅ USAR LA MISMA FUNCIÓN (ya corregida)
+      // USAR LA MISMA FUNCIÓN (ya corregida)
       const totals = calculateRouteTotals(route)
       totalEntregadoAgrupado += totals.entregado
       totalFiadoAgrupado += totals.fiado
@@ -1005,6 +964,8 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
       montoConsignacion: "",
       fechaConsignacion: new Date().toISOString().split("T")[0],
       observaciones: "",
+      descuento: "",
+      motivoDescuento: "",
     })
     setShowAgrupadoModal(true)
   }
@@ -1061,7 +1022,7 @@ const eliminarProducto = (productoId: string) => {  // ✅ Cambiar a usar ID
       }
 
       toast({
-        title: "✅ Cuadre Agrupado Registrado",
+        title: "Cuadre Agrupado Registrado",
         description: data.mensaje,
       })
 
@@ -1120,7 +1081,7 @@ const handleSubmitFiado = async () => {
     await updatePedidoEstado(selectedOrderForFiado.id, "fiado", montoPagado, saldoPendiente)
 
     toast({
-      title: "✅ Fiado Registrado",
+      title: "Fiado Registrado",
       description: `Pagó: ${formatCOP(montoPagado)} | Debe: ${formatCOP(saldoPendiente)}`,
     })
 
@@ -1196,7 +1157,7 @@ const handleSubmitFiado = async () => {
       }
 
       toast({
-        title: "✅ Recepción Registrada",
+        title: "Recepción Registrada",
         description: data.mensaje,
       })
 
@@ -1321,7 +1282,7 @@ filteredRoutes.forEach((route) => {
                               {rec.entregador} - {rec.tipo_ruta}
                             </p>
                             {rec.tipo === "agrupado" && (
-                              <Badge className="bg-purple-100 text-purple-700 border-purple-300">📦 AGRUPADO</Badge>
+                              <Badge className="bg-purple-100 text-purple-700 border-purple-300">AGRUPADO</Badge>
                             )}
                           </div>
                           <p className="text-sm text-muted-foreground">
@@ -1329,7 +1290,7 @@ filteredRoutes.forEach((route) => {
                           </p>
                         </div>
                         <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
-                          {rec.estado === "cuadrado" ? "✓ Cuadrado" : "⚠ Con Diferencia"}
+                          {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
                         </Badge>
                       </div>
 
@@ -1355,7 +1316,7 @@ filteredRoutes.forEach((route) => {
 
                       {rec.tiene_consignacion && (
                         <div className="mt-3 pt-3 border-t bg-blue-50 -m-4 p-4 rounded-b-lg">
-                          <p className="text-sm font-medium mb-2">📄 Consignación</p>
+                          <p className="text-sm font-medium mb-2">Consignación</p>
                           <div className="grid grid-cols-3 gap-2 text-sm">
                             <div>
                               <p className="text-muted-foreground">Número</p>
@@ -1377,7 +1338,7 @@ filteredRoutes.forEach((route) => {
 
             {rec.descuento && Number(rec.descuento) > 0 && (
               <div className="mt-3 pt-3 border-t bg-orange-50 -m-4 p-4 rounded-b-lg">
-                <p className="text-sm font-medium mb-2">💰 Descuento Aplicado</p>
+                <p className="text-sm font-medium mb-2">Descuento Aplicado</p>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <p className="text-muted-foreground">Monto</p>
@@ -1402,7 +1363,7 @@ filteredRoutes.forEach((route) => {
 
                       {rec.tipo === "agrupado" && rec.planillas_ids && (
                         <div className="mt-3 pt-3 border-t bg-purple-50 -m-4 p-4 rounded-b-lg">
-                          <p className="text-sm font-medium mb-2">📋 Rutas Incluidas:</p>
+                          <p className="text-sm font-medium mb-2">Rutas Incluidas:</p>
                           <p className="text-xs text-muted-foreground">{rec.planillas_ids.join(", ")}</p>
                         </div>
                       )}
@@ -1536,7 +1497,7 @@ filteredRoutes.forEach((route) => {
                 )}
                 {filteredRoutes.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
-                    ✅ No hay entregas pendientes de cuadrar para la fecha seleccionada
+                    No hay entregas pendientes de cuadrar para la fecha seleccionada
                   </p>
                 ) : (
                   <div className="space-y-4">
@@ -1655,7 +1616,7 @@ filteredRoutes.forEach((route) => {
 
                           <div className="mt-4 pt-4 border-t bg-white -mx-4 -mb-4 px-4 py-3 rounded-b-lg">
                             <div className="flex items-center justify-between">
-                              <p className="text-sm font-medium">💵 Efectivo Esperado:</p>
+                              <p className="text-sm font-medium">Efectivo Esperado:</p>
                               <p className="text-xl font-bold text-green-600">{formatCOP(totals.entregado)}</p>
                             </div>
                           </div>
@@ -1707,9 +1668,6 @@ filteredRoutes.forEach((route) => {
                                               <h3 className="font-semibold text-sm md:text-base truncate">
                                                 {order.cliente}
                                               </h3>
-                                              {/* ✅ Mostrar badge especial si es un COBRO */}
-
-                                              {/* ✅ AGREGAR DESPUÉS DE LA LÍNEA 1660 (después de {order.cliente}) */}
                             
                             {/* Dropdown para reasignar pedido */}
                             {!route.cuadradoEnCaja && (
@@ -1775,7 +1733,7 @@ filteredRoutes.forEach((route) => {
                             )}
 {order.esCobro ? (
   <Badge className="shrink-0 font-bold text-xs border-2 bg-purple-100 text-purple-800 border-purple-400">
-    💰 COBRO
+    COBRO
   </Badge>
 ) : (
   <Badge
@@ -1831,7 +1789,7 @@ filteredRoutes.forEach((route) => {
                                       {isExpanded && Array.isArray(order.items) && (
                                         <div className="p-3 md:p-4 space-y-4">
                                           <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-700">
-                                            💡 <strong>Ajustes manuales:</strong> Edita "Cant. Entregada" para entregas
+                                            <strong>Ajustes manuales:</strong> Edita "Cant. Entregada" para entregas
                                             parciales. Para promociones con precios especiales, ajusta el "Subtotal"
                                             directamente.
                                           </div>
@@ -1954,7 +1912,7 @@ filteredRoutes.forEach((route) => {
                                                               </span>
                                                               {tieneAjusteManual && (
                                                                 <span className="text-xs text-orange-600">
-                                                                  ✏️ Ajustado
+                                                                  Ajustado
                                                                 </span>
                                                               )}
                                                             </div>
@@ -1966,7 +1924,7 @@ filteredRoutes.forEach((route) => {
                                                             </span>
                                                             {tieneAjusteManual && (
                                                               <span className="text-xs text-orange-600">
-                                                                ✏️ Ajustado
+                                                                Ajustado
                                                               </span>
                                                             )}
                                                           </div>
@@ -1975,22 +1933,22 @@ filteredRoutes.forEach((route) => {
                                                       <td className="text-center py-2">
                                                         {estadoProducto === "agotado" && (
                                                           <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                                                            🚫 Agotado
+                                                            Agotado
                                                           </span>
                                                         )}
                                                         {estadoProducto === "parcial" && (
                                                           <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
-                                                            📦 Parcial
+                                                            Parcial
                                                           </span>
                                                         )}
                                                         {estadoProducto === "normal" && !item.devuelto && (
                                                           <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
-                                                            ✓ Normal
+                                                            Normal
                                                           </span>
                                                         )}
                                                         {item.devuelto && (
                                                           <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
-                                                            ❌ Devuelto
+                                                            Devuelto
                                                           </span>
                                                         )}
                                                       </td>
@@ -2013,7 +1971,7 @@ filteredRoutes.forEach((route) => {
                                           {/* Campos de Descuento por Pedido */}
 <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
   <h4 className="font-semibold text-sm mb-3 text-orange-800">
-    💰 Descuento (Opcional)
+    Descuento (Opcional)
   </h4>
   
   <div className="grid grid-cols-2 gap-3">
@@ -2213,7 +2171,7 @@ filteredRoutes.forEach((route) => {
               </>
             )}
 
-            {/* NUEVO BLOQUE - DESCUENTOS */}
+            {/* DESCUENTOS */}
 <div className="grid grid-cols-2 items-center gap-4">
   <Label htmlFor="descuento" className="text-right">
     Descuento Aplicado
@@ -2256,37 +2214,6 @@ filteredRoutes.forEach((route) => {
                 rows={3}
               />
             </div>
-            {/* CAMPOS DE DESCUENTO - AGREGAR DESPUÉS DE OBSERVACIONES */}
-            <div className="grid grid-cols-2 items-center gap-4">
-              <Label htmlFor="descuentoAgrupado" className="text-right">
-                Descuento Aplicado
-              </Label>
-              <Input
-                id="descuentoAgrupado"
-                value={formData.descuento}
-                onChange={(e) => setFormData({ ...formData, descuento: e.target.value })}
-                type="number"
-                min="0"
-                className="col-span-1"
-                placeholder="0"
-              />
-            </div>
-
-            {formData.descuento && Number(formData.descuento) > 0 && (
-              <div className="grid grid-cols-2 items-center gap-4">
-                <Label htmlFor="motivoDescuentoAgrupado" className="text-right">
-                  Motivo del Descuento
-                </Label>
-                <Textarea
-                  id="motivoDescuentoAgrupado"
-                  value={formData.motivoDescuento}
-                  onChange={(e) => setFormData({ ...formData, motivoDescuento: e.target.value })}
-                  className="col-span-1"
-                  rows={2}
-                  placeholder="Ej: Promoción, avería, etc."
-                />
-              </div>
-            )}
 
             {selectedPlanilla && (
               <div className="mt-4 pt-4 border-t flex flex-col gap-3">
@@ -2676,7 +2603,7 @@ filteredRoutes.forEach((route) => {
           )}
 
           <div className="text-xs text-muted-foreground bg-blue-50 p-3 rounded border border-blue-200">
-            💡 <strong>Nota:</strong> El pedido se marcará como "Fiado" y se registrará el monto pagado. 
+            <strong>Nota:</strong> El pedido se marcará como "Fiado" y se registrará el monto pagado. 
             El saldo pendiente quedará como cuenta por cobrar.
           </div>
         </>
