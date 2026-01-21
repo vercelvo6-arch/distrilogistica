@@ -1340,13 +1340,18 @@ const handleSubmitFiado = async () => {
       setSubmitting(true)
 
       const totals = calculateRouteTotals(selectedPlanilla)
+      
+      // Calcular totalEsperado = cargue - novedades (fiado + devoluciones + repasos + agotados + descuentos)
+      const cargue = selectedPlanilla.montoCargue || 0
+      const novedades = totals.fiado + totals.devoluciones + totals.repasos + totals.agotados + Number(formData.descuento || 0)
+      const totalEsperadoCalculado = cargue - novedades
 
       const response = await fetch("/api/caja/recibir-efectivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           planillaId: selectedPlanilla.id,
-          efectivoEsperado: totals.entregado,
+          efectivoEsperado: totalEsperadoCalculado,
           efectivoRecibido: Number(formData.efectivoRecibido),
           tieneConsignacion: formData.tieneConsignacion,
           numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
@@ -1355,7 +1360,8 @@ const handleSubmitFiado = async () => {
           fechaConsignacion: formData.tieneConsignacion ? formData.fechaConsignacion : null,
           observaciones: formData.observaciones || null,
           descuento: Number(formData.descuento || 0),             
-          motivoDescuento: formData.motivoDescuento || null,  
+          motivoDescuento: formData.motivoDescuento || null,
+          agotados: totals.agotados || 0,
         }),
       })
 
