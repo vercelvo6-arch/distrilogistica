@@ -326,6 +326,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     agotados: Math.round(agotados * 100) / 100,
   }
 }
+
+  return {
+    entregado: Math.round(entregado * 100) / 100,
+    fiado: Math.round(fiado * 100) / 100,
+    devoluciones: Math.round(devoluciones * 100) / 100,
+    repasos: Math.round(repasos * 100) / 100,
+    agotados: Math.round(agotados * 100) / 100,
+  }
+}
     // ✅ Sumar devoluciones parciales (productos individuales con checkbox)
     devoluciones += returnedTotal
 
