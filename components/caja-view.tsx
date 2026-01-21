@@ -2170,68 +2170,68 @@ filteredRoutes.forEach((route) => {
                                           </div>
 
                                           {/* Campos de Descuento por Pedido */}
-<div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-  <h4 className="font-semibold text-sm mb-3 text-orange-800">
-    Descuento (Opcional)
-  </h4>
-  
-  <div className="grid grid-cols-2 gap-3">
-    <div>
-      <Label htmlFor={`descuento-${order.id}`} className="text-xs text-muted-foreground">
-        Monto del Descuento
-      </Label>
-      <Input
-        id={`descuento-${order.id}`}
-        type="number"
-        min="0"
-        max={effectiveTotal}
-        placeholder="0"
-        defaultValue={order.descuento || 0}
-        onBlur={(e) => {
-          const descuento = Number(e.target.value) || 0
-          if (descuento > effectiveTotal) {
-            toast({
-              title: "Error",
-              description: `El descuento no puede ser mayor al total (${formatCOP(effectiveTotal)})`,
-              variant: "destructive",
-            })
-            e.target.value = "0"
-            return
-          }
-          handleDescuentoChange(order.id, descuento)
-        }}
-        disabled={route.cuadradoEnCaja}
-        className="mt-1"
-      />
-    </div>
-    
-    <div>
-      <Label htmlFor={`motivo-descuento-${order.id}`} className="text-xs text-muted-foreground">
-        Motivo del Descuento
-      </Label>
-      <Input
-        id={`motivo-descuento-${order.id}`}
-        type="text"
-        placeholder="Ej: Producto averiado"
-        defaultValue={order.motivoDescuento || ""}
-        onBlur={(e) => handleMotivoDescuentoChange(order.id, e.target.value)}
-        disabled={route.cuadradoEnCaja}
-        className="mt-1"
-      />
-    </div>
-  </div>
-  
-  {order.descuento && Number(order.descuento) > 0 && (
-    <div className="mt-3 pt-3 border-t border-orange-300 flex justify-between items-center">
-      <span className="text-sm font-medium text-orange-700">
-        Total con Descuento:
-      </span>
-      <span className="text-lg font-bold text-orange-800">
-        {formatCOP(effectiveTotal - (Number(order.descuento) || 0))}
-      </span>
-    </div>
-  )}
-</div>
+                                          <div className="mt-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                                            <h4 className="font-semibold text-sm mb-3 text-orange-800">
+                                              Descuento (Opcional)
+                                            </h4>
+                                            
+                                            <div className="grid grid-cols-2 gap-3">
+                                              <div>
+                                                <Label htmlFor={`descuento-${order.id}`} className="text-xs text-muted-foreground">
+                                                  Monto del Descuento
+                                                </Label>
+                                                <Input
+                                                  id={`descuento-${order.id}`}
+                                                  type="number"
+                                                  min="0"
+                                                  max={effectiveTotal}
+                                                  placeholder="0"
+                                                  defaultValue={order.descuento || 0}
+                                                  onBlur={(e) => {
+                                                    const descuento = Number(e.target.value) || 0
+                                                    if (descuento > effectiveTotal) {
+                                                      toast({
+                                                        title: "Error",
+                                                        description: `El descuento no puede ser mayor al total (${formatCOP(effectiveTotal)})`,
+                                                        variant: "destructive",
+                                                      })
+                                                      e.target.value = "0"
+                                                      return
+                                                    }
+                                                    handleDescuentoChange(order.id, descuento)
+                                                  }}
+                                                  disabled={route.cuadradoEnCaja}
+                                                  className="mt-1"
+                                                />
+                                              </div>
+                                              
+                                              <div>
+                                                <Label htmlFor={`motivo-descuento-${order.id}`} className="text-xs text-muted-foreground">
+                                                  Motivo del Descuento
+                                                </Label>
+                                                <Input
+                                                  id={`motivo-descuento-${order.id}`}
+                                                  type="text"
+                                                  placeholder="Ej: Producto averiado"
+                                                  defaultValue={order.motivoDescuento || ""}
+                                                  onBlur={(e) => handleMotivoDescuentoChange(order.id, e.target.value)}
+                                                  disabled={route.cuadradoEnCaja}
+                                                  className="mt-1"
+                                                />
+                                              </div>
+                                            </div>
+                                            
+                                            {order.descuento && Number(order.descuento) > 0 && (
+                                              <div className="mt-3 pt-3 border-t border-orange-300 flex justify-between items-center">
+                                                <span className="text-sm font-medium text-orange-700">
+                                                  Total con Descuento:
+                                                </span>
+                                                <span className="text-lg font-bold text-orange-800">
+                                                  {formatCOP(effectiveTotal - (Number(order.descuento) || 0))}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
 
                                           <div className="flex flex-wrap gap-2">
                                             <Button
