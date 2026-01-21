@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { neon } from "@neondatabase/serverless"
+import { getDB } from "@/lib/db"
+
+export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +15,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const sql = neon(process.env.DATABASE_URL!)
+    const sql = getDB()
 
     // 1. Obtener el total del pedido antes de eliminarlo
     const pedidoResult = await sql`
@@ -31,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     // 2. Eliminar los productos del pedido
     await sql`
-      DELETE FROM productos_pedido WHERE pedido_id = ${pedidoId}
+      DELETE FROM pedido_productos WHERE pedido_id = ${pedidoId}
     `
 
     // 3. Eliminar el pedido
@@ -39,26 +41,22 @@ export async function POST(request: NextRequest) {
       DELETE FROM pedidos WHERE id = ${pedidoId}
     `
 
-    // 4. Obtener el total actual de la planilla
+    // 4. Actualizar el total_cargue de la planilla
+    await sql`
+      UPDATE planillas 
+      SET total_cargue = total_cargue - ${totalPedido},
+          updated_at = NOW()
+      WHERE id = ${planillaId}
+    `
+
+    // 5. Obtener el nuevo total
     const planillaResult = await sql`
       SELECT total_cargue FROM planillas WHERE id = ${planillaId}
     `
 
-    if (!planillaResult || planillaResult.length === 0) {
-      return NextResponse.json(
-        { error: "Planilla no encontrada" },
-        { status: 404 }
-      )
-    }
+    const nuevoTotalCargue = Number(planillaResult[0].total_cargue) || 0
 
-    // 5. Actualizar el total_cargue de la planilla
-    const nuevoTotalCargue = Number(planillaResult[0].total_cargue) - totalPedido
-
-    await sql`
-      UPDATE planillas 
-      SET total_cargue = ${nuevoTotalCargue}
-      WHERE id = ${planillaId}
-    `
+    console.log(`[API /pedidos/eliminar] ✓ Pedido ${pedidoId} eliminado. Total restado: ${totalPedido}`)
 
     return NextResponse.json({
       success: true,
@@ -68,9 +66,9 @@ export async function POST(request: NextRequest) {
       nuevoTotalCargue,
     })
   } catch (error) {
-    console.error("Error en /api/pedidos/eliminar:", error)
+    console.error("[API /pedidos/eliminar] ERROR:", error)
     return NextResponse.json(
-      { error: "Error interno del servidor" },
+      { error: "Error interno del servidor: " + (error instanceof Error ? error.message : "Unknown error") },
       { status: 500 }
     )
   }
