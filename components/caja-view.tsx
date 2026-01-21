@@ -98,6 +98,17 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [pedidoAEliminar, setPedidoAEliminar] = useState<{ orderId: string; cliente: string; total: number; planillaId: number } | null>(null)
   const [eliminandoPedido, setEliminandoPedido] = useState(false)
 
+  // Estado para eliminar rutas completas
+  const [showEliminarRutaModal, setShowEliminarRutaModal] = useState(false)
+  const [rutaAEliminar, setRutaAEliminar] = useState<{ id: number; nombre: string; entregador: string; fecha: string; totalPedidos: number; totalCargue: number } | null>(null)
+  const [eliminandoRuta, setEliminandoRuta] = useState(false)
+
+  // Estado para cambiar fecha de ruta
+  const [showCambiarFechaModal, setShowCambiarFechaModal] = useState(false)
+  const [rutaParaCambiarFecha, setRutaParaCambiarFecha] = useState<{ id: number; nombre: string; fechaActual: string } | null>(null)
+  const [nuevaFechaRuta, setNuevaFechaRuta] = useState("")
+  const [cambiandoFecha, setCambiandoFecha] = useState(false)
+
   useEffect(() => {
     loadData()
   }, [])
@@ -467,6 +478,114 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       })
     } finally {
       setEliminandoPedido(false)
+    }
+  }
+
+  // Función para abrir modal de eliminar ruta completa
+  const handleOpenEliminarRutaModal = (route: RouteSheet) => {
+    setRutaAEliminar({
+      id: route.id,
+      nombre: route.ruta,
+      entregador: route.entregador || "Sin asignar",
+      fecha: route.fecha,
+      totalPedidos: route.totalOrders,
+      totalCargue: route.montoCargue,
+    })
+    setShowEliminarRutaModal(true)
+  }
+
+  // Función para eliminar ruta completa
+  const handleEliminarRuta = async () => {
+    if (!rutaAEliminar) return
+
+    try {
+      setEliminandoRuta(true)
+
+      const response = await fetch("/api/planillas/eliminar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planillaId: rutaAEliminar.id,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al eliminar ruta")
+      }
+
+      toast({
+        title: "Ruta Eliminada",
+        description: `La ruta ${rutaAEliminar.nombre} de ${rutaAEliminar.entregador} ha sido eliminada`,
+      })
+
+      setShowEliminarRutaModal(false)
+      setRutaAEliminar(null)
+      await loadData()
+    } catch (error) {
+      console.error("Error al eliminar ruta:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al eliminar ruta",
+        variant: "destructive",
+      })
+    } finally {
+      setEliminandoRuta(false)
+    }
+  }
+
+  // Función para abrir modal de cambiar fecha
+  const handleOpenCambiarFechaModal = (route: RouteSheet) => {
+    setRutaParaCambiarFecha({
+      id: route.id,
+      nombre: route.ruta,
+      fechaActual: route.fecha,
+    })
+    setNuevaFechaRuta(route.fecha)
+    setShowCambiarFechaModal(true)
+  }
+
+  // Función para cambiar fecha de ruta
+  const handleCambiarFechaRuta = async () => {
+    if (!rutaParaCambiarFecha || !nuevaFechaRuta) return
+
+    try {
+      setCambiandoFecha(true)
+
+      const response = await fetch("/api/planillas/cambiar-fecha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planillaId: rutaParaCambiarFecha.id,
+          nuevaFecha: nuevaFechaRuta,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al cambiar fecha")
+      }
+
+      toast({
+        title: "Fecha Actualizada",
+        description: `La ruta ${rutaParaCambiarFecha.nombre} ahora tiene fecha ${nuevaFechaRuta}`,
+      })
+
+      setShowCambiarFechaModal(false)
+      setRutaParaCambiarFecha(null)
+      setNuevaFechaRuta("")
+      await loadData()
+    } catch (error) {
+      console.error("Error al cambiar fecha:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al cambiar fecha",
+        variant: "destructive",
+      })
+    } finally {
+      setCambiandoFecha(false)
     }
   }
 
@@ -1637,9 +1756,27 @@ filteredRoutes.forEach((route) => {
                                   <Plus className="h-4 w-4 mr-2" />
                                   Nuevo Pedido
                                 </Button>
-                                <Button onClick={() => handleOpenModal(route)} size="sm">
+<Button onClick={() => handleOpenModal(route)} size="sm">
                                   <DollarSign className="h-4 w-4 mr-2" />
                                   Recibir Efectivo
+                                </Button>
+                                <Button
+                                  onClick={() => handleOpenCambiarFechaModal(route)}
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                                >
+                                  <Calendar className="h-4 w-4 mr-2" />
+                                  Cambiar Fecha
+                                </Button>
+                                <Button
+                                  onClick={() => handleOpenEliminarRutaModal(route)}
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-red-300 text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Eliminar Ruta
                                 </Button>
                               </div>
                             </div>
@@ -2736,6 +2873,136 @@ filteredRoutes.forEach((route) => {
               disabled={eliminandoPedido}
             >
               {eliminandoPedido ? "Eliminando..." : "Eliminar Pedido"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para confirmar eliminación de ruta completa */}
+      <Dialog open={showEliminarRutaModal} onOpenChange={setShowEliminarRutaModal}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Eliminar Ruta Completa</DialogTitle>
+            <DialogDescription>
+              Esta accion eliminara la ruta y todos sus pedidos permanentemente.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            {rutaAEliminar && (
+              <>
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg space-y-2">
+                  <p className="text-sm text-red-800">
+                    <strong>Ruta:</strong> {rutaAEliminar.nombre}
+                  </p>
+                  <p className="text-sm text-red-800">
+                    <strong>Entregador:</strong> {rutaAEliminar.entregador}
+                  </p>
+                  <p className="text-sm text-red-800">
+                    <strong>Fecha:</strong> {new Date(rutaAEliminar.fecha).toLocaleDateString("es-CO")}
+                  </p>
+                  <p className="text-sm text-red-800">
+                    <strong>Pedidos:</strong> {rutaAEliminar.totalPedidos}
+                  </p>
+                  <p className="text-sm text-red-800">
+                    <strong>Total Cargue:</strong> {formatCOP(rutaAEliminar.totalCargue)}
+                  </p>
+                </div>
+
+                {rutaAEliminar.totalPedidos > 0 && (
+                  <div className="text-xs text-muted-foreground bg-yellow-50 p-3 rounded border border-yellow-200">
+                    <strong>Advertencia:</strong> Esta ruta tiene {rutaAEliminar.totalPedidos} pedido(s). 
+                    Al eliminarla, todos los pedidos seran eliminados tambien.
+                  </div>
+                )}
+
+                {rutaAEliminar.totalPedidos === 0 && (
+                  <div className="text-xs text-muted-foreground bg-green-50 p-3 rounded border border-green-200">
+                    Esta ruta esta vacia y puede ser eliminada sin afectar pedidos.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowEliminarRutaModal(false)
+                setRutaAEliminar(null)
+              }}
+              disabled={eliminandoRuta}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleEliminarRuta}
+              disabled={eliminandoRuta}
+            >
+              {eliminandoRuta ? "Eliminando..." : "Eliminar Ruta"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para cambiar fecha de ruta */}
+      <Dialog open={showCambiarFechaModal} onOpenChange={setShowCambiarFechaModal}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Cambiar Fecha de Ruta</DialogTitle>
+            <DialogDescription>
+              Selecciona la nueva fecha para esta ruta de entrega.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            {rutaParaCambiarFecha && (
+              <>
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                  <p className="text-sm text-blue-800">
+                    <strong>Ruta:</strong> {rutaParaCambiarFecha.nombre}
+                  </p>
+                  <p className="text-sm text-blue-800">
+                    <strong>Fecha actual:</strong> {new Date(rutaParaCambiarFecha.fechaActual).toLocaleDateString("es-CO")}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="nuevaFecha">Nueva Fecha</Label>
+                  <Input
+                    id="nuevaFecha"
+                    type="date"
+                    value={nuevaFechaRuta}
+                    onChange={(e) => setNuevaFechaRuta(e.target.value)}
+                  />
+                </div>
+
+                <div className="text-xs text-muted-foreground bg-gray-50 p-3 rounded border">
+                  Usa esta opcion cuando una ruta se crea un dia pero se entrega en otro.
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowCambiarFechaModal(false)
+                setRutaParaCambiarFecha(null)
+                setNuevaFechaRuta("")
+              }}
+              disabled={cambiandoFecha}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleCambiarFechaRuta}
+              disabled={cambiandoFecha || !nuevaFechaRuta}
+            >
+              {cambiandoFecha ? "Guardando..." : "Guardar Fecha"}
             </Button>
           </DialogFooter>
         </DialogContent>
