@@ -1869,91 +1869,91 @@ filteredRoutes.forEach((route) => {
                                               <h3 className="font-semibold text-sm md:text-base truncate">
                                                 {order.cliente}
                                               </h3>
-                            
-                            {/* Dropdown para reasignar pedido */}
-                            {!route.cuadradoEnCaja && (
-                              <div className="mt-2">
-                                <Label className="text-xs text-muted-foreground mb-1 block">
-                                  Reasignar pedido a:
-                                </Label>
-                                <Select
-                                  disabled={reasignandoPedido === order.id}
-                                  onValueChange={(nuevaPlanillaId) => handleReasignarPedido(order.id, nuevaPlanillaId)}
-                                >
-                                  <SelectTrigger className="w-full text-xs">
-                                    <SelectValue 
-                                      placeholder={
-                                        reasignandoPedido === order.id 
-                                          ? "Reasignando..." 
-                                          : "Seleccionar ruta destino"
-                                      } 
-                                    />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {/* Rutas del mismo entregador */}
-                                    <SelectItem value="header-mismo-entregador" disabled className="font-semibold text-xs">
-                                      Rutas de {route.entregador}
-                                    </SelectItem>
-                                    {filteredRoutes
-                                      .filter(r => 
-                                        r.entregador === route.entregador && 
-                                        r.id !== route.id &&
-                                        !r.cuadradoEnCaja
-                                      )
-                                      .map(r => (
-                                        <SelectItem key={r.id} value={r.id.toString()}>
-                                          Ruta {r.ruta} - {new Date(r.fecha).toLocaleDateString('es-CO')}
-                                        </SelectItem>
-                                      ))
-                                    }
-                                    
-                                    {/* Separador */}
-                                    {routeSheets.some(r => 
-                                      r.entregador !== route.entregador && !r.cuadradoEnCaja
-                                    ) && (
-                                      <SelectItem value="header-otros-entregadores" disabled className="font-semibold text-xs border-t mt-2 pt-2">
-                                        Otros entregadores
-                                      </SelectItem>
-                                    )}
-                                    
-                                    {/* Rutas de otros entregadores */}
-                                    {routeSheets
-                                      .filter(r => 
-                                        r.entregador !== route.entregador && 
-                                        !r.cuadradoEnCaja
-                                      )
-                                      .map(r => (
-                                        <SelectItem key={r.id} value={r.id.toString()}>
-                                          {r.entregador} - Ruta {r.ruta} - {new Date(r.fecha).toLocaleDateString('es-CO')}
-                                        </SelectItem>
-                                      ))
-                                    }
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
-{order.esCobro ? (
-  <Badge className="shrink-0 font-bold text-xs border-2 bg-purple-100 text-purple-800 border-purple-400">
-    COBRO
-  </Badge>
-) : (
-  <Badge
-    className={`shrink-0 font-bold text-xs border-2 ${
-      order.estado === "entregado"
-         ? "bg-green-100 text-green-800 border-green-400"
-        : order.estado === "fiado"
-          ? "bg-orange-100 text-orange-800 border-orange-400"
-        : order.estado === "repaso"
-          ? "bg-blue-100 text-blue-800 border-blue-400"
-          : order.estado === "devolucion"
-            ? "bg-red-100 text-red-800 border-red-400"
-            : "bg-yellow-100 text-yellow-800 border-yellow-400"
-    }`}
-  >
-    {order.estado.toUpperCase()}
-  </Badge>
-)}
+                                              {order.esCobro ? (
+                                                <Badge className="shrink-0 font-bold text-xs border-2 bg-purple-100 text-purple-800 border-purple-400">
+                                                  COBRO
+                                                </Badge>
+                                              ) : (
+                                                <Badge
+                                                  className={`shrink-0 font-bold text-xs border-2 ${
+                                                    order.estado === "entregado"
+                                                      ? "bg-green-100 text-green-800 border-green-400"
+                                                      : order.estado === "fiado"
+                                                        ? "bg-orange-100 text-orange-800 border-orange-400"
+                                                        : order.estado === "repaso"
+                                                          ? "bg-blue-100 text-blue-800 border-blue-400"
+                                                          : order.estado === "devolucion"
+                                                            ? "bg-red-100 text-red-800 border-red-400"
+                                                            : "bg-yellow-100 text-yellow-800 border-yellow-400"
+                                                  }`}
+                                                >
+                                                  {order.estado.toUpperCase()}
+                                                </Badge>
+                                              )}
                                             </div>
+
+                                            {/* Dropdown para reasignar pedido */}
+                                            {!route.cuadradoEnCaja && (
+                                              <div className="mt-2">
+                                                <Label className="text-xs text-muted-foreground mb-1 block">
+                                                  Reasignar pedido a:
+                                                </Label>
+                                                <Select
+                                                  disabled={reasignandoPedido === order.id}
+                                                  onValueChange={(nuevaPlanillaId) => handleReasignarPedido(order.id, nuevaPlanillaId)}
+                                                >
+                                                  <SelectTrigger className="w-full text-xs">
+                                                    <SelectValue 
+                                                      placeholder={
+                                                        reasignandoPedido === order.id 
+                                                          ? "Reasignando..." 
+                                                          : "Seleccionar ruta destino"
+                                                      } 
+                                                    />
+                                                  </SelectTrigger>
+                                                  <SelectContent>
+                                                    {/* Rutas del mismo entregador */}
+                                                    <SelectItem value="header-mismo-entregador" disabled className="font-semibold text-xs">
+                                                      Rutas de {route.entregador}
+                                                    </SelectItem>
+                                                    {filteredRoutes
+                                                      .filter(r => 
+                                                        r.entregador === route.entregador && 
+                                                        r.id !== route.id &&
+                                                        !r.cuadradoEnCaja
+                                                      )
+                                                      .map(r => (
+                                                        <SelectItem key={r.id} value={r.id.toString()}>
+                                                          Ruta {r.ruta} - {new Date(r.fecha).toLocaleDateString('es-CO')}
+                                                        </SelectItem>
+                                                      ))
+                                                    }
+                                                    
+                                                    {/* Separador */}
+                                                    {routeSheets.some(r => 
+                                                      r.entregador !== route.entregador && !r.cuadradoEnCaja
+                                                    ) && (
+                                                      <SelectItem value="header-otros-entregadores" disabled className="font-semibold text-xs border-t mt-2 pt-2">
+                                                        Otros entregadores
+                                                      </SelectItem>
+                                                    )}
+                                                    
+                                                    {/* Rutas de otros entregadores */}
+                                                    {routeSheets
+                                                      .filter(r => 
+                                                        r.entregador !== route.entregador && 
+                                                        !r.cuadradoEnCaja
+                                                      )
+                                                      .map(r => (
+                                                        <SelectItem key={r.id} value={r.id.toString()}>
+                                                          {r.entregador} - Ruta {r.ruta} - {new Date(r.fecha).toLocaleDateString('es-CO')}
+                                                        </SelectItem>
+                                                      ))
+                                                    }
+                                                  </SelectContent>
+                                                </Select>
+                                              </div>
+                                            )}
 
                                             <p className="text-xs md:text-sm text-muted-foreground">
                                               {Array.isArray(order.items) ? order.items.length : 0} productos ·{" "}
