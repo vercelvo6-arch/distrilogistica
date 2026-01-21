@@ -216,6 +216,7 @@ export async function GET() {
         p.total_fiado,
         p.total_repaso,
         p.total_devolucion,
+        p.agotados,
         p.alistado_por,
         p.alistado_en,
         p.cuadrado_en_caja,
