@@ -6,10 +6,15 @@ const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: Request) {
   try {
+    console.log('[CUADRE CAJA] === INICIO DE REQUEST ===')
+    
     const session = await getSession()
     if (!session?.user) {
+      console.log('[CUADRE CAJA] ERROR: Usuario no autenticado')
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
+
+    console.log('[CUADRE CAJA] Usuario autenticado:', session.user.username)
 
     const body = await request.json()
     console.log('[CUADRE CAJA] Body recibido:', JSON.stringify(body, null, 2))
@@ -25,34 +30,38 @@ export async function POST(request: Request) {
       montoConsignacion,
       observaciones,
       descuento,
-      motivoDescuento,
       agotados
     } = body
 
-    // Validación
+    // Validaciones
+    console.log('[CUADRE CAJA] Iniciando validaciones...')
+    
     if (!planillaIds || !Array.isArray(planillaIds) || planillaIds.length === 0) {
-      console.error('[CUADRE CAJA] Error: planillaIds inválido:', planillaIds)
+      console.error('[CUADRE CAJA] ❌ planillaIds inválido:', planillaIds)
       return NextResponse.json(
-        { error: 'No se recibieron planillas válidas' },
+        { error: 'No se recibieron planillas válidas', details: `planillaIds: ${JSON.stringify(planillaIds)}` },
         { status: 400 }
       )
     }
+    console.log('[CUADRE CAJA] ✓ planillaIds válido:', planillaIds)
 
     if (!entregador) {
-      console.error('[CUADRE CAJA] Error: entregador faltante')
+      console.error('[CUADRE CAJA] ❌ entregador faltante')
       return NextResponse.json(
         { error: 'Entregador es requerido' },
         { status: 400 }
       )
     }
+    console.log('[CUADRE CAJA] ✓ Entregador:', entregador)
 
-    if (!efectivoRecibido && efectivoRecibido !== 0) {
-      console.error('[CUADRE CAJA] Error: efectivoRecibido faltante')
+    if (efectivoRecibido === undefined || efectivoRecibido === null) {
+      console.error('[CUADRE CAJA] ❌ efectivoRecibido faltante')
       return NextResponse.json(
         { error: 'Efectivo recibido es requerido' },
         { status: 400 }
       )
     }
+    console.log('[CUADRE CAJA] ✓ Efectivo recibido:', efectivoRecibido)
 
     // Cálculos
     const totalConsignado = Number(montoConsignacion || 0)
@@ -66,20 +75,19 @@ export async function POST(request: Request) {
     const estado = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
     console.log('[CUADRE CAJA] Valores calculados:', {
-      entregador,
-      planillas: planillaIds.length,
       totalEsperado: totalEsperadoNum,
-      descuento: descuentoNum,
-      agotados: agotadosNum,
       efectivo: totalEfectivo,
       consignacion: totalConsignado,
       totalRecibido,
       diferencia,
-      estado
+      estado,
+      descuento: descuentoNum,
+      agotados: agotadosNum
     })
 
-    // Insertar cuadre
-    console.log('[CUADRE CAJA] Insertando cuadre...')
+    // INSERT
+    console.log('[CUADRE CAJA] Ejecutando INSERT en cuadres_caja...')
+    
     const result = await sql`
       INSERT INTO cuadres_caja (
         entregador,
@@ -94,8 +102,7 @@ export async function POST(request: Request) {
         tiene_consignacion,
         numero_consignacion,
         banco,
-        descuento,
-        motivo_descuento
+        descuento
       ) VALUES (
         ${entregador},
         NOW(),
@@ -109,21 +116,20 @@ export async function POST(request: Request) {
         ${tieneConsignacion || false},
         ${numeroConsignacion || null},
         ${banco || null},
-        ${descuentoNum},
-        ${motivoDescuento || null}
+        ${descuentoNum}
       )
       RETURNING id
     `
 
     if (!result || result.length === 0) {
-      throw new Error('No se pudo insertar el cuadre en la base de datos')
+      throw new Error('INSERT no retornó resultados')
     }
 
     const cuadreId = result[0].id
     console.log('[CUADRE CAJA] ✓ Cuadre insertado con ID:', cuadreId)
 
     // Actualizar planillas
-    console.log('[CUADRE CAJA] Actualizando planillas:', planillaIds)
+    console.log('[CUADRE CAJA] Actualizando', planillaIds.length, 'planillas...')
     for (const planillaId of planillaIds) {
       await sql`
         UPDATE planillas
@@ -132,10 +138,10 @@ export async function POST(request: Request) {
         WHERE id = ${planillaId}
       `
     }
-    console.log('[CUADRE CAJA] ✓ Planillas actualizadas:', planillaIds.length)
+    console.log('[CUADRE CAJA] ✓ Planillas actualizadas')
 
-    // Crear comisión agrupada
-    console.log('[CUADRE CAJA] Buscando config de comisión para:', entregador)
+    // Comisión
+    console.log('[CUADRE CAJA] Buscando configuración de comisión...')
     const configComision = await sql`
       SELECT porcentaje_comision 
       FROM comisiones_config 
@@ -179,13 +185,12 @@ export async function POST(request: Request) {
           ${cuadreId}
         )
       `
-
       console.log('[CUADRE CAJA] ✓ Comisión creada')
     } else {
-      console.log('[CUADRE CAJA] ⚠️ No hay config de comisión para:', entregador)
+      console.log('[CUADRE CAJA] ⚠️ No hay configuración de comisión para:', entregador)
     }
 
-    console.log('[CUADRE CAJA] ✓✓✓ Proceso completado exitosamente')
+    console.log('[CUADRE CAJA] ✓✓✓ PROCESO COMPLETADO EXITOSAMENTE')
 
     return NextResponse.json({
       success: true,
@@ -194,12 +199,16 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[CUADRE CAJA] ❌ ERROR:', error)
+    console.error('[CUADRE CAJA] ❌❌❌ ERROR CRÍTICO:', error)
+    console.error('[CUADRE CAJA] Tipo:', typeof error)
+    console.error('[CUADRE CAJA] Mensaje:', error instanceof Error ? error.message : 'No message')
     console.error('[CUADRE CAJA] Stack:', error instanceof Error ? error.stack : 'No stack')
+    
     return NextResponse.json(
       { 
         error: 'Error al registrar cuadre',
-        details: error instanceof Error ? error.message : 'Error desconocido'
+        details: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
       },
       { status: 500 }
     )
