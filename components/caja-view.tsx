@@ -189,55 +189,55 @@ const [formData, setFormData] = useState({
   }
 
   async function loadHistorial() {
-    try {
-      const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
-      const dataIndividuales = await responseIndividuales.json()
+  try {
+    const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
+    const dataIndividuales = await responseIndividuales.json()
 
-      const responseAgrupados = await fetch("/api/cuadres-caja/historial")
-      const dataAgrupados = await responseAgrupados.json()
+    const responseAgrupados = await fetch("/api/cuadres-caja")  // ✅ CAMBIO AQUÍ
+    const dataAgrupados = await responseAgrupados.json()
 
-      const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
-        ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: "individual" }))
-        : []
+    const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
+      ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: "individual" }))
+      : []
 
-      const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
-        ? dataAgrupados.cuadres.map((c: any) => {
-            const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
-            const tipoRutaDisplay =
-              c.rutas_nombres && c.rutas_nombres.length > 0
-                ? c.rutas_nombres.join(", ")
-                : numRutas > 1
-                  ? `${numRutas} rutas agrupadas`
-                  : "1 ruta"
+    const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
+      ? dataAgrupados.cuadres.map((c: any) => {
+          const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
+          const tipoRutaDisplay =
+            c.rutas_nombres && c.rutas_nombres.length > 0
+              ? c.rutas_nombres.join(", ")
+              : numRutas > 1
+                ? `${numRutas} rutas agrupadas`
+                : "1 ruta"
 
-            return {
-              ...c,
-              tipo: "agrupado",
-              fecha_recepcion: c.fecha_cuadre,
-              efectivo_esperado: c.total_esperado,
-              efectivo_recibido: c.total_efectivo,
-              diferencia_efectivo: c.diferencia,
-              tipo_ruta: tipoRutaDisplay,
-              monto_consignacion:
-                c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
-            }
-          })
-        : []
+          return {
+            ...c,
+            tipo: "agrupado",
+            fecha_recepcion: c.fecha_cuadre,
+            efectivo_esperado: c.total_esperado,
+            efectivo_recibido: c.total_efectivo,
+            diferencia_efectivo: c.diferencia,
+            tipo_ruta: tipoRutaDisplay,
+            monto_consignacion:
+              c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
+          }
+        })
+      : []
 
-      const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados].sort(
-        (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime(),
-      )
+    const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados].sort(
+      (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime(),
+    )
 
-      setRecepciones(todosLosCuadres)
-    } catch (err) {
-      console.error("[CAJA] Error loading historial:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo cargar el historial",
-        variant: "destructive",
-      })
-    }
+    setRecepciones(todosLosCuadres)
+  } catch (err) {
+    console.error("[CAJA] Error loading historial:", err)
+    toast({
+      title: "Error",
+      description: "No se pudo cargar el historial",
+      variant: "destructive",
+    })
   }
+}
 
   const completedRoutes = routeSheets.filter(
     (s) => (s.estado === 'alistado' || s.estado === 'completado') && !s.cuadradoEnCaja
