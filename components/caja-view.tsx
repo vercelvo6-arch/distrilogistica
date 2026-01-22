@@ -1201,33 +1201,38 @@ const handleOpenModal = (planilla: RouteSheet) => {
     try {
       setSubmitting(true)
 
-      // Calcular totalEsperado = cargue - novedades (fiado + devoluciones + repasos + agotados + descuentos)
       const cargue = agrupadoData.totales.cargue || 0
       const novedades = (agrupadoData.totales.fiado || 0) + (agrupadoData.totales.devoluciones || 0) + (agrupadoData.totales.repasos || 0) + (agrupadoData.totales.agotados || 0) + (agrupadoData.totales.descuentos || 0)
       const totalEsperadoCalculado = cargue - novedades
 
+      const payload = {
+        planillaIds: agrupadoData.planillaIds,
+        entregador: agrupadoData.entregador,
+        totalEsperado: totalEsperadoCalculado,
+        efectivoRecibido: Number(formData.efectivoRecibido),
+        tieneConsignacion: formData.tieneConsignacion,
+        numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
+        banco: formData.tieneConsignacion ? formData.banco : null,
+        montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
+        observaciones: formData.observaciones || null,
+        descuento: agrupadoData.totales.descuentos || 0,
+        agotados: agrupadoData.totales.agotados || 0,
+      }
+
+      console.log('[CUADRE AGRUPADO] Enviando payload:', JSON.stringify(payload, null, 2))
+
       const response = await fetch("/api/cuadres-caja", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          planillaIds: agrupadoData.planillaIds,
-          entregador: agrupadoData.entregador,
-          totalEsperado: totalEsperadoCalculado,
-          efectivoRecibido: Number(formData.efectivoRecibido),
-          tieneConsignacion: formData.tieneConsignacion,
-          numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
-          banco: formData.tieneConsignacion ? formData.banco : null,
-          montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
-          observaciones: formData.observaciones || null,
-          descuento: agrupadoData.totales.descuentos || 0,
-          agotados: agrupadoData.totales.agotados || 0,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
+      console.log('[CUADRE AGRUPADO] Respuesta recibida:', data)
 
       if (!response.ok) {
-        throw new Error(data.error || "Error al registrar cuadre agrupado")
+        console.error('[CUADRE AGRUPADO] Error response:', data)
+        throw new Error(data.error || data.details || "Error al registrar cuadre agrupado")
       }
 
       toast({
@@ -1240,7 +1245,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
       setAgrupadoData(null)
       await loadData()
     } catch (error) {
-      console.error("Error al registrar cuadre agrupado:", error)
+      console.error("[CUADRE AGRUPADO] Error completo:", error)
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Error al registrar cuadre",
