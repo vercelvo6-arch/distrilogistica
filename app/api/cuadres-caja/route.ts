@@ -89,37 +89,39 @@ export async function POST(request: Request) {
     console.log('[CUADRE CAJA] Ejecutando INSERT en cuadres_caja...')
     
     const result = await sql`
-      INSERT INTO cuadres_caja (
-        entregador,
-        fecha_cuadre,
-        planillas_ids,
-        total_esperado,
-        total_efectivo,
-        total_consignado,
-        diferencia,
-        estado,
-        observaciones,
-        tiene_consignacion,
-        numero_consignacion,
-        banco,
-        descuento
-      ) VALUES (
-        ${entregador},
-        NOW(),
-        ${planillaIds},
-        ${totalEsperadoNum},
-        ${totalEfectivo},
-        ${totalConsignado},
-        ${diferencia},
-        ${estado},
-        ${observaciones || null},
-        ${tieneConsignacion || false},
-        ${numeroConsignacion || null},
-        ${banco || null},
-        ${descuentoNum}
-      )
-      RETURNING id
-    `
+  INSERT INTO cuadres_caja (
+    entregador,
+    fecha_cuadre,
+    planillas_ids,
+    total_esperado,
+    total_efectivo,
+    total_consignado,
+    diferencia,
+    estado,
+    observaciones,
+    tiene_consignacion,
+    numero_consignacion,
+    banco,
+    descuento,
+    agotados
+  ) VALUES (
+    ${entregador},
+    NOW(),
+    ${planillaIds},
+    ${totalEsperadoNum},
+    ${totalEfectivo},
+    ${totalConsignado},
+    ${diferencia},
+    ${estado},
+    ${observaciones || null},
+    ${tieneConsignacion || false},
+    ${numeroConsignacion || null},
+    ${banco || null},
+    ${descuentoNum},
+    ${agotadosNum}
+  )
+  RETURNING id
+`
 
     if (!result || result.length === 0) {
       throw new Error('INSERT no retornó resultados')
