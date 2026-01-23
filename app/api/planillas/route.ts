@@ -203,11 +203,11 @@ export async function GET() {
 
     const sql = getDB();
 
+    // SELECT SIN las columnas que pueden no existir
     const planillas = await sql`
       SELECT
         p.id,
         p.fecha,
-        p.fecha_alistamiento,
         p.tipo_ruta,
         p.entregador,
         p.estado,
@@ -216,9 +216,6 @@ export async function GET() {
         p.total_fiado,
         p.total_repaso,
         p.total_devolucion,
-        p.agotados,
-        p.alistado_por,
-        p.alistado_en,
         p.cuadrado_en_caja,
         p.observaciones,
         p.created_at,
@@ -239,12 +236,7 @@ export async function GET() {
             pe.total,
             pe.estado,
             pe.observaciones,
-            pe.entregado_en,
-            pe.descuento,
-            pe.motivo_descuento,
-            pe.monto_pagado,
-            pe.saldo_pendiente,
-            pe.es_cobro
+            pe.entregado_en
           FROM pedidos pe
           WHERE pe.planilla_id = ${planilla.id}
           ORDER BY pe.secuencia
@@ -267,10 +259,7 @@ export async function GET() {
                 cantidad_disponible,
                 cantidad_faltante,
                 unidad_incompleta,
-                observaciones_faltante,
-                cantidad_entregada,
-                subtotal_ajustado,
-                estado_producto
+                observaciones_faltante
               FROM pedido_productos
               WHERE pedido_id = ${pedido.id}
               ORDER BY codigo
@@ -278,14 +267,25 @@ export async function GET() {
 
             return {
               ...pedido,
-              productos
+              productos,
+              // Valores por defecto para campos que pueden faltar
+              descuento: 0,
+              motivo_descuento: null,
+              monto_pagado: 0,
+              saldo_pendiente: 0,
+              es_cobro: false
             };
           })
         );
 
         return {
           ...planilla,
-          pedidos: pedidosConProductos
+          pedidos: pedidosConProductos,
+          // Valores por defecto para campos que pueden faltar
+          agotados: 0,
+          fecha_alistamiento: null,
+          alistado_por: null,
+          alistado_en: null
         };
       })
     );
