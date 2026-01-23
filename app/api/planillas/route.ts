@@ -23,16 +23,6 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API /planillas] Recibidas ${routeSheets.length} planillas`);
     
-    // Log de ejemplo para debug
-    if (routeSheets.length > 0) {
-      const ejemplo = routeSheets.find(s => s.ruta === '72') || routeSheets[0];
-      console.log(`[API /planillas] Ejemplo ruta ${ejemplo.ruta}:`, {
-        id: ejemplo.id,
-        totalOrders: ejemplo.orders?.length || 0,
-        primeraOrden: ejemplo.orders?.[0]?.id
-      });
-    }
-
     const sql = getDB();
 
     let insertadas = 0;
@@ -124,13 +114,11 @@ export async function POST(request: NextRequest) {
 
             // 3️⃣ PRODUCTOS
             if (Array.isArray(order.items) && order.items.length > 0) {
-              // Primero eliminar productos existentes de este pedido
               await sql`
                 DELETE FROM pedido_productos 
                 WHERE pedido_id = ${pedidoId}
               `;
 
-              // Insertar productos uno por uno para mejor logging
               for (let k = 0; k < order.items.length; k++) {
                 const item = order.items[k];
                 
@@ -196,6 +184,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
+    console.log("[API /planillas GET] Iniciando...");
+    
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -203,7 +193,10 @@ export async function GET() {
 
     const sql = getDB();
 
-    // SELECT SIN las columnas que pueden no existir
+    // Primero verificar qué columnas existen
+    console.log("[API /planillas GET] Consultando planillas...");
+    
+    // Query seguro que solo usa columnas que SEGURO existen
     const planillas = await sql`
       SELECT
         p.id,
@@ -224,79 +217,106 @@ export async function GET() {
       ORDER BY p.created_at DESC
     `;
 
+    console.log(`[API /planillas GET] ${planillas.length} planillas encontradas`);
+
     const planillasConPedidos = await Promise.all(
       planillas.map(async (planilla) => {
-        const pedidos = await sql`
-          SELECT 
-            pe.id,
-            pe.cliente,
-            pe.direccion,
-            pe.telefono,
-            pe.barrio,
-            pe.total,
-            pe.estado,
-            pe.observaciones,
-            pe.entregado_en
-          FROM pedidos pe
-          WHERE pe.planilla_id = ${planilla.id}
-          ORDER BY pe.secuencia
-        `;
+        try {
+          const pedidos = await sql`
+            SELECT 
+              pe.id,
+              pe.cliente,
+              pe.direccion,
+              pe.telefono,
+              pe.barrio,
+              pe.total,
+              pe.estado,
+              pe.observaciones,
+              pe.entregado_en
+            FROM pedidos pe
+            WHERE pe.planilla_id = ${planilla.id}
+            ORDER BY pe.secuencia
+          `;
 
-        console.log(`[API GET] Planilla ${planilla.id}: ${pedidos.length} pedidos`);
+          console.log(`[API GET] Planilla ${planilla.id}: ${pedidos.length} pedidos`);
 
-        const pedidosConProductos = await Promise.all(
-          pedidos.map(async (pedido) => {
-            const productos = await sql`
-              SELECT 
-                codigo,
-                nombre,
-                categoria,
-                cantidad,
-                precio_unitario,
-                total,
-                devuelto,
-                estado_alistamiento,
-                cantidad_disponible,
-                cantidad_faltante,
-                unidad_incompleta,
-                observaciones_faltante
-              FROM pedido_productos
-              WHERE pedido_id = ${pedido.id}
-              ORDER BY codigo
-            `;
+          const pedidosConProductos = await Promise.all(
+            pedidos.map(async (pedido) => {
+              try {
+                const productos = await sql`
+                  SELECT 
+                    codigo,
+                    nombre,
+                    categoria,
+                    cantidad,
+                    precio_unitario,
+                    total,
+                    devuelto
+                  FROM pedido_productos
+                  WHERE pedido_id = ${pedido.id}
+                  ORDER BY codigo
+                `;
 
-            return {
-              ...pedido,
-              productos,
-              // Valores por defecto para campos que pueden faltar
-              descuento: 0,
-              motivo_descuento: null,
-              monto_pagado: 0,
-              saldo_pendiente: 0,
-              es_cobro: false
-            };
-          })
-        );
+                return {
+                  ...pedido,
+                  productos,
+                  // Valores por defecto para campos opcionales
+                  descuento: 0,
+                  motivo_descuento: null,
+                  monto_pagado: 0,
+                  saldo_pendiente: 0,
+                  es_cobro: false
+                };
+              } catch (err) {
+                console.error(`Error cargando productos del pedido ${pedido.id}:`, err);
+                return {
+                  ...pedido,
+                  productos: [],
+                  descuento: 0,
+                  motivo_descuento: null,
+                  monto_pagado: 0,
+                  saldo_pendiente: 0,
+                  es_cobro: false
+                };
+              }
+            })
+          );
 
-        return {
-          ...planilla,
-          pedidos: pedidosConProductos,
-          // Valores por defecto para campos que pueden faltar
-          agotados: 0,
-          fecha_alistamiento: null,
-          alistado_por: null,
-          alistado_en: null
-        };
+          return {
+            ...planilla,
+            pedidos: pedidosConProductos,
+            // Valores por defecto para campos opcionales
+            agotados: 0,
+            fecha_alistamiento: null,
+            alistado_por: null,
+            alistado_en: null
+          };
+        } catch (err) {
+          console.error(`Error cargando pedidos de planilla ${planilla.id}:`, err);
+          return {
+            ...planilla,
+            pedidos: [],
+            agotados: 0,
+            fecha_alistamiento: null,
+            alistado_por: null,
+            alistado_en: null
+          };
+        }
       })
     );
 
-    console.log('[API /planillas GET] ✓', planillasConPedidos.length, 'planillas obtenidas');
+    console.log('[API /planillas GET] ✓', planillasConPedidos.length, 'planillas obtenidas con éxito');
 
     return NextResponse.json({ planillas: planillasConPedidos });
-  } catch (error) {
-    console.error("[API /planillas GET] ERROR", error);
+  } catch (error: any) {
+    console.error("[API /planillas GET] ERROR COMPLETO:", error);
+    console.error("[API /planillas GET] Stack:", error.stack);
     return NextResponse.json(
-      { error: "Error al obtener planillas" },
+      { 
+        error: "Error al obtener planillas",
+        detalles: error.message,
+        tipo: error.name
+      },
       { status: 500 }
     );
   }
