@@ -131,7 +131,12 @@ export async function POST(request: NextRequest) {
                     cantidad,
                     precio_unitario,
                     total,
-                    devuelto
+                    devuelto,
+                    estado_alistamiento,
+                    cantidad_disponible,
+                    cantidad_faltante,
+                    unidad_incompleta,
+                    observaciones_faltante
                   ) VALUES (
                     ${pedidoId},
                     ${item.codigo || ""},
@@ -140,7 +145,12 @@ export async function POST(request: NextRequest) {
                     ${Number(item.cantidad) || 0},
                     ${Number(item.valorUnidad || item.precio_unitario) || 0},
                     ${Number(item.subtotal || item.total) || 0},
-                    false
+                    false,
+                    'pendiente',
+                    null,
+                    0,
+                    false,
+                    null
                   )
                 `;
               }
@@ -193,10 +203,8 @@ export async function GET() {
 
     const sql = getDB();
 
-    // Primero verificar qué columnas existen
     console.log("[API /planillas GET] Consultando planillas...");
     
-    // Query seguro que solo usa columnas que SEGURO existen
     const planillas = await sql`
       SELECT
         p.id,
@@ -212,7 +220,10 @@ export async function GET() {
         p.cuadrado_en_caja,
         p.observaciones,
         p.created_at,
-        p.updated_at
+        p.updated_at,
+        p.fecha_alistamiento,
+        p.alistado_por,
+        p.alistado_en
       FROM planillas p
       ORDER BY p.created_at DESC
     `;
@@ -243,6 +254,7 @@ export async function GET() {
           const pedidosConProductos = await Promise.all(
             pedidos.map(async (pedido) => {
               try {
+                // ✅ TRAER TODOS LOS CAMPOS DE ESTADO DE ALISTAMIENTO
                 const productos = await sql`
                   SELECT 
                     codigo,
@@ -251,7 +263,12 @@ export async function GET() {
                     cantidad,
                     precio_unitario,
                     total,
-                    devuelto
+                    devuelto,
+                    estado_alistamiento,
+                    cantidad_disponible,
+                    cantidad_faltante,
+                    unidad_incompleta,
+                    observaciones_faltante
                   FROM pedido_productos
                   WHERE pedido_id = ${pedido.id}
                   ORDER BY codigo
@@ -260,7 +277,6 @@ export async function GET() {
                 return {
                   ...pedido,
                   productos,
-                  // Valores por defecto para campos opcionales
                   descuento: 0,
                   motivo_descuento: null,
                   monto_pagado: 0,
@@ -285,11 +301,7 @@ export async function GET() {
           return {
             ...planilla,
             pedidos: pedidosConProductos,
-            // Valores por defecto para campos opcionales
-            agotados: 0,
-            fecha_alistamiento: null,
-            alistado_por: null,
-            alistado_en: null
+            agotados: 0
           };
         } catch (err) {
           console.error(`Error cargando pedidos de planilla ${planilla.id}:`, err);
