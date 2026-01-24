@@ -243,6 +243,7 @@ export async function GET(request: Request) {
         c.banco,
         c.descuento,
         c.motivo_descuento,
+        c.agotados,
         array_agg(DISTINCT p.tipo_ruta) FILTER (WHERE p.tipo_ruta IS NOT NULL) as rutas_nombres
       FROM cuadres_caja c
       LEFT JOIN planillas p ON p.id = ANY(c.planillas_ids)
