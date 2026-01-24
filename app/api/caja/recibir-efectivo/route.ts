@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
       fechaConsignacion,
       observaciones,
       descuento,           
-      motivoDescuento
+      motivoDescuento,
+      agotados  // ← AGREGADO
     } = body
 
     if (!planillaId || efectivoEsperado === undefined || efectivoRecibido === undefined) {
@@ -113,7 +114,8 @@ export async function POST(request: NextRequest) {
         recibido_por,
         estado,
         descuento,              
-        motivo_descuento 
+        motivo_descuento,
+        agotados  // ← AGREGADO
       ) VALUES (
         ${recepcionId},
         ${planillaId},
@@ -129,7 +131,8 @@ export async function POST(request: NextRequest) {
         ${session.user.id},
         ${estado},
         ${descuento || 0},              
-        ${motivoDescuento || null}  
+        ${motivoDescuento || null},
+        ${agotados || 0}  // ← AGREGADO
       )
       RETURNING *
     `
