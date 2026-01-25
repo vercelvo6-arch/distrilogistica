@@ -13,6 +13,7 @@ import {
   updateSubtotalAjustado,
   updateDescuentoPedido,
   updateMotivoDescuentoPedido,
+  updateMotivoAjuste, 
 } from "@/lib/actions/planillas"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -795,7 +796,50 @@ const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
     await loadData()
   }
 }
-  
+  const handleMotivoAjusteChange = async (orderId: string, codigo: string, motivoAjuste: string) => {
+  try {
+    // Actualizar estado local primero (optimista)
+    setRouteSheets(prevSheets => 
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(order => {
+          if (order.id !== orderId) return order
+          
+          return {
+            ...order,
+            items: order.items.map(item => 
+              item.codigo === codigo 
+                ? { ...item, motivoAjuste: motivoAjuste || null }
+                : item
+            )
+          }
+        })
+      }))
+    )
+
+    // Guardar en el servidor
+    await updateMotivoAjuste(orderId, codigo, motivoAjuste || null)
+
+    const mensaje = motivoAjuste === 'devuelto' 
+      ? "Producto marcado como devolución" 
+      : motivoAjuste === 'error_facturacion'
+        ? "Producto marcado como error de facturación"
+        : "Producto restaurado a normal"
+
+    toast({
+      title: "Estado actualizado",
+      description: mensaje,
+    })
+  } catch (err) {
+    console.error("[CAJA] Error updating motivo ajuste:", err)
+    await loadData()
+    toast({
+      title: "Error",
+      description: "No se pudo actualizar el estado del producto",
+      variant: "destructive",
+    })
+  }
+}
   const handleOrderStatusChange = async (orderId: string, newStatus: Order["estado"]) => {
   // Obtener el pedido
   const order = routeSheets
@@ -1408,6 +1452,7 @@ const handleSubmitFiado = async () => {
   let totalRepasos = 0
   let totalDescuentos = 0
   let totalAgotados = 0 
+  let totalErroresFacturacion = 0  
 
   filteredRoutes.forEach((route) => {
     const totals = calculateRouteTotals(route)
@@ -1416,6 +1461,7 @@ const handleSubmitFiado = async () => {
     totalDevoluciones += totals.devoluciones
     totalRepasos += totals.repasos
     totalAgotados += totals.agotados
+    totalErroresFacturacion += totals.erroresFacturacion 
   })
   
  // Calcular descuentos de todos los pedidos de las rutas filtradas
@@ -1652,7 +1698,7 @@ filteredRoutes.forEach((route) => {
                 </div>
               </Card>
 
-              <div className="grid grid-cols-7 gap-4">
+              <div className="grid grid-cols-8 gap-4">
                 <Card className="p-4 hover:shadow-md transition-shadow">
                   <p className="text-xs font-medium text-muted-foreground mb-2">Total Cargue</p>
                   <p className="text-xl font-bold tracking-tight">{formatCOP(totalCargue)}</p>
@@ -1681,6 +1727,11 @@ filteredRoutes.forEach((route) => {
                 <Card className="p-4 bg-gray-50 border-gray-200 hover:shadow-md transition-shadow">
                   <p className="text-xs font-medium text-gray-700 mb-2">Agotados</p>
                   <p className="text-xl font-bold text-gray-700 tracking-tight">{formatCOP(totalAgotados)}</p>
+                </Card>
+
+                <Card className="p-4 bg-orange-50 border-orange-200 hover:shadow-md transition-shadow">
+                  <p className="text-xs font-medium text-orange-700 mb-2">Errores Fact.</p>
+                  <p className="text-xl font-bold text-orange-700 tracking-tight">{formatCOP(totalErroresFacturacion)}</p>
                 </Card>
 
                 <Card className="p-4 bg-purple-50 border-purple-200 hover:shadow-md transition-shadow">
@@ -2081,18 +2132,20 @@ filteredRoutes.forEach((route) => {
                                                       className={`border-b ${item.devuelto ? "bg-red-50 line-through opacity-60" : ""}`}
                                                     >
                                                       <td className="py-2">
-                                                        <Checkbox
-                                                          checked={item.devuelto || false}
-                                                          onCheckedChange={() =>
-                                                            handleItemReturn(
-                                                              order.id,
-                                                              item.codigo,
-                                                              item.devuelto || false,
-                                                            )
-                                                          }
-                                                          disabled={route.cuadradoEnCaja}
-                                                        />
-                                                      </td>
+                                                        <Select
+                                                         value={item.motivoAjuste || ""}
+                                                         onValueChange={(value) => handleMotivoAjusteChange(order.id, item.codigo, value)}
+                                                         disabled={route.cuadradoEnCaja}
+                                                        >
+                                                         <SelectTrigger className="w-[140px] h-8 text-xs">
+                                                           <SelectValue placeholder="Normal" />
+                                                         </SelectTrigger>
+                                                         <SelectContent>
+                                                           <SelectItem value="devuelto">❌ Devolución</SelectItem>
+                                                           <SelectItem value="error_facturacion">⚠️ Error Fact.</SelectItem>
+                                                         </SelectContent>
+                                                      </Select>
+                                                    </td>
                                                       <td className="py-2 font-mono">{item.codigo}</td>
                                                       <td className="py-2">{item.descripcion}</td>
                                                       <td className="text-right py-2">{item.cantidad}</td>
