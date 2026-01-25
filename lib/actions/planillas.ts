@@ -486,3 +486,32 @@ export async function updateMotivoDescuentoPedido(pedidoId: string, motivo: stri
     throw error
   }
 }
+export async function updateMotivoAjuste(
+  pedidoId: string,
+  codigoProducto: string,
+  motivoAjuste: string | null
+) {
+  const sql = getDB()
+  try {
+    await sql`
+      UPDATE pedido_productos
+      SET motivo_ajuste = ${motivoAjuste},
+          updated_at = NOW()
+      WHERE pedido_id = ${pedidoId}
+        AND codigo = ${codigoProducto}
+    `
+
+    console.log('[updateMotivoAjuste] ✓ Motivo de ajuste actualizado:', {
+      pedidoId,
+      codigoProducto,
+      motivoAjuste
+    })
+
+    revalidatePath("/")
+    return { success: true, motivoAjuste }
+    
+  } catch (error) {
+    console.error("[updateMotivoAjuste] ❌ ERROR:", error)
+    throw error
+  }
+}
