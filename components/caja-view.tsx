@@ -258,98 +258,103 @@ const [formData, setFormData] = useState({
 })
 
   const calculateRouteTotals = (route: RouteSheet | null) => {
-    if (!route || !Array.isArray(route.orders)) {
-      return {
-        entregado: 0,
-        fiado: 0,
-        devoluciones: 0,
-        repasos: 0,
-        agotados: 0,
-      }
-    }
-
-    let entregado = 0
-    let fiado = 0
-    let devoluciones = 0
-    let repasos = 0
-    let agotados = 0
-
-    route.orders.forEach((order) => {
-      if (!order || !Array.isArray(order.items)) return
-
-      let effectiveTotal = 0
-      let returnedTotal = 0
-      let agotadosEnPedido = 0
-
-      order.items.forEach((item) => {
-        if (!item) return
-
-        const cantOriginal = Number(item.cantidad) || 0
-        const precioUnit = Number(item.valorUnidad) || 0
-        const subtotalOriginal = cantOriginal * precioUnit
-
-        // Producto devuelto
-        if (item.devuelto) {
-          returnedTotal += subtotalOriginal
-          return
-        }
-
-        // Cantidad entregada o agotado
-        const cantEntregada =
-          item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
-            ? Number(item.cantidadEntregada)
-            : cantOriginal
-
-        if (cantEntregada === 0 || item.estadoProducto === "agotado") {
-          agotadosEnPedido += subtotalOriginal
-          return
-        }
-
-        // Subtotal real
-        const subtotalReal =
-          item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
-            ? Number(item.subtotalAjustado)
-            : cantEntregada * precioUnit
-
-        effectiveTotal += subtotalReal
-      })
-
-      agotados += agotadosEnPedido
-      
-      // Sumar devoluciones parciales (productos individuales con checkbox)
-      devoluciones += returnedTotal
-
-      // Sumar según el estado del pedido COMPLETO
-      if (order.estado === "fiado") {
-        fiado += effectiveTotal
-        // Restar descuento del pedido si existe
-        if (order.descuento) {
-          fiado -= Number(order.descuento)
-        }
-      } else if (order.estado === "repaso") {
-        repasos += effectiveTotal
-      } else if (order.estado === "devolucion") {
-        // Devolución TOTAL (botón rojo) - suma todo el pedido
-        devoluciones += effectiveTotal
-      } else {
-        // TODO LO DEMÁS (pendiente, entregado, null) = ENTREGADO
-        entregado += effectiveTotal
-        // Restar descuento del pedido si existe
-        if (order.descuento) {
-          entregado -= Number(order.descuento)
-        }
-      }
-    })
-
+  if (!route || !Array.isArray(route.orders)) {
     return {
-      entregado: Math.round(entregado * 100) / 100,
-      fiado: Math.round(fiado * 100) / 100,
-      devoluciones: Math.round(devoluciones * 100) / 100,
-      repasos: Math.round(repasos * 100) / 100,
-      agotados: Math.round(agotados * 100) / 100,
+      entregado: 0,
+      fiado: 0,
+      devoluciones: 0,
+      repasos: 0,
+      agotados: 0,
+      erroresFacturacion: 0,  // ← NUEVO
     }
   }
 
+  let entregado = 0
+  let fiado = 0
+  let devoluciones = 0
+  let repasos = 0
+  let agotados = 0
+  let erroresFacturacion = 0  // ← NUEVO
+
+  route.orders.forEach((order) => {
+    if (!order || !Array.isArray(order.items)) return
+
+    let effectiveTotal = 0
+    let returnedTotal = 0
+    let agotadosEnPedido = 0
+    let erroresEnPedido = 0  // ← NUEVO
+
+    order.items.forEach((item) => {
+      if (!item) return
+
+      const cantOriginal = Number(item.cantidad) || 0
+      const precioUnit = Number(item.valorUnidad) || 0
+      const subtotalOriginal = cantOriginal * precioUnit
+
+      // ⚠️ ERROR DE FACTURACIÓN (NO afecta comisión)
+      if (item.motivoAjuste === 'error_facturacion') {
+        erroresEnPedido += subtotalOriginal
+        return
+      }
+
+      // ❌ PRODUCTO DEVUELTO (afecta comisión)
+      if (item.motivoAjuste === 'devuelto') {
+        returnedTotal += subtotalOriginal
+        return
+      }
+
+      // 🚫 AGOTADO
+      const cantEntregada =
+        item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+          ? Number(item.cantidadEntregada)
+          : cantOriginal
+
+      if (cantEntregada === 0 || item.estadoProducto === "agotado") {
+        agotadosEnPedido += subtotalOriginal
+        return
+      }
+
+      // ✅ PRODUCTO ENTREGADO NORMALMENTE
+      const subtotalReal =
+        item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+          ? Number(item.subtotalAjustado)
+          : cantEntregada * precioUnit
+
+      effectiveTotal += subtotalReal
+    })
+
+    agotados += agotadosEnPedido
+    devoluciones += returnedTotal
+    erroresFacturacion += erroresEnPedido  // ← NUEVO
+
+    // Sumar según el estado del pedido COMPLETO
+    if (order.estado === "fiado") {
+      fiado += effectiveTotal
+      if (order.descuento) {
+        fiado -= Number(order.descuento)
+      }
+    } else if (order.estado === "repaso") {
+      repasos += effectiveTotal
+    } else if (order.estado === "devolucion") {
+      devoluciones += effectiveTotal
+    } else {
+      // TODO LO DEMÁS = ENTREGADO
+      entregado += effectiveTotal
+      if (order.descuento) {
+        entregado -= Number(order.descuento)
+      }
+    }
+  })
+
+  return {
+    entregado: Math.round(entregado * 100) / 100,
+    fiado: Math.round(fiado * 100) / 100,
+    devoluciones: Math.round(devoluciones * 100) / 100,
+    repasos: Math.round(repasos * 100) / 100,
+    agotados: Math.round(agotados * 100) / 100,
+    erroresFacturacion: Math.round(erroresFacturacion * 100) / 100,  // ← NUEVO
+  }
+}
   const toggleRouteExpansion = (routeId: number) => {
     const newExpanded = new Set(expandedRoutes)
     if (newExpanded.has(routeId)) {
