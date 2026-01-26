@@ -944,7 +944,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                           )}
                         </Card>
                       )
-                    })
                   })()}
                 </div>
               )}
