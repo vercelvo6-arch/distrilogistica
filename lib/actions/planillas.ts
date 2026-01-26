@@ -515,3 +515,26 @@ export async function updateMotivoAjuste(
     throw error
   }
 }
+export async function devolverAlistamiento(planillaId: string) {
+  const sql = getDB()
+  try {
+    await sql`
+      UPDATE planillas
+      SET estado = 'alistando',
+          alistado_por = NULL,
+          alistado_en = NULL,
+          updated_at = NOW()
+      WHERE id = ${planillaId}
+        AND estado = 'alistado'
+    `
+
+    console.log('[devolverAlistamiento] ✓ Planilla devuelta a alistamiento:', planillaId)
+
+    revalidatePath("/")
+    return { success: true }
+    
+  } catch (error) {
+    console.error("[devolverAlistamiento] ❌ ERROR:", error)
+    throw error
+  }
+}
