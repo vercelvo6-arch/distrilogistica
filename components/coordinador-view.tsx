@@ -936,7 +936,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           </Button>
                                         </td>
                                       </tr>
-                                    ))}
+                                    )}
                                   </tbody>
                                 </table>
                               </div>
@@ -944,7 +944,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                           )}
                         </Card>
                       )
-                  })()}
                 </div>
               )}
             </Card>
