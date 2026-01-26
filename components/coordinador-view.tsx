@@ -26,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
+import { devolverAlistamiento } from "@/lib/actions/planillas"
 
 interface CoordinadorViewProps {
   onLogout: () => void
@@ -221,6 +222,20 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       }
     } catch (err) {
       console.error("[COORD] Error loading supervision data:", err)
+    }
+  }
+  const handleDevolverAlistamiento = async (planillaId: string, entregador: string, ruta: string) => {
+    if (!confirm(`¿Devolver la planilla de ${entregador} - Ruta ${ruta} a estado "Alistando"?\n\nEsto permitirá al alistador completarla correctamente.`)) {
+      return
+    }
+
+    try {
+      await devolverAlistamiento(planillaId)
+      alert('✅ Planilla devuelta al alistador correctamente')
+      await loadSupervisionData()
+    } catch (err) {
+      console.error('[DEVOLVER] Error:', err)
+      alert('❌ Error al devolver planilla: ' + (err as Error).message)
     }
   }
 
@@ -799,10 +814,24 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                   )}
                                 </div>
                               </div>
-                              <Button variant="outline" size="sm" onClick={() => toggleEntregador(key)}>
-                                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                              </Button>
-                            </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => {
+                                    const primeraSheet = sheets[0]
+                                    if (primeraSheet) {
+                                      handleDevolverAlistamiento(primeraSheet.id, entregador, primeraSheet.ruta)
+                                    }
+                                  }}
+                                  className="bg-orange-600 hover:bg-orange-700"
+                                >
+                                  ↩️ Devolver
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => toggleEntregador(key)}>
+                                 {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                               </Button>
+                             </div>
                           </div>
 
                           {expanded && (
