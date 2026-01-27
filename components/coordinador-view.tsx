@@ -816,19 +816,37 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                 </div>
                               </div>
                               <div className="flex gap-2">
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => {
-                                    const primeraSheet = sheets[0]
-                                    if (primeraSheet) {
-                                      handleDevolverAlistamiento(primeraSheet.id, entregador, primeraSheet.ruta)
-                                    }
-                                  }}
-                                  className="bg-orange-600 hover:bg-orange-700"
-                                >
-                                  ↩️ Devolver
-                                </Button>
+<Button
+  variant="destructive"
+  size="sm"
+  onClick={async () => {
+    const rutasTexto = sheets.map(s => `Ruta ${s.ruta}`).join(', ')
+    
+    if (!confirm(
+      `¿Devolver la planilla de ${entregador} a estado "Alistando"?\n\n` +
+      `Rutas incluidas: ${rutasTexto}\n\n` +
+      `Esto permitirá al alistador completarla correctamente.`
+    )) {
+      return
+    }
+
+    try {
+      // Devolver todas las rutas de la planilla del entregador
+      for (const sheet of sheets) {
+        await devolverAlistamiento(sheet.id)
+      }
+      
+      alert(`Planilla devuelta al alistador correctamente (${sheets.length} rutas)`)
+      await loadSupervisionData()
+    } catch (err) {
+      console.error('[DEVOLVER] Error:', err)
+      alert('Error al devolver planilla: ' + (err as Error).message)
+    }
+  }}
+  className="bg-orange-600 hover:bg-orange-700"
+>
+  Devolver
+</Button>
                                 <Button variant="outline" size="sm" onClick={() => toggleEntregador(key)}>
                                   {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                                 </Button>
