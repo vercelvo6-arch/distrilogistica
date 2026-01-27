@@ -151,27 +151,27 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   }
 
   const handleSubsanarFaltante = async (data: SubsanacionData) => {
-  try {
-    const response = await fetch("/api/faltantes", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    })
+    try {
+      const response = await fetch("/api/faltantes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || "Error al subsanar faltante")
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Error al subsanar faltante")
+      }
+
+      const result = await response.json()
+      alert(result.mensaje || "Faltante subsanado correctamente")
+
+      await loadSupervisionData()
+    } catch (err) {
+      console.error("[SUBSANAR] ERROR:", err)
+      alert("Error: " + (err as Error).message)
     }
-
-    const result = await response.json()
-    alert(result.mensaje || "Faltante subsanado correctamente")
-
-    await loadSupervisionData()
-  } catch (err) {
-    console.error("[SUBSANAR] ERROR:", err)
-    alert("Error: " + (err as Error).message)
   }
-}
 
   async function loadSupervisionData() {
     try {
@@ -224,6 +224,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       console.error("[COORD] Error loading supervision data:", err)
     }
   }
+
   const handleDevolverAlistamiento = async (planillaId: string, entregador: string, ruta: string) => {
     if (!confirm(`¿Devolver la planilla de ${entregador} - Ruta ${ruta} a estado "Alistando"?\n\nEsto permitirá al alistador completarla correctamente.`)) {
       return
@@ -829,9 +830,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                   ↩️ Devolver
                                 </Button>
                                 <Button variant="outline" size="sm" onClick={() => toggleEntregador(key)}>
-                                 {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                               </Button>
-                             </div>
+                                  {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                </Button>
+                              </div>
+                            </div>
                           </div>
 
                           {expanded && (
@@ -936,7 +938,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           </Button>
                                         </td>
                                       </tr>
-                                    )}
+                                    ))}
                                   </tbody>
                                 </table>
                               </div>
@@ -944,6 +946,8 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                           )}
                         </Card>
                       )
+                    })
+                  })()}
                 </div>
               )}
             </Card>
@@ -1097,6 +1101,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           </TabsContent>
         </Tabs>
       </main>
+
       {assignmentModal && (
         <Dialog open={!!assignmentModal} onOpenChange={() => setAssignmentModal(null)}>
           <DialogContent className="max-w-md">
@@ -1158,6 +1163,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           </DialogContent>
         </Dialog>
       )}
+
       <SubsanarFaltantesModal
         faltante={faltanteParaSubsanar}
         onClose={() => setFaltanteParaSubsanar(null)}
