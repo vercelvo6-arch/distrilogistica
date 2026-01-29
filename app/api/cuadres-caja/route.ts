@@ -170,9 +170,10 @@ const result = await sql`
     `
 
     if (configComision.length > 0) {
-      const porcentaje = Number(configComision[0].porcentaje_comision)
-      const baseComisionable = Math.round(totalEfectivo * 100) / 100
-      const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
+  const porcentaje = Number(configComision[0].porcentaje_comision)
+  const totalDevoluciones = devolucionesNum + erroresFacturacionNum
+  const baseComisionable = Math.round((totalEfectivo - totalDevoluciones) * 100) / 100
+  const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
       console.log('[CUADRE CAJA] Creando comisión:', {
         porcentaje,
@@ -181,29 +182,30 @@ const result = await sql`
       })
 
       await sql`
-        INSERT INTO comisiones (
-          entregador,
-          fecha,
-          planilla_id,
-          total_entregas_efectivas,
-          total_devoluciones,
-          base_comisionable,
-          porcentaje_aplicado,
-          monto_comision,
-          estado,
-          cuadre_agrupado_id
-        ) VALUES (
-          ${entregador},
-          (NOW() AT TIME ZONE 'America/Bogota')::date,
-          ${planillaIds[0]},
-          ${totalEfectivo},
-          ${0},
-          ${baseComisionable},
-          ${porcentaje},
-          ${montoComision},
-          'pendiente',
-          ${cuadreId}
-        )
+  INSERT INTO comisiones (
+    entregador,
+    fecha,
+    planilla_id,
+    total_entregas_efectivas,
+    total_devoluciones,
+    base_comisionable,
+    porcentaje_aplicado,
+    monto_comision,
+    estado,
+    cuadre_agrupado_id
+  ) VALUES (
+    ${entregador},
+    (NOW() AT TIME ZONE 'America/Bogota')::date,
+    ${planillaIds[0]},
+    ${totalEfectivo},
+    ${totalDevoluciones},
+    ${baseComisionable},
+    ${porcentaje},
+    ${montoComision},
+    'pendiente',
+    ${cuadreId}
+  )
+`
       `
       console.log('[CUADRE CAJA] ✓ Comisión creada')
     } else {
