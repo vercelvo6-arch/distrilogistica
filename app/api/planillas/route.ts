@@ -256,23 +256,27 @@ export async function GET() {
               try {
                 // ✅ TRAER TODOS LOS CAMPOS DE ESTADO DE ALISTAMIENTO
                 const productos = await sql`
-                  SELECT 
-                    codigo,
-                    nombre,
-                    categoria,
-                    cantidad,
-                    precio_unitario,
-                    total,
-                    devuelto,
-                    estado_alistamiento,
-                    cantidad_disponible,
-                    cantidad_faltante,
-                    unidad_incompleta,
-                    observaciones_faltante
-                  FROM pedido_productos
-                  WHERE pedido_id = ${pedido.id}
-                  ORDER BY codigo
-                `;
+  SELECT 
+    codigo,
+    nombre,
+    categoria,
+    cantidad,
+    precio_unitario,
+    total,
+    devuelto,
+    motivo_ajuste,
+    cantidad_entregada,
+    subtotal_ajustado,
+    estado_producto,
+    estado_alistamiento,
+    cantidad_disponible,
+    cantidad_faltante,
+    unidad_incompleta,
+    observaciones_faltante
+  FROM pedido_productos
+  WHERE pedido_id = ${pedido.id}
+  ORDER BY codigo
+`;
 
                 return {
                   ...pedido,
