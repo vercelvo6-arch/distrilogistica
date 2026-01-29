@@ -1574,41 +1574,47 @@ filteredRoutes.forEach((route) => {
                       </div>
 
                       {/* Detalle de Novedades */}
-{rec.tipo === "agrupado" && (rec.fiado || rec.devoluciones || rec.repasos || rec.agotados || rec.errores_facturacion) && (
+{(rec.fiado || rec.devoluciones || rec.repasos || rec.agotados || rec.errores_facturacion || rec.descuento) && (
   <div className="mt-3 pt-3 border-t">
     <p className="text-sm font-medium mb-3">Detalle de Novedades:</p>
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-      {rec.fiado && Number(rec.fiado) > 0 && (
-        <div className="bg-yellow-50 p-2 rounded">
-          <p className="text-yellow-700 text-xs">Fiado</p>
-          <p className="font-semibold text-yellow-800">{formatCOP(Number(rec.fiado))}</p>
-        </div>
-      )}
-      {rec.devoluciones && Number(rec.devoluciones) > 0 && (
-        <div className="bg-red-50 p-2 rounded">
-          <p className="text-red-700 text-xs">Devoluciones</p>
-          <p className="font-semibold text-red-800">{formatCOP(Number(rec.devoluciones))}</p>
-        </div>
-      )}
-      {rec.repasos && Number(rec.repasos) > 0 && (
-        <div className="bg-blue-50 p-2 rounded">
-          <p className="text-blue-700 text-xs">Repasos</p>
-          <p className="font-semibold text-blue-800">{formatCOP(Number(rec.repasos))}</p>
-        </div>
-      )}
-      {rec.agotados && Number(rec.agotados) > 0 && (
-        <div className="bg-gray-50 p-2 rounded">
-          <p className="text-gray-700 text-xs">Agotados</p>
-          <p className="font-semibold text-gray-800">{formatCOP(Number(rec.agotados))}</p>
-        </div>
-      )}
-      {rec.errores_facturacion && Number(rec.errores_facturacion) > 0 && (
-        <div className="bg-orange-50 p-2 rounded">
-          <p className="text-orange-700 text-xs">Errores Fact.</p>
-          <p className="font-semibold text-orange-800">{formatCOP(Number(rec.errores_facturacion))}</p>
-        </div>
-      )}
+    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+  {rec.fiado && Number(rec.fiado) > 0 && (
+    <div className="bg-yellow-50 p-2 rounded">
+      <p className="text-yellow-700 text-xs">Fiado</p>
+      <p className="font-semibold text-yellow-800">{formatCOP(Number(rec.fiado))}</p>
     </div>
+  )}
+  {rec.devoluciones && Number(rec.devoluciones) > 0 && (
+    <div className="bg-red-50 p-2 rounded">
+      <p className="text-red-700 text-xs">Devoluciones</p>
+      <p className="font-semibold text-red-800">{formatCOP(Number(rec.devoluciones))}</p>
+    </div>
+  )}
+  {rec.repasos && Number(rec.repasos) > 0 && (
+    <div className="bg-blue-50 p-2 rounded">
+      <p className="text-blue-700 text-xs">Repasos</p>
+      <p className="font-semibold text-blue-800">{formatCOP(Number(rec.repasos))}</p>
+    </div>
+  )}
+  {rec.agotados && Number(rec.agotados) > 0 && (
+    <div className="bg-gray-50 p-2 rounded">
+      <p className="text-gray-700 text-xs">Agotados</p>
+      <p className="font-semibold text-gray-800">{formatCOP(Number(rec.agotados))}</p>
+    </div>
+  )}
+  {rec.errores_facturacion && Number(rec.errores_facturacion) > 0 && (
+    <div className="bg-orange-50 p-2 rounded">
+      <p className="text-orange-700 text-xs">Errores Fact.</p>
+      <p className="font-semibold text-orange-800">{formatCOP(Number(rec.errores_facturacion))}</p>
+    </div>
+  )}
+  {rec.descuento && Number(rec.descuento) > 0 && (
+    <div className="bg-purple-50 p-2 rounded">
+      <p className="text-purple-700 text-xs">Descuentos</p>
+      <p className="font-semibold text-purple-800">{formatCOP(Number(rec.descuento))}</p>
+    </div>
+  )}
+</div>
   </div>
 )}
 
