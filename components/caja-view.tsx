@@ -1259,18 +1259,22 @@ const handleOpenModal = (planilla: RouteSheet) => {
       const totalEsperadoCalculado = cargue - novedades
 
       const payload = {
-        planillaIds: agrupadoData.planillaIds,
-        entregador: agrupadoData.entregador,
-        totalEsperado: totalEsperadoCalculado,
-        efectivoRecibido: Number(formData.efectivoRecibido),
-        tieneConsignacion: formData.tieneConsignacion,
-        numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
-        banco: formData.tieneConsignacion ? formData.banco : null,
-        montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
-        observaciones: formData.observaciones || null,
-        descuento: agrupadoData.totales.descuentos || 0,
-        agotados: agrupadoData.totales.agotados || 0,
-      }
+  planillaIds: agrupadoData.planillaIds,
+  entregador: agrupadoData.entregador,
+  totalEsperado: totalEsperadoCalculado,
+  efectivoRecibido: Number(formData.efectivoRecibido),
+  tieneConsignacion: formData.tieneConsignacion,
+  numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
+  banco: formData.tieneConsignacion ? formData.banco : null,
+  montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
+  observaciones: formData.observaciones || null,
+  descuento: agrupadoData.totales.descuentos || 0,
+  agotados: agrupadoData.totales.agotados || 0,
+  fiado: agrupadoData.totales.fiado || 0,
+  devoluciones: agrupadoData.totales.devoluciones || 0,
+  repasos: agrupadoData.totales.repasos || 0,
+  erroresFacturacion: agrupadoData.totales.erroresFacturacion || 0,
+}
 
       console.log('[CUADRE AGRUPADO] Enviando payload:', JSON.stringify(payload, null, 2))
 
