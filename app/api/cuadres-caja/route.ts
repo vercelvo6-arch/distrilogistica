@@ -31,6 +31,10 @@ export async function POST(request: Request) {
       observaciones,
       descuento,
       agotados
+      fiado,
+      devoluciones,
+      repasos,
+      erroresFacturacion
     } = body
 
     // Validaciones
@@ -88,7 +92,12 @@ export async function POST(request: Request) {
     // INSERT
     console.log('[CUADRE CAJA] Ejecutando INSERT en cuadres_caja...')
     
-    const result = await sql`
+    const fiadoNum = Number(fiado || 0)
+const devolucionesNum = Number(devoluciones || 0)
+const repasosNum = Number(repasos || 0)
+const erroresFacturacionNum = Number(erroresFacturacion || 0)
+
+const result = await sql`
   INSERT INTO cuadres_caja (
     entregador,
     fecha_cuadre,
@@ -103,7 +112,11 @@ export async function POST(request: Request) {
     numero_consignacion,
     banco,
     descuento,
-    agotados
+    agotados,
+    fiado,
+    devoluciones,
+    repasos,
+    errores_facturacion
   ) VALUES (
     ${entregador},
     NOW(),
@@ -118,9 +131,14 @@ export async function POST(request: Request) {
     ${numeroConsignacion || null},
     ${banco || null},
     ${descuentoNum},
-    ${agotadosNum}
+    ${agotadosNum},
+    ${fiadoNum},
+    ${devolucionesNum},
+    ${repasosNum},
+    ${erroresFacturacionNum}
   )
   RETURNING id
+`
 `
 
     if (!result || result.length === 0) {
@@ -227,29 +245,34 @@ export async function GET(request: Request) {
     console.log('[CUADRE CAJA] Obteniendo historial...')
 
     const cuadres = await sql`
-      SELECT 
-        c.id,
-        c.entregador,
-        c.fecha_cuadre,
-        c.planillas_ids,
-        c.total_esperado,
-        c.total_efectivo,
-        c.total_consignado,
-        c.diferencia,
-        c.estado,
-        c.observaciones,
-        c.tiene_consignacion,
-        c.numero_consignacion,
-        c.banco,
-        c.descuento,
-        c.motivo_descuento,
-        c.agotados,
-        array_agg(DISTINCT p.tipo_ruta) FILTER (WHERE p.tipo_ruta IS NOT NULL) as rutas_nombres
-      FROM cuadres_caja c
-      LEFT JOIN planillas p ON p.id = ANY(c.planillas_ids)
-      GROUP BY c.id
-      ORDER BY c.fecha_cuadre DESC
-      LIMIT 100
+  SELECT 
+    c.id,
+    c.entregador,
+    c.fecha_cuadre,
+    c.planillas_ids,
+    c.total_esperado,
+    c.total_efectivo,
+    c.total_consignado,
+    c.diferencia,
+    c.estado,
+    c.observaciones,
+    c.tiene_consignacion,
+    c.numero_consignacion,
+    c.banco,
+    c.descuento,
+    c.motivo_descuento,
+    c.agotados,
+    c.fiado,
+    c.devoluciones,
+    c.repasos,
+    c.errores_facturacion,
+    array_agg(DISTINCT p.tipo_ruta) FILTER (WHERE p.tipo_ruta IS NOT NULL) as rutas_nombres
+  FROM cuadres_caja c
+  LEFT JOIN planillas p ON p.id = ANY(c.planillas_ids)
+  GROUP BY c.id
+  ORDER BY c.fecha_cuadre DESC
+  LIMIT 100
+`
     `
 
     console.log('[CUADRE CAJA] ✓ Historial obtenido:', cuadres.length, 'registros')
