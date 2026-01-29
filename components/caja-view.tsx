@@ -1164,6 +1164,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
     let totalRepasosAgrupado = 0
     let totalAgotadosAgrupado = 0
     let totalDescuentosAgrupado = 0
+    let totalErroresFacturacionAgrupado = 0
 
     rutasSeleccionadas.forEach((route) => {
       if (!route) return
@@ -1177,6 +1178,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
       totalDevolucionesAgrupado += totals.devoluciones
       totalRepasosAgrupado += totals.repasos
       totalAgotadosAgrupado += totals.agotados
+      totalErroresFacturacionAgrupado += totals.erroresFacturacion
 
       // Sumar descuentos de cada pedido (igual que la vista principal)
       if (Array.isArray(route.orders)) {
@@ -1202,6 +1204,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
         devoluciones: totalDevolucionesAgrupado,
         repasos: totalRepasosAgrupado,
         agotados: totalAgotadosAgrupado,
+        erroresFacturacion: totalErroresFacturacionAgrupado, 
         descuentos: totalDescuentosAgrupado,
       },
     }
@@ -2713,7 +2716,7 @@ filteredRoutes.forEach((route) => {
                   <p className="font-semibold text-yellow-600">{formatCOP(agrupadoData?.totales.fiado || 0)}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-3 text-xs">
+              <div className="grid grid-cols-5 gap-3 text-xs">
                 <div>
                   <p className="text-muted-foreground">Devoluciones</p>
                   <p className="font-semibold text-red-600">{formatCOP(agrupadoData?.totales.devoluciones || 0)}</p>
@@ -2725,6 +2728,10 @@ filteredRoutes.forEach((route) => {
                 <div>
                   <p className="text-muted-foreground">Agotados</p>
                   <p className="font-semibold text-purple-600">{formatCOP(agrupadoData?.totales.agotados || 0)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Errores Fact.</p>
+                  <p className="font-semibold text-orange-600">{formatCOP(agrupadoData?.totales.erroresFacturacion || 0)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Descuentos</p>
