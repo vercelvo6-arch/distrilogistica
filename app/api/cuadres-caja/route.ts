@@ -90,60 +90,58 @@ export async function POST(request: Request) {
       diferencia,
       estado,
       descuento: descuentoNum,
-      agotados: agotadosNum
+      agotados: agotadosNum,
+      fiado: fiadoNum,
+      devoluciones: devolucionesNum,
+      repasos: repasosNum,
+      erroresFacturacion: erroresFacturacionNum
     })
 
     // INSERT
     console.log('[CUADRE CAJA] Ejecutando INSERT en cuadres_caja...')
     
-    const fiadoNum = Number(fiado || 0)
-const devolucionesNum = Number(devoluciones || 0)
-const repasosNum = Number(repasos || 0)
-const erroresFacturacionNum = Number(erroresFacturacion || 0)
-
-const result = await sql`
-  INSERT INTO cuadres_caja (
-    entregador,
-    fecha_cuadre,
-    planillas_ids,
-    total_esperado,
-    total_efectivo,
-    total_consignado,
-    diferencia,
-    estado,
-    observaciones,
-    tiene_consignacion,
-    numero_consignacion,
-    banco,
-    descuento,
-    agotados,
-    fiado,
-    devoluciones,
-    repasos,
-    errores_facturacion
-  ) VALUES (
-    ${entregador},
-    NOW(),
-    ${planillaIds},
-    ${totalEsperadoNum},
-    ${totalEfectivo},
-    ${totalConsignado},
-    ${diferencia},
-    ${estado},
-    ${observaciones || null},
-    ${tieneConsignacion || false},
-    ${numeroConsignacion || null},
-    ${banco || null},
-    ${descuentoNum},
-    ${agotadosNum},
-    ${fiadoNum},
-    ${devolucionesNum},
-    ${repasosNum},
-    ${erroresFacturacionNum}
-  )
-  RETURNING id
-`
-`
+    const result = await sql`
+      INSERT INTO cuadres_caja (
+        entregador,
+        fecha_cuadre,
+        planillas_ids,
+        total_esperado,
+        total_efectivo,
+        total_consignado,
+        diferencia,
+        estado,
+        observaciones,
+        tiene_consignacion,
+        numero_consignacion,
+        banco,
+        descuento,
+        agotados,
+        fiado,
+        devoluciones,
+        repasos,
+        errores_facturacion
+      ) VALUES (
+        ${entregador},
+        NOW(),
+        ${planillaIds},
+        ${totalEsperadoNum},
+        ${totalEfectivo},
+        ${totalConsignado},
+        ${diferencia},
+        ${estado},
+        ${observaciones || null},
+        ${tieneConsignacion || false},
+        ${numeroConsignacion || null},
+        ${banco || null},
+        ${descuentoNum},
+        ${agotadosNum},
+        ${fiadoNum},
+        ${devolucionesNum},
+        ${repasosNum},
+        ${erroresFacturacionNum}
+      )
+      RETURNING id
+    `
 
     if (!result || result.length === 0) {
       throw new Error('INSERT no retornó resultados')
@@ -174,42 +172,42 @@ const result = await sql`
     `
 
     if (configComision.length > 0) {
-  const porcentaje = Number(configComision[0].porcentaje_comision)
-  const totalDevoluciones = devolucionesNum + erroresFacturacionNum
-  const baseComisionable = Math.round((totalEfectivo - totalDevoluciones) * 100) / 100
-  const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
+      const porcentaje = Number(configComision[0].porcentaje_comision)
+      const totalDevoluciones = devolucionesNum + erroresFacturacionNum
+      const baseComisionable = Math.round((totalEfectivo - totalDevoluciones) * 100) / 100
+      const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
       console.log('[CUADRE CAJA] Creando comisión:', {
         porcentaje,
+        totalDevoluciones,
         base: baseComisionable,
         monto: montoComision
       })
 
       await sql`
-  INSERT INTO comisiones (
-    entregador,
-    fecha,
-    planilla_id,
-    total_entregas_efectivas,
-    total_devoluciones,
-    base_comisionable,
-    porcentaje_aplicado,
-    monto_comision,
-    estado,
-    cuadre_agrupado_id
-  ) VALUES (
-    ${entregador},
-    (NOW() AT TIME ZONE 'America/Bogota')::date,
-    ${planillaIds[0]},
-    ${totalEfectivo},
-    ${totalDevoluciones},
-    ${baseComisionable},
-    ${porcentaje},
-    ${montoComision},
-    'pendiente',
-    ${cuadreId}
-  )
-`
+        INSERT INTO comisiones (
+          entregador,
+          fecha,
+          planilla_id,
+          total_entregas_efectivas,
+          total_devoluciones,
+          base_comisionable,
+          porcentaje_aplicado,
+          monto_comision,
+          estado,
+          cuadre_agrupado_id
+        ) VALUES (
+          ${entregador},
+          (NOW() AT TIME ZONE 'America/Bogota')::date,
+          ${planillaIds[0]},
+          ${totalEfectivo},
+          ${totalDevoluciones},
+          ${baseComisionable},
+          ${porcentaje},
+          ${montoComision},
+          'pendiente',
+          ${cuadreId}
+        )
       `
       console.log('[CUADRE CAJA] ✓ Comisión creada')
     } else {
@@ -251,34 +249,33 @@ export async function GET(request: Request) {
     console.log('[CUADRE CAJA] Obteniendo historial...')
 
     const cuadres = await sql`
-  SELECT 
-    c.id,
-    c.entregador,
-    c.fecha_cuadre,
-    c.planillas_ids,
-    c.total_esperado,
-    c.total_efectivo,
-    c.total_consignado,
-    c.diferencia,
-    c.estado,
-    c.observaciones,
-    c.tiene_consignacion,
-    c.numero_consignacion,
-    c.banco,
-    c.descuento,
-    c.motivo_descuento,
-    c.agotados,
-    c.fiado,
-    c.devoluciones,
-    c.repasos,
-    c.errores_facturacion,
-    array_agg(DISTINCT p.tipo_ruta) FILTER (WHERE p.tipo_ruta IS NOT NULL) as rutas_nombres
-  FROM cuadres_caja c
-  LEFT JOIN planillas p ON p.id = ANY(c.planillas_ids)
-  GROUP BY c.id
-  ORDER BY c.fecha_cuadre DESC
-  LIMIT 100
-`
+      SELECT 
+        c.id,
+        c.entregador,
+        c.fecha_cuadre,
+        c.planillas_ids,
+        c.total_esperado,
+        c.total_efectivo,
+        c.total_consignado,
+        c.diferencia,
+        c.estado,
+        c.observaciones,
+        c.tiene_consignacion,
+        c.numero_consignacion,
+        c.banco,
+        c.descuento,
+        c.motivo_descuento,
+        c.agotados,
+        c.fiado,
+        c.devoluciones,
+        c.repasos,
+        c.errores_facturacion,
+        array_agg(DISTINCT p.tipo_ruta) FILTER (WHERE p.tipo_ruta IS NOT NULL) as rutas_nombres
+      FROM cuadres_caja c
+      LEFT JOIN planillas p ON p.id = ANY(c.planillas_ids)
+      GROUP BY c.id
+      ORDER BY c.fecha_cuadre DESC
+      LIMIT 100
     `
 
     console.log('[CUADRE CAJA] ✓ Historial obtenido:', cuadres.length, 'registros')
