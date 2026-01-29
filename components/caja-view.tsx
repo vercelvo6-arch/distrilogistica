@@ -171,6 +171,7 @@ const [formData, setFormData] = useState({
             subtotalAjustado: prod.subtotal_ajustado,
             cantidadEntregada: prod.cantidad_entregada,
             estadoProducto: prod.estado_producto,
+            motivoAjuste: prod.motivo_ajuste,
           })),
         })),
         cuentasPorCobrar: [],
