@@ -73,6 +73,10 @@ export async function POST(request: Request) {
     const totalEsperadoNum = Number(totalEsperado) || 0
     const descuentoNum = Number(descuento || 0)
     const agotadosNum = Number(agotados || 0)
+    const fiadoNum = Number(fiado || 0)
+    const devolucionesNum = Number(devoluciones || 0)
+    const repasosNum = Number(repasos || 0)
+    const erroresFacturacionNum = Number(erroresFacturacion || 0)
     
     const totalRecibido = totalEfectivo + totalConsignado
     const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
