@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       montoConsignacion,
       observaciones,
       descuento,
-      agotados
+      agotados,
       fiado,
       devoluciones,
       repasos,
