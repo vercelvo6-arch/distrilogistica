@@ -173,8 +173,8 @@ export async function POST(request: Request) {
 
     if (configComision.length > 0) {
       const porcentaje = Number(configComision[0].porcentaje_comision)
-      const totalDevoluciones = devolucionesNum + erroresFacturacionNum
-      const baseComisionable = Math.round((totalEfectivo - totalDevoluciones) * 100) / 100
+      const totalDevoluciones = devolucionesNum
+      const baseComisionable = Math.round(totalEfectivo * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
       console.log('[CUADRE CAJA] Creando comisión:', {
