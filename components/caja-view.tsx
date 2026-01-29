@@ -1255,7 +1255,7 @@ const handleOpenModal = (planilla: RouteSheet) => {
       setSubmitting(true)
 
       const cargue = agrupadoData.totales.cargue || 0
-      const novedades = (agrupadoData.totales.fiado || 0) + (agrupadoData.totales.devoluciones || 0) + (agrupadoData.totales.repasos || 0) + (agrupadoData.totales.agotados || 0) + (agrupadoData.totales.descuentos || 0)
+      const novedades = (agrupadoData.totales.fiado || 0) + (agrupadoData.totales.devoluciones || 0) + (agrupadoData.totales.repasos || 0) + (agrupadoData.totales.agotados || 0) + (agrupadoData.totales.descuentos || 0) + (agrupadoData.totales.erroresFacturacion || 0)
       const totalEsperadoCalculado = cargue - novedades
 
       const payload = {
@@ -1401,7 +1401,7 @@ const handleSubmitFiado = async () => {
       
       // Calcular totalEsperado = cargue - novedades (fiado + devoluciones + repasos + agotados + descuentos)
       const cargue = selectedPlanilla.montoCargue || 0
-      const novedades = totals.fiado + totals.devoluciones + totals.repasos + totals.agotados + Number(formData.descuento || 0)
+      const novedades = totals.fiado + totals.devoluciones + totals.repasos + totals.agotados + totals.erroresFacturacion + Number(formData.descuento || 0)
       const totalEsperadoCalculado = cargue - novedades
 
       const response = await fetch("/api/caja/recibir-efectivo", {
@@ -2744,7 +2744,7 @@ filteredRoutes.forEach((route) => {
                   <p className="text-muted-foreground">Diferencia Esperada</p>
                   {(() => {
                     const cargue = agrupadoData?.totales.cargue || 0
-                    const novedades = (agrupadoData?.totales.fiado || 0) + (agrupadoData?.totales.devoluciones || 0) + (agrupadoData?.totales.repasos || 0) + (agrupadoData?.totales.agotados || 0) + (agrupadoData?.totales.descuentos || 0)
+                    const novedades = (agrupadoData?.totales.fiado || 0) + (agrupadoData?.totales.devoluciones || 0) + (agrupadoData?.totales.repasos || 0) + (agrupadoData?.totales.agotados || 0) + (agrupadoData?.totales.descuentos || 0) + (agrupadoData?.totales.erroresFacturacion || 0)
                     const totalEsperado = cargue - novedades
                     const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
                     const diferencia = Math.round((totalRecibido - totalEsperado) * 100) / 100
