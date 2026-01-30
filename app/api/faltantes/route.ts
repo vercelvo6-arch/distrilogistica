@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { handleDBError } from '@/lib/db-helpers';
 
 // POST - Registrar faltante
 export async function POST(request: NextRequest) {
