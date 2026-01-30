@@ -188,6 +188,7 @@ export async function POST(request: NextRequest) {
     return handleDBError(error, 'PLANILLAS POST');
   }
 }
+
 export async function GET() {
   try {
     console.log("[API /planillas GET] Iniciando...");
@@ -336,18 +337,10 @@ export async function GET() {
 
     const planillasConPedidos = Array.from(planillasMap.values());
 
-    console.log('[API /planillas GET] ✓', planillasConPedidos.length, 'planillas procesadas');
-
-    return NextResponse.json({ planillas: planillasConPedidos });
-    
-  } catch (error: any) {
-    return handleDBError(error, 'PLANILLAS GET');
-  }
-}
-
     console.log('[API /planillas GET] ✓', planillasConPedidos.length, 'planillas obtenidas con éxito');
 
     return NextResponse.json({ planillas: planillasConPedidos });
+    
   } catch (error: any) {
     console.error("[API /planillas GET] ERROR COMPLETO:", error);
     console.error("[API /planillas GET] Stack:", error.stack);
