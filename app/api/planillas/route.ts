@@ -185,14 +185,9 @@ export async function POST(request: NextRequest) {
       errores,
     });
   } catch (error: any) {
-    console.error("[API /planillas] ERROR FATAL", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return handleDBError(error, 'PLANILLAS POST');
   }
 }
-
 export async function GET() {
   try {
     console.log("[API /planillas GET] Iniciando...");
@@ -204,123 +199,151 @@ export async function GET() {
 
     const sql = getDB();
 
-    console.log("[API /planillas GET] Consultando planillas...");
+    console.log("[API /planillas GET] Consultando planillas con JOIN...");
     
-    const planillas = await sql`
+    // ✅ UNA SOLA QUERY CON JOINS - Evita múltiples conexiones
+    const resultado = await sql`
       SELECT
-        p.id,
+        p.id as planilla_id,
         p.fecha,
         p.tipo_ruta,
         p.entregador,
-        p.estado,
+        p.estado as planilla_estado,
         p.total_cargue,
         p.total_entregado,
         p.total_fiado,
         p.total_repaso,
         p.total_devolucion,
         p.cuadrado_en_caja,
-        p.observaciones,
+        p.observaciones as planilla_observaciones,
         p.created_at,
         p.updated_at,
         p.fecha_alistamiento,
         p.alistado_por,
-        p.alistado_en
+        p.alistado_en,
+        pe.id as pedido_id,
+        pe.secuencia,
+        pe.cliente,
+        pe.direccion,
+        pe.telefono,
+        pe.barrio,
+        pe.total as pedido_total,
+        pe.estado as pedido_estado,
+        pe.observaciones as pedido_observaciones,
+        pe.entregado_en,
+        pp.codigo,
+        pp.nombre,
+        pp.categoria,
+        pp.cantidad,
+        pp.precio_unitario,
+        pp.total as producto_total,
+        pp.devuelto,
+        pp.motivo_ajuste,
+        pp.cantidad_entregada,
+        pp.subtotal_ajustado,
+        pp.estado_producto,
+        pp.estado_alistamiento,
+        pp.cantidad_disponible,
+        pp.cantidad_faltante,
+        pp.unidad_incompleta,
+        pp.observaciones_faltante
       FROM planillas p
-      ORDER BY p.created_at DESC
+      LEFT JOIN pedidos pe ON pe.planilla_id = p.id
+      LEFT JOIN pedido_productos pp ON pp.pedido_id = pe.id
+      ORDER BY p.created_at DESC, pe.secuencia, pp.codigo
     `;
 
-    console.log(`[API /planillas GET] ${planillas.length} planillas encontradas`);
+    console.log(`[API /planillas GET] Query ejecutado: ${resultado.length} filas`);
 
-    const planillasConPedidos = await Promise.all(
-      planillas.map(async (planilla) => {
-        try {
-          const pedidos = await sql`
-            SELECT 
-              pe.id,
-              pe.cliente,
-              pe.direccion,
-              pe.telefono,
-              pe.barrio,
-              pe.total,
-              pe.estado,
-              pe.observaciones,
-              pe.entregado_en
-            FROM pedidos pe
-            WHERE pe.planilla_id = ${planilla.id}
-            ORDER BY pe.secuencia
-          `;
+    // ✅ Agrupar resultados en memoria (mucho más eficiente)
+    const planillasMap = new Map();
 
-          console.log(`[API GET] Planilla ${planilla.id}: ${pedidos.length} pedidos`);
+    for (const row of resultado) {
+      const planillaId = row.planilla_id;
+      
+      if (!planillasMap.has(planillaId)) {
+        planillasMap.set(planillaId, {
+          id: planillaId,
+          fecha: row.fecha,
+          tipo_ruta: row.tipo_ruta,
+          entregador: row.entregador,
+          estado: row.planilla_estado,
+          total_cargue: row.total_cargue,
+          total_entregado: row.total_entregado,
+          total_fiado: row.total_fiado,
+          total_repaso: row.total_repaso,
+          total_devolucion: row.total_devolucion,
+          cuadrado_en_caja: row.cuadrado_en_caja,
+          observaciones: row.planilla_observaciones,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          fecha_alistamiento: row.fecha_alistamiento,
+          alistado_por: row.alistado_por,
+          alistado_en: row.alistado_en,
+          pedidos: [],
+          agotados: 0
+        });
+      }
 
-          const pedidosConProductos = await Promise.all(
-            pedidos.map(async (pedido) => {
-              try {
-                // ✅ TRAER TODOS LOS CAMPOS DE ESTADO DE ALISTAMIENTO
-                const productos = await sql`
-  SELECT 
-    codigo,
-    nombre,
-    categoria,
-    cantidad,
-    precio_unitario,
-    total,
-    devuelto,
-    motivo_ajuste,
-    cantidad_entregada,
-    subtotal_ajustado,
-    estado_producto,
-    estado_alistamiento,
-    cantidad_disponible,
-    cantidad_faltante,
-    unidad_incompleta,
-    observaciones_faltante
-  FROM pedido_productos
-  WHERE pedido_id = ${pedido.id}
-  ORDER BY codigo
-`;
-
-                return {
-                  ...pedido,
-                  productos,
-                  descuento: 0,
-                  motivo_descuento: null,
-                  monto_pagado: 0,
-                  saldo_pendiente: 0,
-                  es_cobro: false
-                };
-              } catch (err) {
-                console.error(`Error cargando productos del pedido ${pedido.id}:`, err);
-                return {
-                  ...pedido,
-                  productos: [],
-                  descuento: 0,
-                  motivo_descuento: null,
-                  monto_pagado: 0,
-                  saldo_pendiente: 0,
-                  es_cobro: false
-                };
-              }
-            })
-          );
-
-          return {
-            ...planilla,
-            pedidos: pedidosConProductos,
-            agotados: 0
+      const planilla = planillasMap.get(planillaId);
+      
+      if (row.pedido_id) {
+        let pedido = planilla.pedidos.find((p: any) => p.id === row.pedido_id);
+        
+        if (!pedido) {
+          pedido = {
+            id: row.pedido_id,
+            cliente: row.cliente,
+            direccion: row.direccion,
+            telefono: row.telefono,
+            barrio: row.barrio,
+            total: row.pedido_total,
+            estado: row.pedido_estado,
+            observaciones: row.pedido_observaciones,
+            entregado_en: row.entregado_en,
+            productos: [],
+            descuento: 0,
+            motivo_descuento: null,
+            monto_pagado: 0,
+            saldo_pendiente: 0,
+            es_cobro: false
           };
-        } catch (err) {
-          console.error(`Error cargando pedidos de planilla ${planilla.id}:`, err);
-          return {
-            ...planilla,
-            pedidos: [],
-            agotados: 0,
-            fecha_alistamiento: null,
-            alistado_por: null,
-            alistado_en: null
-          };
+          planilla.pedidos.push(pedido);
         }
-      })
-    );
+
+        if (row.codigo) {
+          pedido.productos.push({
+            codigo: row.codigo,
+            nombre: row.nombre,
+            categoria: row.categoria,
+            cantidad: row.cantidad,
+            precio_unitario: row.precio_unitario,
+            total: row.producto_total,
+            devuelto: row.devuelto,
+            motivo_ajuste: row.motivo_ajuste,
+            cantidad_entregada: row.cantidad_entregada,
+            subtotal_ajustado: row.subtotal_ajustado,
+            estado_producto: row.estado_producto,
+            estado_alistamiento: row.estado_alistamiento,
+            cantidad_disponible: row.cantidad_disponible,
+            cantidad_faltante: row.cantidad_faltante,
+            unidad_incompleta: row.unidad_incompleta,
+            observaciones_faltante: row.observaciones_faltante
+          });
+        }
+      }
+    }
+
+    const planillasConPedidos = Array.from(planillasMap.values());
+
+    console.log('[API /planillas GET] ✓', planillasConPedidos.length, 'planillas procesadas');
+
+    return NextResponse.json({ planillas: planillasConPedidos });
+    
+  } catch (error: any) {
+    return handleDBError(error, 'PLANILLAS GET');
+  }
+}
 
     console.log('[API /planillas GET] ✓', planillasConPedidos.length, 'planillas obtenidas con éxito');
 
