@@ -151,80 +151,116 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   }
 
   const handleSubsanarFaltante = async (data: SubsanacionData) => {
-    try {
-      const response = await fetch("/api/faltantes", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
+  try {
+    console.log('[SUBSANAR] 📦 Datos recibidos:', data)
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Error al subsanar faltante")
-      }
-
-      const result = await response.json()
-      alert(result.mensaje || "Faltante subsanado correctamente")
-
-      await loadSupervisionData()
-    } catch (err) {
-      console.error("[SUBSANAR] ERROR:", err)
-      alert("Error: " + (err as Error).message)
+    // Construir el payload según el modal de subsanación actual
+    const payload = {
+      faltanteId: data.faltanteId,
+      tipoResolucion: data.tipoResolucion || 'completo',
+      cantidadResuelta: data.cantidadSubsanada,
+      observaciones_resolucion: data.observaciones
     }
+
+    console.log('[SUBSANAR] 📤 Enviando al servidor:', payload)
+
+    const response = await fetch("/api/faltantes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error || result.details || "Error al subsanar")
+    }
+
+    console.log('[SUBSANAR] ✅ Respuesta del servidor:', result)
+
+    alert(result.mensaje || "Faltante subsanado correctamente")
+
+    // Cerrar modal
+    setFaltanteParaSubsanar(null)
+
+    // Recargar datos para ver los cambios
+    await loadSupervisionData()
+    
+  } catch (err) {
+    console.error("[SUBSANAR] ❌ ERROR:", err)
+    alert("Error al subsanar faltante: " + (err as Error).message)
   }
+}
 
   async function loadSupervisionData() {
-    try {
-      const response = await fetch("/api/planillas", {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      })
+  try {
+    console.log('[SUPERVISION] 🔄 Cargando datos...')
 
-      if (!response.ok) throw new Error("Error al cargar planillas")
+    // 1. Cargar planillas alistadas
+    const response = await fetch("/api/planillas")
+    if (!response.ok) throw new Error("Error al cargar planillas")
 
-      const data = await response.json()
+    const data = await response.json()
 
-      const planillasAlistadas = (data.planillas || [])
-        .filter((p: any) => p.estado === "alistado" || p.estado === "en_ruta" || p.estado === "completado")
-        .map((p: any) => ({
-          id: p.id,
-          ruta: p.tipo_ruta,
-          fecha: p.fecha,
-          fecha_alistamiento: p.fecha_alistamiento,
-          entregador: p.entregador,
-          estado: p.estado,
-          totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
-          totalAmount: Number(p.total_cargue) || 0,
-          orders: (p.pedidos || []).map((ped: any) => ({
-            id: ped.id,
-            cliente: ped.cliente,
-            items: (ped.productos || []).map((prod: any) => ({
-              codigo: prod.codigo,
-              descripcion: prod.nombre,
-              categoria: prod.categoria || "",
-              cantidad: Number(prod.cantidad) || 0,
-              valorUnidad: Number(prod.precio_unitario) || 0,
-              estadoAlistamiento: prod.estado_alistamiento || "pendiente",
-              cantidadDisponible: prod.cantidad_disponible,
-              cantidadFaltante: prod.cantidad_faltante || 0,
-              unidadIncompleta: prod.unidad_incompleta || false,
-              observacionesFaltante: prod.observaciones_faltante,
-            })),
+    const planillasAlistadas = (data.planillas || [])
+      .filter((p: any) => 
+        p.estado === "alistado" || 
+        p.estado === "en_ruta" || 
+        p.estado === "completado"
+      )
+      .map((p: any) => ({
+        id: p.id,
+        ruta: p.tipo_ruta,
+        fecha: p.fecha,
+        fecha_alistamiento: p.fecha_alistamiento,
+        entregador: p.entregador,
+        estado: p.estado,
+        totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
+        totalAmount: Number(p.total_cargue) || 0,
+        orders: (p.pedidos || []).map((ped: any) => ({
+          id: ped.id,
+          cliente: ped.cliente,
+          items: (ped.productos || []).map((prod: any) => ({
+            codigo: prod.codigo,
+            descripcion: prod.nombre,
+            categoria: prod.categoria || "",
+            cantidad: Number(prod.cantidad) || 0,
+            valorUnidad: Number(prod.precio_unitario) || 0,
+            estadoAlistamiento: prod.estado_alistamiento || "pendiente",
+            cantidadDisponible: prod.cantidad_disponible,
+            cantidadFaltante: prod.cantidad_faltante || 0,
+            unidadIncompleta: prod.unidad_incompleta || false,
+            observacionesFaltante: prod.observaciones_faltante,
           })),
-        }))
+        })),
+      }))
 
-      setSupervisionSheets(planillasAlistadas)
+    setSupervisionSheets(planillasAlistadas)
 
-      const faltantesResponse = await fetch("/api/faltantes")
-      if (faltantesResponse.ok) {
-        const faltantesData = await faltantesResponse.json()
-        setFaltantes(faltantesData.faltantes || [])
-      }
-    } catch (err) {
-      console.error("[COORD] Error loading supervision data:", err)
+    // 2. Cargar SOLO faltantes pendientes
+    const faltantesResponse = await fetch("/api/faltantes")
+    if (faltantesResponse.ok) {
+      const faltantesData = await faltantesResponse.json()
+      
+      // ✅ El endpoint ya filtra por pendientes, pero por seguridad filtramos también aquí
+      const faltantesPendientes = (faltantesData.faltantes || []).filter(
+        (f: any) => f.estado === 'pendiente'
+      )
+      
+      console.log('[SUPERVISION] ✓ Datos cargados:', {
+        planillas: planillasAlistadas.length,
+        totalFaltantes: faltantesData.faltantes?.length || 0,
+        faltantesPendientes: faltantesPendientes.length
+      })
+      
+      setFaltantes(faltantesPendientes)
     }
-  }
 
+  } catch (err) {
+    console.error("[SUPERVISION] ❌ Error:", err)
+    alert("Error al cargar datos de supervisión: " + (err as Error).message)
+  }
+}
   const handleDevolverAlistamiento = async (planillaId: string, entregador: string, ruta: string) => {
     if (!confirm(`¿Devolver la planilla de ${entregador} - Ruta ${ruta} a estado "Alistando"?\n\nEsto permitirá al alistador completarla correctamente.`)) {
       return
