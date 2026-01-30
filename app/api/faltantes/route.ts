@@ -106,19 +106,22 @@ export async function POST(request: NextRequest) {
 
     console.log('[FALTANTES] Actualizando', pedidosAfectados.length, 'productos');
 
-    for (const pedido of pedidosAfectados) {
-      await sql`
-        UPDATE pedido_productos
-        SET 
-          estado_alistamiento = ${estadoFinal},
-          cantidad_disponible = ${cantidadDisponible},
-          cantidad_faltante = ${cantidadFaltante},
-          unidad_incompleta = ${unidadIncompleta || false},
-          observaciones_faltante = ${observaciones || null}
-        WHERE pedido_id = ${pedido.pedido_id}
-          AND codigo = ${codigo}
-      `;
-    }
+    // ✅ Un solo UPDATE en lugar de un loop
+if (pedidosAfectados.length > 0) {
+  const pedidoIds = pedidosAfectados.map((p: any) => p.pedido_id);
+  
+  await sql`
+    UPDATE pedido_productos
+    SET 
+      estado_alistamiento = ${estadoFinal},
+      cantidad_disponible = ${cantidadDisponible},
+      cantidad_faltante = ${cantidadFaltante},
+      unidad_incompleta = ${unidadIncompleta || false},
+      observaciones_faltante = ${observaciones || null}
+    WHERE pedido_id = ANY(${pedidoIds}::text[])
+      AND codigo = ${codigo}
+  `;
+}
 
     console.log('[FALTANTES] ✓ Estados actualizados en pedido_productos');
 
