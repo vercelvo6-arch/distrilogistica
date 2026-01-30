@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { handleDBError } from '@/lib/db-helpers';
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
