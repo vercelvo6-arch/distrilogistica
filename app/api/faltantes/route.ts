@@ -137,26 +137,9 @@ export async function POST(request: NextRequest) {
 }
 
 // GET - Ver faltantes
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-    }
+// Si NO se especifica estado, solo mostrar pendientes
+    const estadoFiltro = estado && estado !== 'all' ? estado : 'pendiente';
     
-    const { searchParams } = new URL(request.url);
-    const planilla_id = searchParams.get('planilla_id');
-    const entregador = searchParams.get('entregador');
-    const estado = searchParams.get('estado');
-    const codigo = searchParams.get('codigo');
-    const fecha_inicio = searchParams.get('fecha_inicio');
-    const fecha_fin = searchParams.get('fecha_fin');
-    
-    console.log('[FALTANTES GET] Params:', { planilla_id, entregador, estado, codigo, fecha_inicio, fecha_fin });
-    
-    const sql = getDB();
-    
-    // Usar template literals nativos de postgres.js
     let faltantes = await sql`
       SELECT 
         f.*,
@@ -168,9 +151,9 @@ export async function GET(request: NextRequest) {
       LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
       LEFT JOIN planillas pl ON f.planilla_id = pl.id
       WHERE 
-        (${planilla_id ? sql`f.planilla_id = ${Number(planilla_id)}` : sql`1=1`})
+        f.estado = ${estadoFiltro}
+        AND (${planilla_id ? sql`f.planilla_id = ${Number(planilla_id)}` : sql`1=1`})
         AND (${entregador && entregador !== 'all' ? sql`f.entregador = ${entregador}` : sql`1=1`})
-        AND (${estado && estado !== 'all' ? sql`f.estado = ${estado}` : sql`1=1`})
         AND (${codigo ? sql`f.codigo ILIKE ${`%${codigo}%`}` : sql`1=1`})
         AND (${fecha_inicio ? sql`f.fecha_marcado >= ${fecha_inicio}::date` : sql`1=1`})
         AND (${fecha_fin ? sql`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'` : sql`1=1`})
