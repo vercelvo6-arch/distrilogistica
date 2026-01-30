@@ -3,7 +3,140 @@ import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
 
 // POST - Registrar faltante
-// GET - Ver faltantes
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    const body = await request.json();
+    console.log('[FALTANTES] Guardando:', body);
+    const { 
+      planilla_id,
+      codigo,
+      descripcion,
+      categoria,
+      entregador,
+      ruta,
+      cantidadSolicitada,
+      cantidadDisponible, 
+      cantidadFaltante,
+      unidadIncompleta,
+      observaciones,
+      marcadoPor,
+      estadoAlistamiento
+    } = body;
+
+    const sql = getDB();
+
+    const estadoFinal = estadoAlistamiento || 
+      (cantidadDisponible === 0 || cantidadDisponible === null ? 'no_alistado' : 
+       (unidadIncompleta || cantidadDisponible < cantidadSolicitada ? 'incompleto' : 'completo'));
+
+    console.log('[FALTANTES] Estado final:', estadoFinal);
+
+    // 1️⃣ Solo guardar faltante si NO es completo
+    if (estadoFinal !== 'completo') {
+      await sql`
+        INSERT INTO faltantes (
+          planilla_id,
+          entregador,
+          ruta,
+          codigo,
+          descripcion,
+          categoria,
+          cantidad_solicitada,
+          cantidad_disponible,
+          cantidad_faltante,
+          unidad_incompleta,
+          observaciones,
+          marcado_por,
+          estado,
+          fecha_marcado
+        ) VALUES (
+          ${planilla_id},
+          ${entregador},
+          ${ruta},
+          ${codigo},
+          ${descripcion},
+          ${categoria || ''},
+          ${cantidadSolicitada},
+          ${cantidadDisponible},
+          ${cantidadFaltante},
+          ${unidadIncompleta || false},
+          ${observaciones || ''},
+          ${marcadoPor},
+          'pendiente',
+          NOW()
+        )
+        ON CONFLICT (planilla_id, codigo) 
+        DO UPDATE SET
+          cantidad_disponible = ${cantidadDisponible},
+          cantidad_faltante = ${cantidadFaltante},
+          unidad_incompleta = ${unidadIncompleta || false},
+          observaciones = ${observaciones || ''},
+          fecha_marcado = NOW()
+      `;
+      
+      console.log('[FALTANTES] ✓ Faltante guardado');
+    } else {
+      await sql`
+        DELETE FROM faltantes 
+        WHERE planilla_id = ${planilla_id} 
+          AND codigo = ${codigo}
+      `;
+      console.log('[FALTANTES] ✓ Faltante eliminado (producto completo)');
+    }
+
+    // 2️⃣ ACTUALIZAR ESTADO EN PEDIDO_PRODUCTOS
+    const pedidosAfectados = await sql`
+      SELECT DISTINCT pedido_id 
+      FROM pedido_productos pp
+      JOIN pedidos p ON pp.pedido_id = p.id
+      WHERE p.planilla_id = ${planilla_id}
+        AND pp.codigo = ${codigo}
+    `;
+
+    console.log('[FALTANTES] 🔍 Query result:', {
+      planilla_id,
+      codigo,
+      pedidosEncontrados: pedidosAfectados.length,
+      pedidosIds: pedidosAfectados.map((p: any) => p.pedido_id)
+    });
+
+    console.log('[FALTANTES] Actualizando', pedidosAfectados.length, 'productos');
+
+    for (const pedido of pedidosAfectados) {
+      await sql`
+        UPDATE pedido_productos
+        SET 
+          estado_alistamiento = ${estadoFinal},
+          cantidad_disponible = ${cantidadDisponible},
+          cantidad_faltante = ${cantidadFaltante},
+          unidad_incompleta = ${unidadIncompleta || false},
+          observaciones_faltante = ${observaciones || null}
+        WHERE pedido_id = ${pedido.pedido_id}
+          AND codigo = ${codigo}
+      `;
+    }
+
+    console.log('[FALTANTES] ✓ Estados actualizados en pedido_productos');
+
+    return NextResponse.json({ 
+      success: true,
+      estado: estadoFinal,
+      productosActualizados: pedidosAfectados.length
+    });
+  } catch (error) {
+    console.error('[FALTANTES] ERROR:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Error' },
+      { status: 500 }
+    );
+  }
+}
+
+// GET - Ver faltantes (SOLO PENDIENTES por defecto)
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
@@ -26,7 +159,6 @@ export async function GET(request: NextRequest) {
     // Si NO se especifica estado, solo mostrar pendientes
     const estadoFiltro = estado && estado !== 'all' ? estado : 'pendiente';
     
-    // Usar template literals nativos de postgres.js
     let faltantes = await sql`
       SELECT 
         f.*,
@@ -63,47 +195,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// GET - Ver faltantes
-// Si NO se especifica estado, solo mostrar pendientes
-    const estadoFiltro = estado && estado !== 'all' ? estado : 'pendiente';
-    
-    let faltantes = await sql`
-      SELECT 
-        f.*,
-        u.nombre as marcado_por_nombre,
-        u2.nombre as resuelto_por_nombre,
-        pl.fecha as planilla_fecha
-      FROM faltantes f
-      LEFT JOIN usuarios u ON f.marcado_por = u.id
-      LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
-      LEFT JOIN planillas pl ON f.planilla_id = pl.id
-      WHERE 
-        f.estado = ${estadoFiltro}
-        AND (${planilla_id ? sql`f.planilla_id = ${Number(planilla_id)}` : sql`1=1`})
-        AND (${entregador && entregador !== 'all' ? sql`f.entregador = ${entregador}` : sql`1=1`})
-        AND (${codigo ? sql`f.codigo ILIKE ${`%${codigo}%`}` : sql`1=1`})
-        AND (${fecha_inicio ? sql`f.fecha_marcado >= ${fecha_inicio}::date` : sql`1=1`})
-        AND (${fecha_fin ? sql`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'` : sql`1=1`})
-      ORDER BY f.fecha_marcado DESC 
-      LIMIT 500
-    `;
-    
-    console.log('[FALTANTES GET] ✅ Encontrados:', faltantes.length);
-    
-    return NextResponse.json({ 
-      success: true,
-      faltantes
-    });
-  } catch (error) {
-    console.error('[FALTANTES GET] ERROR:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error al obtener faltantes' },
-      { status: 500 }
-    );
-  }
-}
-
-// PATCH - Subsanar faltante con los 3 estados posibles
+// PATCH - Subsanar faltante
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getSession();
@@ -114,8 +206,8 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { 
       faltanteId,
-      tipoResolucion, // 'completo' | 'parcial' | 'definitivo'
-      cantidadResuelta, // Solo requerido para 'parcial'
+      tipoResolucion,
+      cantidadResuelta,
       observaciones_resolucion
     } = body;
 
@@ -213,6 +305,7 @@ export async function PATCH(request: NextRequest) {
     `;
 
     console.log(`[FALTANTES SUBSANAR] ✓ Faltante ${faltanteId} actualizado a estado: ${nuevoEstado}`);
+    
     const estadoProducto = nuevoEstado === 'resuelto' ? 'completo' : 
                           nuevoEstado === 'parcial' ? 'incompleto' : 
                           'no_alistado';
@@ -231,46 +324,8 @@ export async function PATCH(request: NextRequest) {
 
     console.log(`[FALTANTES SUBSANAR] ✓ Estado actualizado en pedido_productos a: ${estadoProducto}`);
 
-    // Si es resolución parcial, crear un nuevo registro para la cantidad pendiente
-    if (tipoResolucion === 'parcial') {
-      const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal;
-      
-      await sql`
-        INSERT INTO faltantes (
-          planilla_id,
-          entregador,
-          ruta,
-          codigo,
-          descripcion,
-          categoria,
-          cantidad_solicitada,
-          cantidad_disponible,
-          cantidad_faltante,
-          unidad_incompleta,
-          observaciones,
-          marcado_por,
-          estado,
-          fecha_marcado
-        ) VALUES (
-          ${faltante.planilla_id},
-          ${faltante.entregador},
-          ${faltante.ruta},
-          ${faltante.codigo},
-          ${faltante.descripcion},
-          ${faltante.categoria},
-          ${faltante.cantidad_solicitada},
-          ${cantidadResueltaFinal},
-          ${cantidadPendiente},
-          ${faltante.unidad_incompleta},
-          ${`PENDIENTE de subsanación parcial anterior: ${observaciones_resolucion}`},
-          ${faltante.marcado_por},
-          'pendiente',
-          NOW()
-        )
-      `;
-      
-      console.log(`[FALTANTES SUBSANAR] ✓ Nuevo faltante creado por cantidad pendiente: ${cantidadPendiente}`);
-    }
+    // DESHABILITADO: No crear nuevos faltantes en resolución parcial
+    // Esto causaba que aparecieran faltantes duplicados
 
     return NextResponse.json({
       success: true,
