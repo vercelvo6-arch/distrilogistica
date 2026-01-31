@@ -152,17 +152,30 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
 
   const handleSubsanarFaltante = async (data: SubsanacionData) => {
   try {
-    console.log('[SUBSANAR] 📦 Datos recibidos:', data)
+    console.log('[SUBSANAR] 📦 Datos recibidos del modal:', data)
 
-    // Construir el payload según el modal de subsanación actual
-    const payload = {
+    // Construir payload limpio sin campos undefined
+    const payload: any = {
       faltanteId: data.faltanteId,
       tipoResolucion: data.tipoResolucion || 'completo',
-      cantidadResuelta: data.cantidadSubsanada,
-      observaciones_resolucion: data.observaciones
+      observaciones_resolucion: data.observaciones_resolucion || data.observaciones || 'Subsanado desde coordinador'
     }
 
-    console.log('[SUBSANAR] 📤 Enviando al servidor:', payload)
+    // Determinar cantidadResuelta según el tipo de resolución
+    if (data.tipoResolucion === 'completo') {
+      // Para completo, usar la cantidad del faltante
+      const faltantesDelProducto = faltantes.find(f => f.id === data.faltanteId)
+      payload.cantidadResuelta = faltantesDelProducto?.cantidad_faltante || 0
+    } else if (data.tipoResolucion === 'parcial') {
+      // Para parcial, usar la cantidad especificada
+      const cantidad = data.cantidadResuelta || data.cantidadSubsanada || 0
+      payload.cantidadResuelta = Number(cantidad)
+    } else if (data.tipoResolucion === 'definitivo') {
+      // Para definitivo, cantidad es 0
+      payload.cantidadResuelta = 0
+    }
+
+    console.log('[SUBSANAR] 📤 Payload enviado al servidor:', payload)
 
     const response = await fetch("/api/faltantes", {
       method: "PATCH",
