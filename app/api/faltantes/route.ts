@@ -256,54 +256,57 @@ export async function PATCH(request: NextRequest) {
     const faltante = faltanteActual[0];
 
     // Calcular valores según tipo de resolución
-    let nuevoEstado: string;
     let cantidadResueltaFinal: number;
     
-    switch (tipoResolucion) {
-      case 'completo':
-        nuevoEstado = 'resuelto';
-        cantidadResueltaFinal = faltante.cantidad_faltante;
-        break;
+    if (tipoResolucion === 'completo') {
+      cantidadResueltaFinal = faltante.cantidad_faltante;
+    } else if (tipoResolucion === 'parcial') {
+      cantidadResueltaFinal = cantidadResuelta;
       
-      case 'parcial':
-        nuevoEstado = 'resuelto'; // Cambiar a 'resuelto' en lugar de 'parcial'
-        cantidadResueltaFinal = cantidadResuelta;
-        
-        if (cantidadResueltaFinal > faltante.cantidad_faltante) {
-          return NextResponse.json(
-            { error: `No puede resolver más de lo que falta (máximo: ${faltante.cantidad_faltante})` },
-            { status: 400 }
-          );
-        }
-        break;
-      
-      case 'definitivo':
-        nuevoEstado = 'definitivo';
-        cantidadResueltaFinal = 0;
-        break;
-      
-      default:
+      if (cantidadResueltaFinal > faltante.cantidad_faltante) {
         return NextResponse.json(
-          { error: 'Tipo de resolución inválido' },
+          { error: `No puede resolver más de lo que falta (máximo: ${faltante.cantidad_faltante})` },
           { status: 400 }
         );
+      }
+    } else {
+      cantidadResueltaFinal = 0;
     }
 
-    // Actualizar el faltante original como resuelto
-    const resultado = await sql`
-      UPDATE faltantes
-      SET 
-        estado = ${nuevoEstado},
-        tipo_resolucion = ${tipoResolucion},
-        cantidad_resuelta = ${cantidadResueltaFinal},
-        resuelto_por = ${session.user.id},
-        fecha_resolucion = NOW(),
-        observaciones_resolucion = ${observacionesFinal}
-      WHERE id = ${faltanteId}
-      RETURNING *
-    `;
+    let resultado: any;
 
-    console.log(`[FALTANTES SUBSANAR] ✓ Faltante ${faltanteId} actualizado a estado: ${nuevoEstado}`);
+    // ✅ Si es resolución PARCIAL: actualizar cantidad pendiente del mismo faltante
+    if (tipoResolucion === 'parcial') {
+      const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal
+      
+      resultado = await sql`
+        UPDATE faltantes
+        SET 
+          cantidad_faltante = ${cantidadPendiente},
+          cantidad_disponible = ${faltante.cantidad_disponible + cantidadResueltaFinal},
+          observaciones = ${observacionesFinal}
+        WHERE id = ${faltanteId}
+        RETURNING *
+      `;
+      
+      console.log(`[FALTANTES SUBSANAR] ✓ Faltante actualizado: quedan ${cantidadPendiente} unidades pendientes`);
+    } else {
+      // ✅ Para 'completo' o 'definitivo': marcar como resuelto
+      resultado = await sql`
+        UPDATE faltantes
+        SET 
+          estado = ${tipoResolucion === 'completo' ? 'resuelto' : 'definitivo'},
+          tipo_resolucion = ${tipoResolucion},
+          cantidad_resuelta = ${cantidadResueltaFinal},
+          resuelto_por = ${session.user.id},
+          fecha_resolucion = NOW(),
+          observaciones_resolucion = ${observacionesFinal}
+        WHERE id = ${faltanteId}
+        RETURNING *
+      `;
+      
+      console.log(`[FALTANTES SUBSANAR] ✓ Faltante marcado como ${tipoResolucion}`);
+    }
     
     const estadoProducto = tipoResolucion === 'definitivo' ? 'no_alistado' : 
                           cantidadResueltaFinal >= faltante.cantidad_faltante ? 'completo' : 
@@ -323,55 +326,12 @@ export async function PATCH(request: NextRequest) {
 
     console.log(`[FALTANTES SUBSANAR] ✓ Estado actualizado en pedido_productos a: ${estadoProducto}`);
 
-    // ✅ Si es resolución parcial, crear nuevo faltante para la cantidad pendiente
-    if (tipoResolucion === 'parcial') {
-      const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal
-      
-      if (cantidadPendiente > 0) {
-        await sql`
-          INSERT INTO faltantes (
-            planilla_id,
-            entregador,
-            ruta,
-            codigo,
-            descripcion,
-            categoria,
-            cantidad_solicitada,
-            cantidad_disponible,
-            cantidad_faltante,
-            unidad_incompleta,
-            observaciones,
-            marcado_por,
-            estado,
-            fecha_marcado
-          ) VALUES (
-            ${faltante.planilla_id},
-            ${faltante.entregador},
-            ${faltante.ruta},
-            ${faltante.codigo},
-            ${faltante.descripcion},
-            ${faltante.categoria},
-            ${faltante.cantidad_solicitada},
-            ${faltante.cantidad_disponible + cantidadResueltaFinal},
-            ${cantidadPendiente},
-            ${faltante.unidad_incompleta || false},
-            ${'Pendiente de subsanación parcial anterior. ' + observacionesFinal},
-            ${faltante.marcado_por},
-            'pendiente',
-            NOW()
-          )
-        `
-        
-        console.log(`[FALTANTES SUBSANAR] ✓ Nuevo faltante creado para cantidad pendiente: ${cantidadPendiente}`)
-      }
-    }
-
     return NextResponse.json({
       success: true,
       faltante: resultado[0],
       mensaje: 
         tipoResolucion === 'completo' ? `Faltante resuelto completamente (${cantidadResueltaFinal} unidades)` :
-        tipoResolucion === 'parcial' ? `Resueltas ${cantidadResueltaFinal} de ${faltante.cantidad_faltante} unidades. Pendiente: ${faltante.cantidad_faltante - cantidadResueltaFinal}` :
+        tipoResolucion === 'parcial' ? `Resueltas ${cantidadResueltaFinal} unidades. Quedan ${faltante.cantidad_faltante - cantidadResueltaFinal} pendientes` :
         'Faltante marcado como definitivo (no hay producto disponible)'
     });
 
