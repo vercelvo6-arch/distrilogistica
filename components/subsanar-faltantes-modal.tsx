@@ -33,10 +33,8 @@ interface SubsanarModalProps {
 export interface SubsanacionData {
   faltanteId: number
   tipoResolucion: 'completo' | 'parcial' | 'definitivo'
-  cantidadSubsanada?: number
-  cantidadResuelta?: number
+  cantidadResuelta: number
   observaciones_resolucion: string
-  observaciones?: string
 }
 
 export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: SubsanarModalProps) {
@@ -62,7 +60,6 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
   }
 
   const handleSubmit = async () => {
-    // Observaciones son opcionales, usar valor por defecto
     const observacionesFinal = observaciones.trim() || 'Subsanado desde coordinador'
 
     if (tipoResolucion === 'parcial') {
@@ -88,25 +85,20 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
       setIsSubmitting(true)
       setError(null)
 
+      // Determinar cantidad según tipo de resolución
+      const cantidadFinal = 
+        tipoResolucion === 'completo' ? faltante.cantidad_faltante :
+        tipoResolucion === 'parcial' ? Number(cantidadResuelta) :
+        0
+
       const data: SubsanacionData = {
         faltanteId: faltante.id,
         tipoResolucion,
-        observaciones_resolucion: observacionesFinal,
-        observaciones: observacionesFinal
+        cantidadResuelta: cantidadFinal,
+        observaciones_resolucion: observacionesFinal
       }
 
-      // ✅ Siempre incluir cantidadResuelta según el tipo
-      if (tipoResolucion === 'completo') {
-        data.cantidadResuelta = faltante.cantidad_faltante
-        data.cantidadSubsanada = faltante.cantidad_faltante
-      } else if (tipoResolucion === 'parcial') {
-        const cantidad = Number(cantidadResuelta) || 0
-        data.cantidadResuelta = cantidad
-        data.cantidadSubsanada = cantidad
-      } else {
-        data.cantidadResuelta = 0
-        data.cantidadSubsanada = 0
-      }
+      console.log('[MODAL] Enviando datos:', data)
 
       await onSubmit(data)
 
@@ -212,6 +204,7 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
                 onChange={(e) => setCantidadResuelta(e.target.value)}
                 className="text-lg font-bold border-yellow-300"
                 disabled={isSubmitting}
+                placeholder="Ej: 1"
               />
               {cantidadPendiente > 0 && (
                 <p className="text-sm mt-2 text-yellow-700">
@@ -230,7 +223,7 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
             <Textarea
               value={observaciones}
               onChange={(e) => setObservaciones(e.target.value)}
-              placeholder="Explique cómo se resolvió o por qué no se pudo resolver (opcional)"
+              placeholder="Explique cómo se resolvió o por qué no se pudo resolver"
               className="min-h-[100px]"
               disabled={isSubmitting}
             />
