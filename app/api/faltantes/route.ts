@@ -243,12 +243,12 @@ export async function PATCH(request: NextRequest) {
 
     // Obtener el faltante actual
     const faltanteActual = await sql`
-      SELECT * FROM faltantes WHERE id = ${faltanteId}
+      SELECT * FROM faltantes WHERE id = ${faltanteId} AND estado = 'pendiente'
     `;
 
     if (faltanteActual.length === 0) {
       return NextResponse.json(
-        { error: 'Faltante no encontrado' },
+        { error: 'Faltante no encontrado o ya fue subsanado' },
         { status: 404 }
       );
     }
@@ -266,7 +266,7 @@ export async function PATCH(request: NextRequest) {
         break;
       
       case 'parcial':
-        nuevoEstado = 'parcial';
+        nuevoEstado = 'resuelto'; // Cambiar a 'resuelto' en lugar de 'parcial'
         cantidadResueltaFinal = cantidadResuelta;
         
         if (cantidadResueltaFinal > faltante.cantidad_faltante) {
@@ -289,7 +289,7 @@ export async function PATCH(request: NextRequest) {
         );
     }
 
-    // Actualizar el faltante
+    // Actualizar el faltante original como resuelto
     const resultado = await sql`
       UPDATE faltantes
       SET 
@@ -305,9 +305,9 @@ export async function PATCH(request: NextRequest) {
 
     console.log(`[FALTANTES SUBSANAR] ✓ Faltante ${faltanteId} actualizado a estado: ${nuevoEstado}`);
     
-    const estadoProducto = nuevoEstado === 'resuelto' ? 'completo' : 
-                          nuevoEstado === 'parcial' ? 'incompleto' : 
-                          'no_alistado';
+    const estadoProducto = tipoResolucion === 'definitivo' ? 'no_alistado' : 
+                          cantidadResueltaFinal >= faltante.cantidad_faltante ? 'completo' : 
+                          'incompleto';
 
     await sql`
       UPDATE pedido_productos pp
@@ -322,6 +322,49 @@ export async function PATCH(request: NextRequest) {
     `;
 
     console.log(`[FALTANTES SUBSANAR] ✓ Estado actualizado en pedido_productos a: ${estadoProducto}`);
+
+    // ✅ Si es resolución parcial, crear nuevo faltante para la cantidad pendiente
+    if (tipoResolucion === 'parcial') {
+      const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal
+      
+      if (cantidadPendiente > 0) {
+        await sql`
+          INSERT INTO faltantes (
+            planilla_id,
+            entregador,
+            ruta,
+            codigo,
+            descripcion,
+            categoria,
+            cantidad_solicitada,
+            cantidad_disponible,
+            cantidad_faltante,
+            unidad_incompleta,
+            observaciones,
+            marcado_por,
+            estado,
+            fecha_marcado
+          ) VALUES (
+            ${faltante.planilla_id},
+            ${faltante.entregador},
+            ${faltante.ruta},
+            ${faltante.codigo},
+            ${faltante.descripcion},
+            ${faltante.categoria},
+            ${faltante.cantidad_solicitada},
+            ${faltante.cantidad_disponible + cantidadResueltaFinal},
+            ${cantidadPendiente},
+            ${faltante.unidad_incompleta || false},
+            ${'Pendiente de subsanación parcial anterior. ' + observacionesFinal},
+            ${faltante.marcado_por},
+            'pendiente',
+            NOW()
+          )
+        `
+        
+        console.log(`[FALTANTES SUBSANAR] ✓ Nuevo faltante creado para cantidad pendiente: ${cantidadPendiente}`)
+      }
+    }
 
     return NextResponse.json({
       success: true,
