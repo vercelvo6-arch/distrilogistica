@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { handleDBError } from '@/lib/db-helpers';
 
 // POST - Registrar faltante
 export async function POST(request: NextRequest) {
@@ -108,21 +107,21 @@ export async function POST(request: NextRequest) {
     console.log('[FALTANTES] Actualizando', pedidosAfectados.length, 'productos');
 
     // ✅ Un solo UPDATE en lugar de un loop
-if (pedidosAfectados.length > 0) {
-  const pedidoIds = pedidosAfectados.map((p: any) => p.pedido_id);
-  
-  await sql`
-    UPDATE pedido_productos
-    SET 
-      estado_alistamiento = ${estadoFinal},
-      cantidad_disponible = ${cantidadDisponible},
-      cantidad_faltante = ${cantidadFaltante},
-      unidad_incompleta = ${unidadIncompleta || false},
-      observaciones_faltante = ${observaciones || null}
-    WHERE pedido_id = ANY(${pedidoIds}::text[])
-      AND codigo = ${codigo}
-  `;
-}
+    if (pedidosAfectados.length > 0) {
+      const pedidoIds = pedidosAfectados.map((p: any) => p.pedido_id);
+      
+      await sql`
+        UPDATE pedido_productos
+        SET 
+          estado_alistamiento = ${estadoFinal},
+          cantidad_disponible = ${cantidadDisponible},
+          cantidad_faltante = ${cantidadFaltante},
+          unidad_incompleta = ${unidadIncompleta || false},
+          observaciones_faltante = ${observaciones || null}
+        WHERE pedido_id = ANY(${pedidoIds}::text[])
+          AND codigo = ${codigo}
+      `;
+    }
 
     console.log('[FALTANTES] ✓ Estados actualizados en pedido_productos');
 
@@ -237,12 +236,8 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (!observaciones_resolucion || observaciones_resolucion.trim() === '') {
-      return NextResponse.json(
-        { error: 'Las observaciones de resolución son obligatorias' },
-        { status: 400 }
-      );
-    }
+    // ✅ Observaciones opcionales con valor por defecto
+    const observacionesFinal = observaciones_resolucion?.trim() || 'Subsanado por coordinador';
 
     const sql = getDB();
 
@@ -303,7 +298,7 @@ export async function PATCH(request: NextRequest) {
         cantidad_resuelta = ${cantidadResueltaFinal},
         resuelto_por = ${session.user.id},
         fecha_resolucion = NOW(),
-        observaciones_resolucion = ${observaciones_resolucion}
+        observaciones_resolucion = ${observacionesFinal}
       WHERE id = ${faltanteId}
       RETURNING *
     `;
@@ -319,7 +314,7 @@ export async function PATCH(request: NextRequest) {
       SET 
         estado_alistamiento = ${estadoProducto},
         cantidad_disponible = ${faltante.cantidad_disponible + cantidadResueltaFinal},
-        observaciones_faltante = ${observaciones_resolucion}
+        observaciones_faltante = ${observacionesFinal}
       FROM pedidos p
       WHERE pp.pedido_id = p.id
         AND p.planilla_id = ${faltante.planilla_id}
@@ -327,9 +322,6 @@ export async function PATCH(request: NextRequest) {
     `;
 
     console.log(`[FALTANTES SUBSANAR] ✓ Estado actualizado en pedido_productos a: ${estadoProducto}`);
-
-    // DESHABILITADO: No crear nuevos faltantes en resolución parcial
-    // Esto causaba que aparecieran faltantes duplicados
 
     return NextResponse.json({
       success: true,
