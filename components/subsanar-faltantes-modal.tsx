@@ -33,8 +33,10 @@ interface SubsanarModalProps {
 export interface SubsanacionData {
   faltanteId: number
   tipoResolucion: 'completo' | 'parcial' | 'definitivo'
+  cantidadSubsanada?: number
   cantidadResuelta?: number
   observaciones_resolucion: string
+  observaciones?: string
 }
 
 export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: SubsanarModalProps) {
@@ -60,10 +62,8 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
   }
 
   const handleSubmit = async () => {
-    if (!observaciones.trim()) {
-      setError('Las observaciones son obligatorias')
-      return
-    }
+    // Observaciones son opcionales, usar valor por defecto
+    const observacionesFinal = observaciones.trim() || 'Subsanado desde coordinador'
 
     if (tipoResolucion === 'parcial') {
       const cantidad = Number(cantidadResuelta)
@@ -91,11 +91,21 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
       const data: SubsanacionData = {
         faltanteId: faltante.id,
         tipoResolucion,
-        observaciones_resolucion: observaciones.trim()
+        observaciones_resolucion: observacionesFinal,
+        observaciones: observacionesFinal
       }
 
-      if (tipoResolucion === 'parcial') {
-        data.cantidadResuelta = Number(cantidadResuelta)
+      // ✅ Siempre incluir cantidadResuelta según el tipo
+      if (tipoResolucion === 'completo') {
+        data.cantidadResuelta = faltante.cantidad_faltante
+        data.cantidadSubsanada = faltante.cantidad_faltante
+      } else if (tipoResolucion === 'parcial') {
+        const cantidad = Number(cantidadResuelta) || 0
+        data.cantidadResuelta = cantidad
+        data.cantidadSubsanada = cantidad
+      } else {
+        data.cantidadResuelta = 0
+        data.cantidadSubsanada = 0
       }
 
       await onSubmit(data)
@@ -215,12 +225,12 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
 
           <div>
             <Label className="text-sm font-medium mb-2 block">
-              Observaciones <span className="text-red-500">*</span>
+              Observaciones (opcional)
             </Label>
             <Textarea
               value={observaciones}
               onChange={(e) => setObservaciones(e.target.value)}
-              placeholder="Explique cómo se resolvió o por qué no se pudo resolver"
+              placeholder="Explique cómo se resolvió o por qué no se pudo resolver (opcional)"
               className="min-h-[100px]"
               disabled={isSubmitting}
             />
