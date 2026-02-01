@@ -989,7 +989,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                   codigo: producto.codigo,
                                                   descripcion: producto.descripcion,
                                                   categoria: producto.categoria,
-                                                  cantidad_faltante: producto.cantidadFaltante || 0,
+                                                  cantidad_faltante: faltantesDelProducto[0].cantidad_faltante,
                                                   entregador: entregador,
                                                   ruta: sheets[0]?.ruta || "",
                                                   estado: producto.estadoAlistamiento,
