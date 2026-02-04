@@ -1210,20 +1210,22 @@ const handleOpenModal = (planilla: RouteSheet) => {
       },
     }
 
-    setAgrupadoData(agrupado)
     setFormData({
-      efectivoRecibido: totalEntregadoAgrupado.toString(),
-      tieneConsignacion: false,
-      numeroConsignacion: "",
-      banco: "",
-      montoConsignacion: "",
-      fechaConsignacion: new Date().toISOString().split("T")[0],
-      observaciones: "",
-      descuento: "",
-      motivoDescuento: "",
-    })
-    setShowAgrupadoModal(true)
-  }
+  efectivoRecibido: totalEntregadoAgrupado.toString(),
+  tieneConsignacion: false,
+  numeroConsignacion: "",
+  banco: "",
+  montoConsignacion: "",
+  fechaConsignacion: new Date().toISOString().split("T")[0],
+  observaciones: "",
+  descuento: totalDescuentosAgrupado.toString(),
+  motivoDescuento: "",
+  devolucionesParciales: totalDevolucionesAgrupado.toString(),
+  devolucionesCompletas: "0",
+  repasos: totalRepasosAgrupado.toString(),
+  fiados: totalFiadoAgrupado.toString(),
+  agotados: totalAgotadosAgrupado.toString(),
+})
 
   const handleSubmitAgrupado = async () => {
     if (!agrupadoData) return
@@ -2644,177 +2646,276 @@ filteredRoutes.forEach((route) => {
       </Dialog>
 
       {/* Modal para agrupar rutas y cuadrar */}
-      <Dialog
-        open={showAgrupadoModal}
-        onOpenChange={(open) => (open ? setShowAgrupadoModal(true) : setShowAgrupadoModal(false))}
-      >
-        <DialogContent className="sm:max-w-[425px] lg:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Cuadre Agrupado</DialogTitle>
-            <DialogDescription>
-              Estás cuadrando {agrupadoData?.totalRutas} rutas para el entregador: {agrupadoData?.entregador}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 items-center gap-4">
-              <Label htmlFor="efectivoRecibidoAgrupado" className="text-right">
-                Efectivo Recibido
-              </Label>
-              <Input
-                id="efectivoRecibidoAgrupado"
-                value={formData.efectivoRecibido}
-                onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
-                type="number"
-                className="col-span-1"
-              />
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="tieneConsignacionAgrupado"
-                checked={formData.tieneConsignacion}
-                onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: !!checked })}
-              />
-              <label
-                htmlFor="tieneConsignacionAgrupado"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                ¿Tiene consignación?
-              </label>
-            </div>
-
-            {formData.tieneConsignacion && (
-              <>
-                <div className="grid grid-cols-2 items-center gap-4">
-                  <Label htmlFor="numeroConsignacionAgrupado" className="text-right">
-                    Número Consignación
-                  </Label>
-                  <Input
-                    id="numeroConsignacionAgrupado"
-                    value={formData.numeroConsignacion}
-                    onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
-                    onBlur={handleConsignacionBlur}
-                    className="col-span-1"
-                    placeholder="Ej: 1234567890"
-                  />
-                </div>
-                <div className="grid grid-cols-2 items-center gap-4">
-                  <Label htmlFor="bancoAgrupado" className="text-right">
-                    Banco
-                  </Label>
-                  <Input
-                    id="bancoAgrupado"
-                    value={formData.banco}
-                    onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
-                    className="col-span-1"
-                    placeholder="Ej: Bancolombia"
-                  />
-                </div>
-                <div className="grid grid-cols-2 items-center gap-4">
-                  <Label htmlFor="montoConsignacionAgrupado" className="text-right">
-                    Monto Consignación
-                  </Label>
-                  <Input
-                    id="montoConsignacionAgrupado"
-                    value={formData.montoConsignacion}
-                    onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                    type="number"
-                    className="col-span-1"
-                  />
-                </div>
-                <div className="grid grid-cols-2 items-center gap-4">
-                  <Label htmlFor="fechaConsignacionAgrupado" className="text-right">
-                    Fecha Consignación
-                  </Label>
-                  <Input
-                    id="fechaConsignacionAgrupado"
-                    type="date"
-                    value={formData.fechaConsignacion}
-                    onChange={(e) => setFormData({ ...formData, fechaConsignacion: e.target.value })}
-                    className="col-span-1"
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="grid grid-cols-2 items-center gap-4">
-              <Label htmlFor="observacionesAgrupado" className="text-right">
-                Observaciones
-              </Label>
-              <Textarea
-                id="observacionesAgrupado"
-                value={formData.observaciones}
-                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                className="col-span-1"
-                rows={3}
-              />
-            </div>
-
-            <div className="mt-4 pt-4 border-t flex flex-col gap-3">
-              <p className="text-sm font-medium">Resumen del Cuadre Agrupado:</p>
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div>
-                  <p className="text-muted-foreground">Cargue Total</p>
-                  <p className="font-semibold">{formatCOP(agrupadoData?.totales.cargue || 0)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Entregado Total</p>
-                  <p className="font-semibold text-green-600">{formatCOP(agrupadoData?.totales.entregado || 0)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Fiado Total</p>
-                  <p className="font-semibold text-yellow-600">{formatCOP(agrupadoData?.totales.fiado || 0)}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-5 gap-3 text-xs">
-                <div>
-                  <p className="text-muted-foreground">Devoluciones</p>
-                  <p className="font-semibold text-red-600">{formatCOP(agrupadoData?.totales.devoluciones || 0)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Repasos</p>
-                  <p className="font-semibold text-blue-600">{formatCOP(agrupadoData?.totales.repasos || 0)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Agotados</p>
-                  <p className="font-semibold text-purple-600">{formatCOP(agrupadoData?.totales.agotados || 0)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Errores Fact.</p>
-                  <p className="font-semibold text-orange-600">{formatCOP(agrupadoData?.totales.erroresFacturacion || 0)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Descuentos</p>
-                  <p className="font-semibold text-pink-600">{formatCOP(agrupadoData?.totales.descuentos || 0)}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div>
-                  <p className="text-muted-foreground">Diferencia Esperada</p>
-                  {(() => {
-                    const cargue = agrupadoData?.totales.cargue || 0
-                    const novedades = (agrupadoData?.totales.fiado || 0) + (agrupadoData?.totales.devoluciones || 0) + (agrupadoData?.totales.repasos || 0) + (agrupadoData?.totales.agotados || 0) + (agrupadoData?.totales.descuentos || 0) + (agrupadoData?.totales.erroresFacturacion || 0)
-                    const totalEsperado = cargue - novedades
-                    const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
-                    const diferencia = Math.round((totalRecibido - totalEsperado) * 100) / 100
-                    return (
-                      <p className={`font-semibold ${diferencia === 0 ? "text-green-600" : "text-red-600"}`}>
-                        {formatCOP(diferencia)}
-                      </p>
-                    )
-                  })()}
-                </div>
-              </div>
-            </div>
+<Dialog
+  open={showAgrupadoModal}
+  onOpenChange={(open) => (open ? setShowAgrupadoModal(true) : setShowAgrupadoModal(false))}
+>
+  <DialogContent className="sm:max-w-[500px] lg:max-w-3xl max-h-[90vh] overflow-y-auto">
+    <DialogHeader>
+      <DialogTitle>Cuadre Agrupado - Manual</DialogTitle>
+      <DialogDescription>
+        Estás cuadrando {agrupadoData?.totalRutas} rutas para: {agrupadoData?.entregador}
+      </DialogDescription>
+    </DialogHeader>
+    
+    <div className="grid gap-4 py-4">
+      {/* Sección de Novedades - TODOS EDITABLES */}
+      <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+        <h3 className="font-semibold text-blue-900 mb-4">📊 Novedades (Editable)</h3>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="fiadosAgrupado" className="text-sm text-blue-800">
+              Fiados
+            </Label>
+            <Input
+              id="fiadosAgrupado"
+              type="number"
+              min="0"
+              value={formData.fiados}
+              onChange={(e) => setFormData({ ...formData, fiados: e.target.value })}
+              className="mt-1 font-semibold"
+            />
           </div>
-          <DialogFooter>
-            <Button type="submit" onClick={handleSubmitAgrupado} disabled={submitting}>
-              {submitting ? "Guardando..." : "Confirmar Cuadre Agrupado"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
+          <div>
+            <Label htmlFor="repasosAgrupado" className="text-sm text-blue-800">
+              Repasos
+            </Label>
+            <Input
+              id="repasosAgrupado"
+              type="number"
+              min="0"
+              value={formData.repasos}
+              onChange={(e) => setFormData({ ...formData, repasos: e.target.value })}
+              className="mt-1 font-semibold"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="devolucionesAgrupado" className="text-sm text-red-800">
+              Devoluciones
+            </Label>
+            <Input
+              id="devolucionesAgrupado"
+              type="number"
+              min="0"
+              value={formData.devolucionesParciales}
+              onChange={(e) => setFormData({ ...formData, devolucionesParciales: e.target.value })}
+              className="mt-1 font-semibold border-red-300"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="agotadosAgrupado" className="text-sm text-gray-800">
+              Agotados
+            </Label>
+            <Input
+              id="agotadosAgrupado"
+              type="number"
+              min="0"
+              value={formData.agotados}
+              onChange={(e) => setFormData({ ...formData, agotados: e.target.value })}
+              className="mt-1 font-semibold border-gray-300"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="erroresFactAgrupado" className="text-sm text-orange-800">
+              Errores Facturación
+            </Label>
+            <Input
+              id="erroresFactAgrupado"
+              type="number"
+              min="0"
+              defaultValue="0"
+              onChange={(e) => {
+                const erroresFact = Number(e.target.value) || 0
+                // Guardar en formData si lo necesitas
+              }}
+              className="mt-1 font-semibold border-orange-300"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="descuentosAgrupado" className="text-sm text-purple-800">
+              Descuentos
+            </Label>
+            <Input
+              id="descuentosAgrupado"
+              type="number"
+              min="0"
+              value={formData.descuento}
+              onChange={(e) => setFormData({ ...formData, descuento: e.target.value })}
+              className="mt-1 font-semibold border-purple-300"
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 p-3 bg-white rounded border text-xs text-muted-foreground">
+          💡 <strong>Tip:</strong> Los valores están pre-cargados con las novedades registradas. Puedes editarlos si necesitas ajustar manualmente.
+        </div>
+      </div>
+
+      {/* Efectivo y Consignación */}
+      <div className="grid grid-cols-2 items-center gap-4">
+        <Label htmlFor="efectivoRecibidoAgrupado" className="text-right font-semibold">
+          Efectivo Recibido
+        </Label>
+        <Input
+          id="efectivoRecibidoAgrupado"
+          value={formData.efectivoRecibido}
+          onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
+          type="number"
+          className="col-span-1 font-bold text-lg"
+        />
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <Checkbox
+          id="tieneConsignacionAgrupado"
+          checked={formData.tieneConsignacion}
+          onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: !!checked })}
+        />
+        <label htmlFor="tieneConsignacionAgrupado" className="text-sm font-medium">
+          ¿Tiene consignación?
+        </label>
+      </div>
+
+      {formData.tieneConsignacion && (
+        <>
+          <div className="grid grid-cols-2 items-center gap-4">
+            <Label htmlFor="numeroConsignacionAgrupado" className="text-right">
+              Número Consignación
+            </Label>
+            <Input
+              id="numeroConsignacionAgrupado"
+              value={formData.numeroConsignacion}
+              onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
+              onBlur={handleConsignacionBlur}
+              className="col-span-1"
+              placeholder="Ej: 1234567890"
+            />
+          </div>
+          <div className="grid grid-cols-2 items-center gap-4">
+            <Label htmlFor="bancoAgrupado" className="text-right">
+              Banco
+            </Label>
+            <Input
+              id="bancoAgrupado"
+              value={formData.banco}
+              onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
+              className="col-span-1"
+              placeholder="Ej: Bancolombia"
+            />
+          </div>
+          <div className="grid grid-cols-2 items-center gap-4">
+            <Label htmlFor="montoConsignacionAgrupado" className="text-right">
+              Monto Consignación
+            </Label>
+            <Input
+              id="montoConsignacionAgrupado"
+              value={formData.montoConsignacion}
+              onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+              type="number"
+              className="col-span-1"
+            />
+          </div>
+        </>
+      )}
+
+      <div className="grid grid-cols-2 items-center gap-4">
+        <Label htmlFor="observacionesAgrupado" className="text-right">
+          Observaciones
+        </Label>
+        <Textarea
+          id="observacionesAgrupado"
+          value={formData.observaciones}
+          onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+          className="col-span-1"
+          rows={3}
+        />
+      </div>
+
+      {/* Resumen Final */}
+      <div className="mt-4 pt-4 border-t bg-gradient-to-r from-green-50 to-blue-50 -mx-4 px-6 py-4 rounded-b-lg">
+        <div className="grid grid-cols-3 gap-4 text-sm">
+          <div>
+            <p className="text-muted-foreground">Cargue Total</p>
+            <p className="text-xl font-bold">{formatCOP(agrupadoData?.totales.cargue || 0)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Total Novedades</p>
+            <p className="text-xl font-bold text-orange-600">
+              {formatCOP(
+                (Number(formData.fiados) || 0) +
+                (Number(formData.repasos) || 0) +
+                (Number(formData.devolucionesParciales) || 0) +
+                (Number(formData.agotados) || 0) +
+                (Number(formData.descuento) || 0) +
+                (Number(document.getElementById('erroresFactAgrupado')?.value) || 0)
+              )}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Efectivo Esperado</p>
+            <p className="text-2xl font-bold text-green-600">
+              {formatCOP(
+                (agrupadoData?.totales.cargue || 0) -
+                (Number(formData.fiados) || 0) -
+                (Number(formData.repasos) || 0) -
+                (Number(formData.devolucionesParciales) || 0) -
+                (Number(formData.agotados) || 0) -
+                (Number(formData.descuento) || 0) -
+                (Number(document.getElementById('erroresFactAgrupado')?.value) || 0)
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-white/50">
+          <div className="flex justify-between items-center">
+            <span className="font-semibold">Diferencia:</span>
+            {(() => {
+              const cargue = agrupadoData?.totales.cargue || 0
+              const novedades = 
+                (Number(formData.fiados) || 0) +
+                (Number(formData.repasos) || 0) +
+                (Number(formData.devolucionesParciales) || 0) +
+                (Number(formData.agotados) || 0) +
+                (Number(formData.descuento) || 0) +
+                (Number(document.getElementById('erroresFactAgrupado')?.value) || 0)
+              const esperado = cargue - novedades
+              const recibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
+              const diferencia = recibido - esperado
+              return (
+                <span className={`text-2xl font-bold ${diferencia === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
+                </span>
+              )
+            })()}
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <DialogFooter>
+      <Button 
+        variant="outline" 
+        onClick={() => {
+          setShowAgrupadoModal(false)
+          setAgrupadoData(null)
+        }}
+        disabled={submitting}
+      >
+        Cancelar
+      </Button>
+      <Button type="submit" onClick={handleSubmitAgrupado} disabled={submitting}>
+        {submitting ? "Guardando..." : "Confirmar Cuadre"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
       {/* Modal para agregar nuevo pedido */}
       <Dialog
         open={showNuevoPedidoModal}
