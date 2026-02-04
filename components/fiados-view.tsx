@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Plus, ArrowRight } from "lucide-react"
+import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Plus, ArrowRight, Upload } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -88,12 +88,16 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   })
   const [submittingAbono, setSubmittingAbono] = useState(false)
 
-  // ✅ NUEVOS ESTADOS PARA ASIGNAR COBROS
+  // Estados para asignar cobros
   const [showCobroModal, setShowCobroModal] = useState(false)
   const [selectedFiadoParaCobro, setSelectedFiadoParaCobro] = useState<Fiado | null>(null)
   const [planillasDisponibles, setPlanillasDisponibles] = useState<PlanillaDestino[]>([])
   const [planillaCobroId, setPlanillaCobroId] = useState<string>("")
   const [asignandoCobro, setAsignandoCobro] = useState(false)
+
+  // Estados para importar
+  const [importando, setImportando] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Filtros
   const [entregadorFilter, setEntregadorFilter] = useState("all")
@@ -150,7 +154,54 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     }
   }
 
-  // ✅ CARGAR PLANILLAS DISPONIBLES
+  const handleImportarClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      setImportando(true)
+      
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/fiados/importar', {
+        method: 'POST',
+        body: formData
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al importar')
+      }
+
+      toast({
+        title: "Importación Exitosa",
+        description: data.mensaje,
+      })
+
+      // Recargar datos
+      await loadFiados()
+      
+    } catch (error) {
+      console.error('Error importando:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al importar fiados",
+        variant: "destructive",
+      })
+    } finally {
+      setImportando(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   const loadPlanillasDisponibles = async () => {
     try {
       const response = await fetch("/api/planillas")
@@ -178,7 +229,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     }
   }
 
-  // ✅ ABRIR MODAL PARA ASIGNAR COBRO
   const openCobroModal = async (fiado: Fiado) => {
     setSelectedFiadoParaCobro(fiado)
     setPlanillaCobroId("")
@@ -186,7 +236,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     setShowCobroModal(true)
   }
 
-  // ✅ ASIGNAR FIADO COMO COBRO
   const handleAsignarCobro = async () => {
     if (!selectedFiadoParaCobro || !planillaCobroId) {
       toast({
@@ -450,10 +499,28 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={exportarCSV} variant="outline" className="w-full sm:w-auto">
-                <Download className="h-4 w-4 mr-2" />
-                Exportar
-              </Button>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileChange}
+                  style={{ display: 'none' }}
+                />
+                <Button 
+                  onClick={handleImportarClick}
+                  disabled={importando}
+                  variant="outline"
+                  className="flex-1 sm:flex-none border-green-300 text-green-700 hover:bg-green-50"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {importando ? "Importando..." : "Importar"}
+                </Button>
+                <Button onClick={exportarCSV} variant="outline" className="flex-1 sm:flex-none">
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar
+                </Button>
+              </div>
             </div>
           </Card>
 
@@ -590,7 +657,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                                     <Plus className="h-3 w-3 mr-1" />
                                     Abono
                                   </Button>
-                                  {/* ✅ NUEVO BOTÓN PARA ASIGNAR A COBRAR */}
                                   {userRole === "administrador" && (
                                     <Button
                                       variant="outline"
@@ -721,7 +787,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
         </DialogContent>
       </Dialog>
 
-      {/* ✅ NUEVO MODAL PARA ASIGNAR COBRO */}
+      {/* MODAL PARA ASIGNAR COBRO */}
       <Dialog open={showCobroModal} onOpenChange={setShowCobroModal}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
