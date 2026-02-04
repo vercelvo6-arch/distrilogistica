@@ -336,22 +336,26 @@ const [formData, setFormData] = useState({
   
   fiado += saldoPendiente  // Solo suma lo que REALMENTE debe
   
+  // Sumar según el estado del pedido COMPLETO
+if (order.estado === "fiado") {
+  const montoPagadoReal = Number(order.montoPagado) || 0
+  const saldoPendienteReal = effectiveTotal - montoPagadoReal
+  
+  fiado += saldoPendienteReal
+  
   if (order.descuento) {
     fiado -= Number(order.descuento)
   }
+} else if (order.estado === "repaso") {
+  repasos += effectiveTotal
+} else if (order.estado === "devolucion") {
+  devoluciones += effectiveTotal
+} else {
+  entregado += effectiveTotal
+  if (order.descuento) {
+    entregado -= Number(order.descuento)
+  }
 }
-    } else if (order.estado === "repaso") {
-      repasos += effectiveTotal
-    } else if (order.estado === "devolucion") {
-      devoluciones += effectiveTotal
-    } else {
-      // TODO LO DEMÁS = ENTREGADO
-      entregado += effectiveTotal
-      if (order.descuento) {
-        entregado -= Number(order.descuento)
-      }
-    }
-  })
 
   return {
     entregado: Math.round(entregado * 100) / 100,
