@@ -153,8 +153,8 @@ const [formData, setFormData] = useState({
           ruta: p.tipo_ruta,
           fecha: p.fecha,
           estado: ped.estado,
-          total: Number(ped.total) || 0,
-          montoPagado: 0,
+          total: Number(ped.total) || 0
+          montoPagado: Number(ped.monto_pagado) || 0,
           saldoPendiente: Number(ped.total) || 0,
           comentarios: ped.observaciones,
           esCobro: ped.es_cobro || false,
@@ -329,12 +329,17 @@ const [formData, setFormData] = useState({
     devoluciones += returnedTotal
     erroresFacturacion += erroresEnPedido  // ← NUEVO
 
-    // Sumar según el estado del pedido COMPLETO
     if (order.estado === "fiado") {
-      fiado += effectiveTotal
-      if (order.descuento) {
-        fiado -= Number(order.descuento)
-      }
+  // ✅ RESTAR EL MONTO PAGADO DEL TOTAL
+  const montoPagadoReal = Number(order.montoPagado) || 0
+  const saldoPendiente = effectiveTotal - montoPagadoReal
+  
+  fiado += saldoPendiente  // Solo suma lo que REALMENTE debe
+  
+  if (order.descuento) {
+    fiado -= Number(order.descuento)
+  }
+}
     } else if (order.estado === "repaso") {
       repasos += effectiveTotal
     } else if (order.estado === "devolucion") {
