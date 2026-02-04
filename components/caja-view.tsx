@@ -153,7 +153,7 @@ const [formData, setFormData] = useState({
           ruta: p.tipo_ruta,
           fecha: p.fecha,
           estado: ped.estado,
-          total: Number(ped.total) || 0
+          total: Number(ped.total) || 0,
           montoPagado: Number(ped.monto_pagado) || 0,
           saldoPendiente: Number(ped.total) || 0,
           comentarios: ped.observaciones,
