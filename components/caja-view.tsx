@@ -2251,17 +2251,17 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                                         <tr key={idx} className={`border-b ${item.devuelto || item.motivoAjuste === 'devuelto' ? "bg-red-50" : item.motivoAjuste === 'error_facturacion' ? "bg-orange-50" : ""}`}>
                                                           <td className="py-1 px-1">
                                                             <Select
-                                                              value={item.motivoAjuste || ""}
-                                                              onValueChange={(value) => handleMotivoAjusteChange(order.id, item.codigo, value)}
+                                                              value={item.motivoAjuste || "normal"}
+                                                              onValueChange={(value) => handleMotivoAjusteChange(order.id, item.codigo, value === "normal" ? "" : value)}
                                                               disabled={route.cuadradoEnCaja}
                                                             >
                                                               <SelectTrigger className="h-6 w-14 text-xs">
                                                                 <SelectValue placeholder="—" />
                                                               </SelectTrigger>
                                                               <SelectContent>
-                                                                <SelectItem value="">Normal</SelectItem>
-                                                                <SelectItem value="devuelto">❌ Devolución</SelectItem>
-                                                                <SelectItem value="error_facturacion">⚠️ Error Fact.</SelectItem>
+                                                                <SelectItem value="normal">Normal</SelectItem>
+                                                                <SelectItem value="devuelto">Devolución</SelectItem>
+                                                                <SelectItem value="error_facturacion">Error Fact.</SelectItem>
                                                               </SelectContent>
                                                             </Select>
                                                           </td>
