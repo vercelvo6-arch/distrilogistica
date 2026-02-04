@@ -1228,92 +1228,103 @@ const handleOpenModal = (planilla: RouteSheet) => {
 })
 
   const handleSubmitAgrupado = async () => {
-    if (!agrupadoData) return
+  if (!agrupadoData) return
 
-    if (!formData.efectivoRecibido || Number(formData.efectivoRecibido) < 0) {
+  if (!formData.efectivoRecibido || Number(formData.efectivoRecibido) < 0) {
+    toast({
+      title: "Error",
+      description: "El efectivo recibido debe ser un valor válido",
+      variant: "destructive",
+    })
+    return
+  }
+
+  if (formData.tieneConsignacion) {
+    if (!formData.numeroConsignacion || !formData.banco || !formData.montoConsignacion) {
       toast({
         title: "Error",
-        description: "El efectivo recibido debe ser un valor válido",
+        description: "Complete todos los datos de la consignación",
         variant: "destructive",
       })
       return
     }
 
-    if (formData.tieneConsignacion) {
-      if (!formData.numeroConsignacion || !formData.banco || !formData.montoConsignacion) {
-        toast({
-          title: "Error",
-          description: "Complete todos los datos de la consignación",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const existe = await validateConsignacion(formData.numeroConsignacion)
-      if (existe) return
-    }
-
-    try {
-      setSubmitting(true)
-
-      const cargue = agrupadoData.totales.cargue || 0
-      const novedades = (agrupadoData.totales.fiado || 0) + (agrupadoData.totales.devoluciones || 0) + (agrupadoData.totales.repasos || 0) + (agrupadoData.totales.agotados || 0) + (agrupadoData.totales.descuentos || 0) + (agrupadoData.totales.erroresFacturacion || 0)
-      const totalEsperadoCalculado = cargue - novedades
-
-      const payload = {
-  planillaIds: agrupadoData.planillaIds,
-  entregador: agrupadoData.entregador,
-  totalEsperado: totalEsperadoCalculado,
-  efectivoRecibido: Number(formData.efectivoRecibido),
-  tieneConsignacion: formData.tieneConsignacion,
-  numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
-  banco: formData.tieneConsignacion ? formData.banco : null,
-  montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
-  observaciones: formData.observaciones || null,
-  descuento: agrupadoData.totales.descuentos || 0,
-  agotados: agrupadoData.totales.agotados || 0,
-  fiado: agrupadoData.totales.fiado || 0,
-  devoluciones: agrupadoData.totales.devoluciones || 0,
-  repasos: agrupadoData.totales.repasos || 0,
-  erroresFacturacion: agrupadoData.totales.erroresFacturacion || 0,
-}
-
-      console.log('[CUADRE AGRUPADO] Enviando payload:', JSON.stringify(payload, null, 2))
-
-      const response = await fetch("/api/cuadres-caja", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await response.json()
-      console.log('[CUADRE AGRUPADO] Respuesta recibida:', data)
-
-      if (!response.ok) {
-        console.error('[CUADRE AGRUPADO] Error response:', data)
-        throw new Error(data.error || data.details || "Error al registrar cuadre agrupado")
-      }
-
-      toast({
-        title: "Cuadre Agrupado Registrado",
-        description: data.mensaje,
-      })
-
-      setShowAgrupadoModal(false)
-      setSelectedRoutes([])
-      setAgrupadoData(null)
-      await loadData()
-    } catch (error) {
-      console.error("[CUADRE AGRUPADO] Error completo:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Error al registrar cuadre",
-        variant: "destructive",
-      })
-    } finally {
-      setSubmitting(false)
-    }
+    const existe = await validateConsignacion(formData.numeroConsignacion)
+    if (existe) return
   }
+
+  try {
+    setSubmitting(true)
+
+    // ✅ USAR VALORES EDITABLES DEL FORMDATA
+    const fiadoFinal = Number(formData.fiados) || 0
+    const repasosFinal = Number(formData.repasos) || 0
+    const devolucionesFinal = Number(formData.devolucionesParciales) || 0
+    const agotadosFinal = Number(formData.agotados) || 0
+    const descuentoFinal = Number(formData.descuento) || 0
+    
+    // Obtener errores de facturación del input (si existe)
+    const erroresFactInput = document.getElementById('erroresFactAgrupado') as HTMLInputElement
+    const erroresFacturacionFinal = Number(erroresFactInput?.value) || 0
+
+    const cargue = agrupadoData.totales.cargue || 0
+    const novedades = fiadoFinal + repasosFinal + devolucionesFinal + agotadosFinal + descuentoFinal + erroresFacturacionFinal
+    const totalEsperadoCalculado = cargue - novedades
+
+    const payload = {
+      planillaIds: agrupadoData.planillaIds,
+      entregador: agrupadoData.entregador,
+      totalEsperado: totalEsperadoCalculado,
+      efectivoRecibido: Number(formData.efectivoRecibido),
+      tieneConsignacion: formData.tieneConsignacion,
+      numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
+      banco: formData.tieneConsignacion ? formData.banco : null,
+      montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
+      observaciones: formData.observaciones || null,
+      descuento: descuentoFinal,
+      agotados: agotadosFinal,
+      fiado: fiadoFinal,
+      devoluciones: devolucionesFinal,
+      repasos: repasosFinal,
+      erroresFacturacion: erroresFacturacionFinal,
+    }
+
+    console.log('[CUADRE AGRUPADO] Enviando payload:', JSON.stringify(payload, null, 2))
+
+    const response = await fetch("/api/cuadres-caja", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    const data = await response.json()
+    console.log('[CUADRE AGRUPADO] Respuesta recibida:', data)
+
+    if (!response.ok) {
+      console.error('[CUADRE AGRUPADO] Error response:', data)
+      throw new Error(data.error || data.details || "Error al registrar cuadre agrupado")
+    }
+
+    toast({
+      title: "Cuadre Agrupado Registrado",
+      description: data.mensaje,
+    })
+
+    setShowAgrupadoModal(false)
+    setSelectedRoutes([])
+    setAgrupadoData(null)
+    await loadData()
+  } catch (error) {
+    console.error("[CUADRE AGRUPADO] Error completo:", error)
+    toast({
+      title: "Error",
+      description: error instanceof Error ? error.message : "Error al registrar cuadre",
+      variant: "destructive",
+    })
+  } finally {
+    setSubmitting(false)
+  }
+}
 const handleSubmitFiado = async () => {
   if (!selectedOrderForFiado) return
 
