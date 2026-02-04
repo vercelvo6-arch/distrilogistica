@@ -1227,6 +1227,10 @@ const handleOpenModal = (planilla: RouteSheet) => {
   agotados: totalAgotadosAgrupado.toString(),
 })
 
+  setAgrupadoData(agrupado)
+  setShowAgrupadoModal(true)
+}
+
   const handleSubmitAgrupado = async () => {
   if (!agrupadoData) return
 
@@ -3277,4 +3281,4 @@ filteredRoutes.forEach((route) => {
       </Dialog>
     </>
   )
-}
+}    
