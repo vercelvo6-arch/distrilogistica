@@ -503,7 +503,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".csv,.xlsx,.xls"
                   onChange={handleFileChange}
                   style={{ display: 'none' }}
                 />
