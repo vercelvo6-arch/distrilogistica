@@ -43,14 +43,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El archivo está vacío o no tiene datos' }, { status: 400 })
     }
 
+    // 🔧 CORRECCIÓN: Usar punto y coma como delimitador
+    const delimiter = ';'
+    
     // Parsear headers (elimina comillas y espacios)
-    const headers = lines[0].split(',').map(h => h.trim().replace(/["\r\n]/g, ''))
+    const headers = lines[0].split(delimiter).map(h => h.trim().replace(/["\r\n]/g, ''))
     console.log('[IMPORTAR] Headers detectados:', headers)
 
     // Parsear filas
     const rows: any[] = []
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim().replace(/["\r\n]/g, ''))
+      const values = lines[i].split(delimiter).map(v => v.trim().replace(/["\r\n]/g, ''))
       const row: any = {}
       headers.forEach((header, index) => {
         row[header] = values[index] || ''
@@ -80,16 +83,14 @@ export async function POST(request: Request) {
           continue
         }
 
-        // Parsear números (limpia $ y comas)
-        const total = parseFloat(String(r.Total).replace(/[\$,]/g, '')) || 0
-        const montoPagado = parseFloat(String(r['Monto Pagado'] || r.Pagado || 0).replace(/[\$,]/g, '')) || 0
-        const saldoPendiente = r['Saldo Pendiente']
-          ? parseFloat(String(r['Saldo Pendiente']).replace(/[\$,]/g, ''))
-          : total - montoPagado
+        // 🔧 CORRECCIÓN: Limpiar $ y espacios correctamente
+        const total = parseFloat(String(r.Total).replace(/[\$\s,\.]/g, '').replace(/,/g, '.')) || 0
+        const montoPagado = parseFloat(String(r.Pagado || '0').replace(/[\$\s,\-]/g, '')) || 0
+        const saldoPendiente = total - montoPagado
 
         // Parsear fecha (formato DD/MM/YYYY)
         let fechaParsed = new Date()
-        if (r.Fecha) {
+        if (r.Fecha && r.Fecha.trim() !== '') {
           const fechaStr = String(r.Fecha).trim()
           if (fechaStr.includes('/')) {
             const [day, month, year] = fechaStr.split('/')
@@ -110,36 +111,36 @@ export async function POST(request: Request) {
         // Generar ID único
         const pedidoId = `FIA${Date.now()}${Math.random().toString(36).substr(2, 9)}`
 
-        // Insertar pedido
+        // 🔧 CORRECCIÓN: Insertar en tabla "fiados" (no "pedidos")
         await sql`
-          INSERT INTO pedidos (
-            id,
-            planilla_id,
+          INSERT INTO fiados (
+            pedido_id,
             cliente,
             direccion,
             telefono,
-            barrio,
-            estado,
-            total,
+            fecha_fiado,
+            entregador,
+            ruta,
+            monto_total,
             monto_pagado,
             saldo_pendiente,
-            observaciones,
-            es_cobro,
-            fiado_importado
+            estado,
+            importado,
+            created_at
           ) VALUES (
             ${pedidoId},
-            NULL,
             ${String(r.Cliente).trim()},
-            ${r.Direccion || r.Dirección || null},
-            ${r.Telefono || r.Teléfono || null},
-            ${r.Barrio || null},
-            ${saldoPendiente > 0 ? 'fiado' : 'pagado'},
+            ${r.Direccion || null},
+            ${r.Telefono || null},
+            ${fechaParsed.toISOString()},
+            ${String(r.Entregador).trim()},
+            ${r.Ruta || null},
             ${total},
             ${montoPagado},
             ${saldoPendiente},
-            ${r.Observaciones || null},
-            false,
-            true
+            ${r.Estado?.trim() || 'fiado'},
+            true,
+            NOW()
           )
         `
 
@@ -147,18 +148,24 @@ export async function POST(request: Request) {
         await sql`
           INSERT INTO fiados_historial (
             pedido_id,
-            entregador,
-            tipo_ruta,
-            fecha_original,
-            importado_por,
-            importado_en
+            cliente,
+            ruta,
+            fecha_pedido,
+            total,
+            monto_pagado,
+            saldo_pendiente,
+            fecha_importacion,
+            importado_por
           ) VALUES (
             ${pedidoId},
-            ${String(r.Entregador).trim()},
-            ${r.Ruta || 'N/A'},
+            ${String(r.Cliente).trim()},
+            ${r.Ruta || null},
             ${fechaParsed.toISOString()},
-            ${session.user.id},
-            NOW()
+            ${total},
+            ${montoPagado},
+            ${saldoPendiente},
+            NOW(),
+            ${session.user.username || session.user.email}
           )
         `
 
