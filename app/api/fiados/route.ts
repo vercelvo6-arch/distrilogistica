@@ -16,116 +16,124 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB()
 
-    // 🔧 OPCIÓN B: UNIR ambas tablas (pedidos + fiados)
-    let fiadosDesdeTablaFiados: any[] = []
-    let fiadosDesdePedidos: any[] = []
-
-    // 1. Obtener de tabla "fiados" (importados + manuales de esta tabla)
-    let queryFiados = `
-      SELECT 
-        f.id,
-        f.pedido_id as id_original,
-        f.cliente,
-        f.direccion,
-        f.telefono,
-        f.fecha_fiado as fecha,
-        f.entregador,
-        f.ruta as tipo_ruta,
-        f.monto_total as total,
-        COALESCE(f.monto_pagado, 0) as monto_pagado,
-        COALESCE(f.saldo_pendiente, f.monto_total) as saldo_pendiente,
-        f.estado,
-        f.importado,
-        'fiados' as origen,
-        NULL as planilla_id,
-        f.created_at
-      FROM fiados f
-      WHERE 1=1
-    `
-
-    const paramsFiados: any[] = []
+    // Construir query para tabla pedidos (original)
+    const condicionesPedidos = ['p.estado IN ($1, $2)']
+    const paramsPedidos: any[] = ['fiado', 'pagado']
+    let paramIndexPedidos = 3
 
     if (fechaInicio) {
-      queryFiados += ` AND f.fecha_fiado >= $${paramsFiados.length + 1}`
-      paramsFiados.push(fechaInicio)
+      condicionesPedidos.push(`pl.fecha >= $${paramIndexPedidos}`)
+      paramsPedidos.push(fechaInicio)
+      paramIndexPedidos++
     }
 
     if (fechaFin) {
-      queryFiados += ` AND f.fecha_fiado <= $${paramsFiados.length + 1}`
-      paramsFiados.push(fechaFin)
+      condicionesPedidos.push(`pl.fecha <= $${paramIndexPedidos}`)
+      paramsPedidos.push(fechaFin)
+      paramIndexPedidos++
     }
 
     if (entregador && entregador !== 'all') {
-      queryFiados += ` AND f.entregador = $${paramsFiados.length + 1}`
-      paramsFiados.push(entregador)
+      condicionesPedidos.push(`pl.entregador = $${paramIndexPedidos}`)
+      paramsPedidos.push(entregador)
+      paramIndexPedidos++
     }
 
-    fiadosDesdeTablaFiados = await sql(queryFiados, paramsFiados)
-
-    // 2. Obtener de tabla "pedidos" (los de planillas diarias)
-    let queryPedidos = `
+    const queryPedidos = `
       SELECT 
-        p.id,
-        p.id::text as id_original,
+        p.id::text as id,
         p.cliente,
         p.direccion,
         p.telefono,
-        pl.fecha,
-        pl.entregador,
-        pl.tipo_ruta,
+        p.barrio,
         p.total,
         COALESCE(p.monto_pagado, 0) as monto_pagado,
         COALESCE(p.saldo_pendiente, p.total) as saldo_pendiente,
         p.estado,
-        false as importado,
-        'pedidos' as origen,
+        p.observaciones,
+        pl.fecha,
+        pl.entregador,
+        pl.tipo_ruta,
         pl.id::text as planilla_id,
-        p.created_at
+        'pedidos' as origen
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
-      WHERE p.estado IN ('fiado', 'pagado')
+      WHERE ${condicionesPedidos.join(' AND ')}
+      ORDER BY pl.fecha DESC, p.cliente ASC
     `
 
-    const paramsPedidos: any[] = []
+    console.log('[API fiados] Query pedidos:', queryPedidos)
+    console.log('[API fiados] Params pedidos:', paramsPedidos)
+
+    const fiadosPedidos = await sql(queryPedidos, paramsPedidos)
+    console.log('[API fiados] Fiados desde pedidos:', fiadosPedidos.length)
+
+    // Construir query para tabla fiados (importados)
+    const condicionesFiados = ['1=1']
+    const paramsFiados: any[] = []
+    let paramIndexFiados = 1
 
     if (fechaInicio) {
-      queryPedidos += ` AND pl.fecha >= $${paramsPedidos.length + 1}`
-      paramsPedidos.push(fechaInicio)
+      condicionesFiados.push(`f.fecha_fiado >= $${paramIndexFiados}`)
+      paramsFiados.push(fechaInicio)
+      paramIndexFiados++
     }
 
     if (fechaFin) {
-      queryPedidos += ` AND pl.fecha <= $${paramsPedidos.length + 1}`
-      paramsPedidos.push(fechaFin)
+      condicionesFiados.push(`f.fecha_fiado <= $${paramIndexFiados}`)
+      paramsFiados.push(fechaFin)
+      paramIndexFiados++
     }
 
     if (entregador && entregador !== 'all') {
-      queryPedidos += ` AND pl.entregador = $${paramsPedidos.length + 1}`
-      paramsPedidos.push(entregador)
+      condicionesFiados.push(`f.entregador = $${paramIndexFiados}`)
+      paramsFiados.push(entregador)
+      paramIndexFiados++
     }
 
-    fiadosDesdePedidos = await sql(queryPedidos, paramsPedidos)
+    const queryFiados = `
+      SELECT 
+        f.pedido_id as id,
+        f.cliente,
+        f.direccion,
+        f.telefono,
+        NULL as barrio,
+        f.monto_total as total,
+        COALESCE(f.monto_pagado, 0) as monto_pagado,
+        COALESCE(f.saldo_pendiente, f.monto_total) as saldo_pendiente,
+        f.estado,
+        NULL as observaciones,
+        f.fecha_fiado::date::text as fecha,
+        f.entregador,
+        f.ruta as tipo_ruta,
+        NULL as planilla_id,
+        'fiados' as origen
+      FROM fiados f
+      WHERE ${condicionesFiados.join(' AND ')}
+      ORDER BY f.fecha_fiado DESC, f.cliente ASC
+    `
 
-    // 3. Combinar ambos resultados
-    const todosLosFiados = [...fiadosDesdeTablaFiados, ...fiadosDesdePedidos]
-      .sort((a, b) => {
-        const fechaA = new Date(a.fecha).getTime()
-        const fechaB = new Date(b.fecha).getTime()
-        return fechaB - fechaA // Más recientes primero
-      })
+    console.log('[API fiados] Query fiados:', queryFiados)
+    console.log('[API fiados] Params fiados:', paramsFiados)
 
-    // 4. Obtener abonos si hay fiados
+    const fiadosTabla = await sql(queryFiados, paramsFiados)
+    console.log('[API fiados] Fiados desde tabla fiados:', fiadosTabla.length)
+
+    // Combinar ambos resultados
+    const todosLosFiados = [...fiadosPedidos, ...fiadosTabla]
+    console.log('[API fiados] Total fiados combinados:', todosLosFiados.length)
+
+    // Obtener abonos
     let abonos: any[] = []
     
     if (todosLosFiados.length > 0) {
-      const pedidosIds = todosLosFiados
-        .map((f: any) => f.id_original)
-        .filter(Boolean)
+      const pedidosIds = todosLosFiados.map((f: any) => f.id).filter(Boolean)
       
       if (pedidosIds.length > 0) {
         abonos = await sql`
           SELECT 
-            a.id,
-            a.pedido_id,
+            a.id::text as id,
+            a.pedido_id::text as pedido_id,
             a.monto_abono,
             a.fecha_abono,
             a.metodo_pago,
@@ -138,16 +146,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 5. Agrupar abonos por pedido
+    // Agrupar abonos por pedido
     const fiadosConAbonos = todosLosFiados.map((fiado: any) => ({
       ...fiado,
-      id: fiado.id_original || fiado.id.toString(),
-      barrio: null,
-      observaciones: null,
-      abonos: abonos.filter((a: any) => a.pedido_id === fiado.id_original)
+      abonos: abonos.filter((a: any) => a.pedido_id === fiado.id)
     }))
 
-    // 6. Calcular resumen por entregador
+    // Calcular resumen
     const resumenMap = new Map<string, { total_fiados: number; monto_total: number }>()
     
     fiadosConAbonos.forEach((fiado: any) => {
@@ -169,9 +174,7 @@ export async function GET(request: NextRequest) {
       ...data
     }))
 
-    console.log('[API fiados] Total fiados:', fiadosConAbonos.length)
-    console.log('[API fiados] Desde tabla fiados:', fiadosDesdeTablaFiados.length)
-    console.log('[API fiados] Desde tabla pedidos:', fiadosDesdePedidos.length)
+    console.log('[API fiados] Resumen:', resumen)
 
     return NextResponse.json({
       fiados: fiadosConAbonos,
@@ -179,10 +182,11 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[API fiados] Error:', error)
+    console.error('[API fiados] ERROR:', error)
+    console.error('[API fiados] Stack:', error instanceof Error ? error.stack : 'No stack')
     return NextResponse.json(
       { 
-        error: 'Error al obtener fiados',
+        error: 'Error al cargar fiados',
         details: error instanceof Error ? error.message : 'Error desconocido'
       },
       { status: 500 }
