@@ -4,8 +4,11 @@ import { getSession } from '@/lib/session'
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('[API fiados] === INICIO ===')
+    
     const session = await getSession()
     if (!session?.user) {
+      console.log('[API fiados] No autenticado')
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
@@ -14,145 +17,277 @@ export async function GET(request: NextRequest) {
     const fechaFin = searchParams.get('fechaFin')
     const entregador = searchParams.get('entregador')
 
+    console.log('[API fiados] Filtros:', { fechaInicio, fechaFin, entregador })
+
     const sql = getDB()
 
-    // Construir query para tabla pedidos (original)
-    const condicionesPedidos = ['p.estado IN ($1, $2)']
-    const paramsPedidos: any[] = ['fiado', 'pagado']
-    let paramIndexPedidos = 3
-
-    if (fechaInicio) {
-      condicionesPedidos.push(`pl.fecha >= $${paramIndexPedidos}`)
-      paramsPedidos.push(fechaInicio)
-      paramIndexPedidos++
+    // ========================================
+    // CONSULTA 1: Tabla "pedidos" (fiados de planillas diarias)
+    // ========================================
+    let fiadosPedidos: any[] = []
+    
+    try {
+      if (fechaInicio && fechaFin && entregador && entregador !== 'all') {
+        fiadosPedidos = await sql`
+          SELECT 
+            p.id::text as id,
+            p.cliente,
+            p.direccion,
+            p.telefono,
+            p.barrio,
+            p.total,
+            COALESCE(p.monto_pagado, 0) as monto_pagado,
+            COALESCE(p.saldo_pendiente, p.total) as saldo_pendiente,
+            p.estado,
+            p.observaciones,
+            pl.fecha,
+            pl.entregador,
+            pl.tipo_ruta,
+            pl.id::text as planilla_id,
+            'pedidos' as origen
+          FROM pedidos p
+          JOIN planillas pl ON p.planilla_id = pl.id
+          WHERE p.estado IN ('fiado', 'pagado')
+            AND pl.fecha >= ${fechaInicio}
+            AND pl.fecha <= ${fechaFin}
+            AND pl.entregador = ${entregador}
+          ORDER BY pl.fecha DESC, p.cliente ASC
+        `
+      } else if (fechaInicio && fechaFin) {
+        fiadosPedidos = await sql`
+          SELECT 
+            p.id::text as id,
+            p.cliente,
+            p.direccion,
+            p.telefono,
+            p.barrio,
+            p.total,
+            COALESCE(p.monto_pagado, 0) as monto_pagado,
+            COALESCE(p.saldo_pendiente, p.total) as saldo_pendiente,
+            p.estado,
+            p.observaciones,
+            pl.fecha,
+            pl.entregador,
+            pl.tipo_ruta,
+            pl.id::text as planilla_id,
+            'pedidos' as origen
+          FROM pedidos p
+          JOIN planillas pl ON p.planilla_id = pl.id
+          WHERE p.estado IN ('fiado', 'pagado')
+            AND pl.fecha >= ${fechaInicio}
+            AND pl.fecha <= ${fechaFin}
+          ORDER BY pl.fecha DESC, p.cliente ASC
+        `
+      } else if (entregador && entregador !== 'all') {
+        fiadosPedidos = await sql`
+          SELECT 
+            p.id::text as id,
+            p.cliente,
+            p.direccion,
+            p.telefono,
+            p.barrio,
+            p.total,
+            COALESCE(p.monto_pagado, 0) as monto_pagado,
+            COALESCE(p.saldo_pendiente, p.total) as saldo_pendiente,
+            p.estado,
+            p.observaciones,
+            pl.fecha,
+            pl.entregador,
+            pl.tipo_ruta,
+            pl.id::text as planilla_id,
+            'pedidos' as origen
+          FROM pedidos p
+          JOIN planillas pl ON p.planilla_id = pl.id
+          WHERE p.estado IN ('fiado', 'pagado')
+            AND pl.entregador = ${entregador}
+          ORDER BY pl.fecha DESC, p.cliente ASC
+        `
+      } else {
+        // SIN FILTROS - traer todos los de pedidos
+        fiadosPedidos = await sql`
+          SELECT 
+            p.id::text as id,
+            p.cliente,
+            p.direccion,
+            p.telefono,
+            p.barrio,
+            p.total,
+            COALESCE(p.monto_pagado, 0) as monto_pagado,
+            COALESCE(p.saldo_pendiente, p.total) as saldo_pendiente,
+            p.estado,
+            p.observaciones,
+            pl.fecha,
+            pl.entregador,
+            pl.tipo_ruta,
+            pl.id::text as planilla_id,
+            'pedidos' as origen
+          FROM pedidos p
+          JOIN planillas pl ON p.planilla_id = pl.id
+          WHERE p.estado IN ('fiado', 'pagado')
+          ORDER BY pl.fecha DESC, p.cliente ASC
+        `
+      }
+      console.log('[API fiados] ✓ Fiados desde tabla pedidos:', fiadosPedidos.length)
+    } catch (error) {
+      console.error('[API fiados] ✗ Error en query pedidos:', error)
+      fiadosPedidos = []
     }
 
-    if (fechaFin) {
-      condicionesPedidos.push(`pl.fecha <= $${paramIndexPedidos}`)
-      paramsPedidos.push(fechaFin)
-      paramIndexPedidos++
+    // ========================================
+    // CONSULTA 2: Tabla "fiados" (importados desde CSV)
+    // ========================================
+    let fiadosTabla: any[] = []
+    
+    try {
+      if (fechaInicio && fechaFin && entregador && entregador !== 'all') {
+        fiadosTabla = await sql`
+          SELECT 
+            COALESCE(f.pedido_id, f.id::text) as id,
+            f.cliente,
+            f.direccion,
+            f.telefono,
+            NULL as barrio,
+            f.monto_total as total,
+            COALESCE(f.monto_pagado, 0) as monto_pagado,
+            COALESCE(f.saldo_pendiente, f.monto_total) as saldo_pendiente,
+            f.estado,
+            NULL as observaciones,
+            f.fecha_fiado::date::text as fecha,
+            f.entregador,
+            f.ruta as tipo_ruta,
+            NULL as planilla_id,
+            'fiados' as origen
+          FROM fiados f
+          WHERE f.fecha_fiado >= ${fechaInicio}::date
+            AND f.fecha_fiado <= ${fechaFin}::date
+            AND f.entregador = ${entregador}
+          ORDER BY f.fecha_fiado DESC, f.cliente ASC
+        `
+      } else if (fechaInicio && fechaFin) {
+        fiadosTabla = await sql`
+          SELECT 
+            COALESCE(f.pedido_id, f.id::text) as id,
+            f.cliente,
+            f.direccion,
+            f.telefono,
+            NULL as barrio,
+            f.monto_total as total,
+            COALESCE(f.monto_pagado, 0) as monto_pagado,
+            COALESCE(f.saldo_pendiente, f.monto_total) as saldo_pendiente,
+            f.estado,
+            NULL as observaciones,
+            f.fecha_fiado::date::text as fecha,
+            f.entregador,
+            f.ruta as tipo_ruta,
+            NULL as planilla_id,
+            'fiados' as origen
+          FROM fiados f
+          WHERE f.fecha_fiado >= ${fechaInicio}::date
+            AND f.fecha_fiado <= ${fechaFin}::date
+          ORDER BY f.fecha_fiado DESC, f.cliente ASC
+        `
+      } else if (entregador && entregador !== 'all') {
+        fiadosTabla = await sql`
+          SELECT 
+            COALESCE(f.pedido_id, f.id::text) as id,
+            f.cliente,
+            f.direccion,
+            f.telefono,
+            NULL as barrio,
+            f.monto_total as total,
+            COALESCE(f.monto_pagado, 0) as monto_pagado,
+            COALESCE(f.saldo_pendiente, f.monto_total) as saldo_pendiente,
+            f.estado,
+            NULL as observaciones,
+            f.fecha_fiado::date::text as fecha,
+            f.entregador,
+            f.ruta as tipo_ruta,
+            NULL as planilla_id,
+            'fiados' as origen
+          FROM fiados f
+          WHERE f.entregador = ${entregador}
+          ORDER BY f.fecha_fiado DESC, f.cliente ASC
+        `
+      } else {
+        // SIN FILTROS - traer todos los de fiados
+        fiadosTabla = await sql`
+          SELECT 
+            COALESCE(f.pedido_id, f.id::text) as id,
+            f.cliente,
+            f.direccion,
+            f.telefono,
+            NULL as barrio,
+            f.monto_total as total,
+            COALESCE(f.monto_pagado, 0) as monto_pagado,
+            COALESCE(f.saldo_pendiente, f.monto_total) as saldo_pendiente,
+            f.estado,
+            NULL as observaciones,
+            f.fecha_fiado::date::text as fecha,
+            f.entregador,
+            f.ruta as tipo_ruta,
+            NULL as planilla_id,
+            'fiados' as origen
+          FROM fiados f
+          ORDER BY f.fecha_fiado DESC, f.cliente ASC
+        `
+      }
+      console.log('[API fiados] ✓ Fiados desde tabla fiados:', fiadosTabla.length)
+    } catch (error) {
+      console.error('[API fiados] ✗ Error en query fiados:', error)
+      console.error('[API fiados] Error details:', error)
+      fiadosTabla = []
     }
 
-    if (entregador && entregador !== 'all') {
-      condicionesPedidos.push(`pl.entregador = $${paramIndexPedidos}`)
-      paramsPedidos.push(entregador)
-      paramIndexPedidos++
-    }
-
-    const queryPedidos = `
-      SELECT 
-        p.id::text as id,
-        p.cliente,
-        p.direccion,
-        p.telefono,
-        p.barrio,
-        p.total,
-        COALESCE(p.monto_pagado, 0) as monto_pagado,
-        COALESCE(p.saldo_pendiente, p.total) as saldo_pendiente,
-        p.estado,
-        p.observaciones,
-        pl.fecha,
-        pl.entregador,
-        pl.tipo_ruta,
-        pl.id::text as planilla_id,
-        'pedidos' as origen
-      FROM pedidos p
-      JOIN planillas pl ON p.planilla_id = pl.id
-      WHERE ${condicionesPedidos.join(' AND ')}
-      ORDER BY pl.fecha DESC, p.cliente ASC
-    `
-
-    console.log('[API fiados] Query pedidos:', queryPedidos)
-    console.log('[API fiados] Params pedidos:', paramsPedidos)
-
-    const fiadosPedidos = await sql(queryPedidos, paramsPedidos)
-    console.log('[API fiados] Fiados desde pedidos:', fiadosPedidos.length)
-
-    // Construir query para tabla fiados (importados)
-    const condicionesFiados = ['1=1']
-    const paramsFiados: any[] = []
-    let paramIndexFiados = 1
-
-    if (fechaInicio) {
-      condicionesFiados.push(`f.fecha_fiado >= $${paramIndexFiados}`)
-      paramsFiados.push(fechaInicio)
-      paramIndexFiados++
-    }
-
-    if (fechaFin) {
-      condicionesFiados.push(`f.fecha_fiado <= $${paramIndexFiados}`)
-      paramsFiados.push(fechaFin)
-      paramIndexFiados++
-    }
-
-    if (entregador && entregador !== 'all') {
-      condicionesFiados.push(`f.entregador = $${paramIndexFiados}`)
-      paramsFiados.push(entregador)
-      paramIndexFiados++
-    }
-
-    const queryFiados = `
-      SELECT 
-        f.pedido_id as id,
-        f.cliente,
-        f.direccion,
-        f.telefono,
-        NULL as barrio,
-        f.monto_total as total,
-        COALESCE(f.monto_pagado, 0) as monto_pagado,
-        COALESCE(f.saldo_pendiente, f.monto_total) as saldo_pendiente,
-        f.estado,
-        NULL as observaciones,
-        f.fecha_fiado::date::text as fecha,
-        f.entregador,
-        f.ruta as tipo_ruta,
-        NULL as planilla_id,
-        'fiados' as origen
-      FROM fiados f
-      WHERE ${condicionesFiados.join(' AND ')}
-      ORDER BY f.fecha_fiado DESC, f.cliente ASC
-    `
-
-    console.log('[API fiados] Query fiados:', queryFiados)
-    console.log('[API fiados] Params fiados:', paramsFiados)
-
-    const fiadosTabla = await sql(queryFiados, paramsFiados)
-    console.log('[API fiados] Fiados desde tabla fiados:', fiadosTabla.length)
-
-    // Combinar ambos resultados
+    // ========================================
+    // COMBINAR RESULTADOS
+    // ========================================
     const todosLosFiados = [...fiadosPedidos, ...fiadosTabla]
-    console.log('[API fiados] Total fiados combinados:', todosLosFiados.length)
+    console.log('[API fiados] 📊 Total fiados combinados:', todosLosFiados.length)
+    console.log('[API fiados]    - Desde pedidos:', fiadosPedidos.length)
+    console.log('[API fiados]    - Desde fiados:', fiadosTabla.length)
 
-    // Obtener abonos
+    // ========================================
+    // OBTENER ABONOS
+    // ========================================
     let abonos: any[] = []
     
     if (todosLosFiados.length > 0) {
       const pedidosIds = todosLosFiados.map((f: any) => f.id).filter(Boolean)
       
       if (pedidosIds.length > 0) {
-        abonos = await sql`
-          SELECT 
-            a.id::text as id,
-            a.pedido_id::text as pedido_id,
-            a.monto_abono,
-            a.fecha_abono,
-            a.metodo_pago,
-            a.observaciones,
-            a.registrado_por
-          FROM abonos_fiados a
-          WHERE a.pedido_id = ANY(${pedidosIds})
-          ORDER BY a.fecha_abono DESC
-        `
+        try {
+          abonos = await sql`
+            SELECT 
+              a.id::text as id,
+              a.pedido_id::text as pedido_id,
+              a.monto_abono,
+              a.fecha_abono,
+              a.metodo_pago,
+              a.observaciones,
+              a.registrado_por
+            FROM abonos_fiados a
+            WHERE a.pedido_id = ANY(${pedidosIds})
+            ORDER BY a.fecha_abono DESC
+          `
+          console.log('[API fiados] ✓ Abonos encontrados:', abonos.length)
+        } catch (error) {
+          console.error('[API fiados] ✗ Error obteniendo abonos:', error)
+          abonos = []
+        }
       }
     }
 
-    // Agrupar abonos por pedido
+    // ========================================
+    // AGRUPAR ABONOS POR PEDIDO
+    // ========================================
     const fiadosConAbonos = todosLosFiados.map((fiado: any) => ({
       ...fiado,
       abonos: abonos.filter((a: any) => a.pedido_id === fiado.id)
     }))
 
-    // Calcular resumen
+    // ========================================
+    // CALCULAR RESUMEN POR ENTREGADOR
+    // ========================================
     const resumenMap = new Map<string, { total_fiados: number; monto_total: number }>()
     
     fiadosConAbonos.forEach((fiado: any) => {
@@ -174,7 +309,8 @@ export async function GET(request: NextRequest) {
       ...data
     }))
 
-    console.log('[API fiados] Resumen:', resumen)
+    console.log('[API fiados] 📈 Resumen por entregador:', resumen)
+    console.log('[API fiados] === FIN EXITOSO ===')
 
     return NextResponse.json({
       fiados: fiadosConAbonos,
@@ -182,12 +318,13 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[API fiados] ERROR:', error)
+    console.error('[API fiados] ❌ ERROR CRÍTICO:', error)
     console.error('[API fiados] Stack:', error instanceof Error ? error.stack : 'No stack')
+    
     return NextResponse.json(
       { 
         error: 'Error al cargar fiados',
-        details: error instanceof Error ? error.message : 'Error desconocido'
+        details: error instanceof Error ? error.message : String(error)
       },
       { status: 500 }
     )
