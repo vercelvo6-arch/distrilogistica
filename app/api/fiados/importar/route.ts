@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    console.log('[IMPORTAR] Usuario:', session.user.username)
+    console.log('[IMPORTAR] Usuario:', session.user.username || session.user.email)
 
     const formData = await request.formData()
     const file = formData.get('file') as File
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El archivo está vacío o no tiene datos' }, { status: 400 })
     }
 
-    // 🔧 Usar punto y coma como delimitador
+    // ✅ USAR PUNTO Y COMA como delimitador
     const delimiter = ';'
     
     // Parsear headers
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       try {
         const r = rows[i]
 
-        // 🔧 VALIDACIÓN MÍNIMA: Solo cliente y total son obligatorios
+        // ✅ VALIDACIÓN MÍNIMA: Solo cliente y total son obligatorios
         if (!r.Cliente || !r.Total) {
           errores++
           const mensaje = `Fila ${i + 2}: Faltan datos CRÍTICOS - Cliente: ${r.Cliente ? '✓' : '✗'}, Total: ${r.Total ? '✓' : '✗'}`
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
           continue
         }
 
-        // Parsear números (limpia $, espacios, puntos y guiones)
+        // Limpiar y parsear números
         const totalStr = String(r.Total).replace(/[\$\s\.]/g, '').replace(',', '.')
         const total = parseFloat(totalStr) || 0
 
@@ -95,36 +95,35 @@ export async function POST(request: Request) {
           continue
         }
 
-        // Parsear monto pagado (puede ser vacío)
+        // Parsear monto pagado (puede ser vacío o con guión)
         const pagadoStr = String(r.Pagado || '0').replace(/[\$\s\.,\-]/g, '')
         const montoPagado = parseFloat(pagadoStr) || 0
         const saldoPendiente = total - montoPagado
 
-        // 🔧 Parsear fecha (OPCIONAL - si no hay, usar fecha actual)
+        // ✅ Fecha OPCIONAL - usar fecha actual si no hay
         let fechaParsed = new Date()
         if (r.Fecha && r.Fecha.trim() !== '') {
           const fechaStr = String(r.Fecha).trim()
           if (fechaStr.includes('/')) {
             const [day, month, year] = fechaStr.split('/')
             const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-            // Validar que la fecha sea válida
             if (!isNaN(parsedDate.getTime())) {
               fechaParsed = parsedDate
             }
           }
         }
 
-        // 🔧 Entregador OPCIONAL - usar "Sin asignar" si está vacío
+        // ✅ Entregador OPCIONAL - "Sin asignar" si está vacío
         const entregador = r.Entregador && r.Entregador.trim() !== '' 
           ? String(r.Entregador).trim() 
           : 'Sin asignar'
 
-        // 🔧 Ruta OPCIONAL
+        // ✅ Ruta OPCIONAL
         const ruta = r.Ruta && r.Ruta.trim() !== '' 
           ? String(r.Ruta).trim() 
           : 'N/A'
 
-        console.log(`[IMPORTAR] Fila ${i + 2}:`, {
+        console.log(`[IMPORTAR] Procesando fila ${i + 2}:`, {
           cliente: r.Cliente,
           total,
           montoPagado,
@@ -209,9 +208,6 @@ export async function POST(request: Request) {
     console.log('[IMPORTAR] === RESUMEN ===')
     console.log('[IMPORTAR] Importados:', importados)
     console.log('[IMPORTAR] Errores:', errores)
-    if (erroresDetalle.length > 0) {
-      console.log('[IMPORTAR] Primeros 10 errores:', erroresDetalle.slice(0, 10))
-    }
 
     return NextResponse.json({
       success: true,
