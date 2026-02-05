@@ -24,28 +24,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No se recibió archivo' }, { status: 400 })
     }
 
-    console.log('[IMPORTAR] Archivo:', file.name, 'Tamaño:', file.size)
+    console.log('[IMPORTAR] Archivo:', file.name, 'Tamaño:', file.size, 'bytes')
 
     if (!file.name.endsWith('.csv')) {
       return NextResponse.json({ 
-        error: 'Solo se aceptan archivos .csv' 
+        error: 'Solo se aceptan archivos CSV (.csv)' 
       }, { status: 400 })
     }
 
     // Leer CSV
     const text = await file.text()
+    console.log('[IMPORTAR] Contenido leído, longitud:', text.length)
+    
     const lines = text.split('\n').filter(line => line.trim())
 
     if (lines.length < 2) {
-      return NextResponse.json({ error: 'El archivo está vacío' }, { status: 400 })
+      console.log('[IMPORTAR] ERROR: Archivo vacío o solo tiene headers')
+      return NextResponse.json({ error: 'El archivo está vacío o no tiene datos' }, { status: 400 })
     }
 
-    const headers = lines[0].split(',').map(h => h.trim().replace(/["\r]/g, ''))
-    console.log('[IMPORTAR] Headers:', headers)
+    // Parsear headers (elimina comillas y espacios)
+    const headers = lines[0].split(',').map(h => h.trim().replace(/["\r\n]/g, ''))
+    console.log('[IMPORTAR] Headers detectados:', headers)
 
+    // Parsear filas
     const rows: any[] = []
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim().replace(/["\r]/g, ''))
+      const values = lines[i].split(',').map(v => v.trim().replace(/["\r\n]/g, ''))
       const row: any = {}
       headers.forEach((header, index) => {
         row[header] = values[index] || ''
@@ -53,9 +58,9 @@ export async function POST(request: Request) {
       rows.push(row)
     }
 
-    console.log('[IMPORTAR] Total filas:', rows.length)
+    console.log('[IMPORTAR] Total filas a procesar:', rows.length)
     if (rows.length > 0) {
-      console.log('[IMPORTAR] Ejemplo primera fila:', rows[0])
+      console.log('[IMPORTAR] Ejemplo primera fila:', JSON.stringify(rows[0], null, 2))
     }
 
     let importados = 0
@@ -69,8 +74,9 @@ export async function POST(request: Request) {
         // Validar datos requeridos
         if (!r.Cliente || !r.Total || !r.Entregador) {
           errores++
-          erroresDetalle.push(`Fila ${i + 2}: Faltan Cliente, Total o Entregador`)
-          console.log(`[IMPORTAR] Fila ${i + 2} - Datos faltantes:`, r)
+          const mensaje = `Fila ${i + 2}: Faltan datos - Cliente: ${r.Cliente || 'NO'}, Total: ${r.Total || 'NO'}, Entregador: ${r.Entregador || 'NO'}`
+          erroresDetalle.push(mensaje)
+          console.log('[IMPORTAR]', mensaje)
           continue
         }
 
@@ -98,7 +104,7 @@ export async function POST(request: Request) {
           total,
           montoPagado,
           saldoPendiente,
-          fecha: fechaParsed
+          fecha: fechaParsed.toISOString()
         })
 
         // Generar ID único
@@ -157,17 +163,22 @@ export async function POST(request: Request) {
         `
 
         importados++
-        console.log(`[IMPORTAR] ✓ Fila ${i + 2} importada`)
+        console.log(`[IMPORTAR] ✓ Fila ${i + 2} importada exitosamente`)
 
       } catch (err) {
         errores++
-        console.error(`[IMPORTAR] ✗ Error fila ${i + 2}:`, err)
-        erroresDetalle.push(`Fila ${i + 2}: ${(err as Error).message}`)
+        const mensaje = `Fila ${i + 2}: ${(err as Error).message}`
+        console.error(`[IMPORTAR] ✗ ${mensaje}`)
+        erroresDetalle.push(mensaje)
       }
     }
 
-    console.log('[IMPORTAR] === FIN ===')
-    console.log('[IMPORTAR] Importados:', importados, 'Errores:', errores)
+    console.log('[IMPORTAR] === RESUMEN ===')
+    console.log('[IMPORTAR] Importados:', importados)
+    console.log('[IMPORTAR] Errores:', errores)
+    if (erroresDetalle.length > 0) {
+      console.log('[IMPORTAR] Detalle de errores:', erroresDetalle)
+    }
 
     return NextResponse.json({
       success: true,
@@ -179,6 +190,7 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('[IMPORTAR] ERROR CRÍTICO:', error)
+    console.error('[IMPORTAR] Stack:', error instanceof Error ? error.stack : 'No stack')
     return NextResponse.json(
       { 
         error: 'Error al importar',
