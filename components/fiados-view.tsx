@@ -159,49 +159,67 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      setImportando(true)
-      
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch('/api/fiados/importar', {
-        method: 'POST',
-        body: formData
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al importar')
-      }
-
-      toast({
-        title: "Importación Exitosa",
-        description: data.mensaje,
-      })
-
-      // Recargar datos
-      await loadFiados()
-      
-    } catch (error) {
-      console.error('Error importando:', error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Error al importar fiados",
-        variant: "destructive",
-      })
-    } finally {
-      setImportando(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    }
+  console.log('🔵 [FIADOS] handleFileChange EJECUTADO')
+  console.log('🔵 [FIADOS] Evento:', e)
+  console.log('🔵 [FIADOS] e.target:', e.target)
+  console.log('🔵 [FIADOS] e.target.files:', e.target.files)
+  
+  const file = e.target.files?.[0]
+  console.log('🔵 [FIADOS] Archivo extraído:', file)
+  
+  if (!file) {
+    console.log('❌ [FIADOS] NO HAY ARCHIVO')
+    return
   }
 
+  console.log('✅ [FIADOS] Archivo detectado:', {
+    nombre: file.name,
+    tipo: file.type,
+    tamaño: file.size
+  })
+
+  try {
+    setImportando(true)
+    console.log('📤 [FIADOS] Creando FormData...')
+    
+    const formData = new FormData()
+    formData.append('file', file)
+    console.log('📤 [FIADOS] FormData creado, enviando...')
+
+    const response = await fetch('/api/fiados/importar', {
+      method: 'POST',
+      body: formData
+    })
+
+    console.log('📥 [FIADOS] Respuesta status:', response.status)
+    const data = await response.json()
+    console.log('📥 [FIADOS] Data recibida:', data)
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Error al importar')
+    }
+
+    toast({
+      title: "Importación Exitosa",
+      description: data.mensaje,
+    })
+
+    await loadFiados()
+    
+  } catch (error) {
+    console.error('❌ [FIADOS] ERROR:', error)
+    toast({
+      title: "Error",
+      description: error instanceof Error ? error.message : "Error al importar fiados",
+      variant: "destructive",
+    })
+  } finally {
+    setImportando(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+}
   const loadPlanillasDisponibles = async () => {
     try {
       const response = await fetch("/api/planillas")
