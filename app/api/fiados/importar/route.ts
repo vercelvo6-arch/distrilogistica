@@ -43,10 +43,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El archivo está vacío o no tiene datos' }, { status: 400 })
     }
 
-    // 🔧 CORRECCIÓN: Usar punto y coma como delimitador
+    // 🔧 Usar punto y coma como delimitador
     const delimiter = ';'
     
-    // Parsear headers (elimina comillas y espacios)
+    // Parsear headers
     const headers = lines[0].split(delimiter).map(h => h.trim().replace(/["\r\n]/g, ''))
     console.log('[IMPORTAR] Headers detectados:', headers)
 
@@ -74,44 +74,70 @@ export async function POST(request: Request) {
       try {
         const r = rows[i]
 
-        // Validar datos requeridos
-        if (!r.Cliente || !r.Total || !r.Entregador) {
+        // 🔧 VALIDACIÓN MÍNIMA: Solo cliente y total son obligatorios
+        if (!r.Cliente || !r.Total) {
           errores++
-          const mensaje = `Fila ${i + 2}: Faltan datos - Cliente: ${r.Cliente || 'NO'}, Total: ${r.Total || 'NO'}, Entregador: ${r.Entregador || 'NO'}`
+          const mensaje = `Fila ${i + 2}: Faltan datos CRÍTICOS - Cliente: ${r.Cliente ? '✓' : '✗'}, Total: ${r.Total ? '✓' : '✗'}`
           erroresDetalle.push(mensaje)
           console.log('[IMPORTAR]', mensaje)
           continue
         }
 
-        // 🔧 CORRECCIÓN: Limpiar $ y espacios correctamente
-        const total = parseFloat(String(r.Total).replace(/[\$\s,\.]/g, '').replace(/,/g, '.')) || 0
-        const montoPagado = parseFloat(String(r.Pagado || '0').replace(/[\$\s,\-]/g, '')) || 0
+        // Parsear números (limpia $, espacios, puntos y guiones)
+        const totalStr = String(r.Total).replace(/[\$\s\.]/g, '').replace(',', '.')
+        const total = parseFloat(totalStr) || 0
+
+        if (total <= 0) {
+          errores++
+          const mensaje = `Fila ${i + 2}: Total inválido (${r.Total})`
+          erroresDetalle.push(mensaje)
+          console.log('[IMPORTAR]', mensaje)
+          continue
+        }
+
+        // Parsear monto pagado (puede ser vacío)
+        const pagadoStr = String(r.Pagado || '0').replace(/[\$\s\.,\-]/g, '')
+        const montoPagado = parseFloat(pagadoStr) || 0
         const saldoPendiente = total - montoPagado
 
-        // Parsear fecha (formato DD/MM/YYYY)
+        // 🔧 Parsear fecha (OPCIONAL - si no hay, usar fecha actual)
         let fechaParsed = new Date()
         if (r.Fecha && r.Fecha.trim() !== '') {
           const fechaStr = String(r.Fecha).trim()
           if (fechaStr.includes('/')) {
             const [day, month, year] = fechaStr.split('/')
-            fechaParsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-          } else {
-            fechaParsed = new Date(fechaStr)
+            const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+            // Validar que la fecha sea válida
+            if (!isNaN(parsedDate.getTime())) {
+              fechaParsed = parsedDate
+            }
           }
         }
+
+        // 🔧 Entregador OPCIONAL - usar "Sin asignar" si está vacío
+        const entregador = r.Entregador && r.Entregador.trim() !== '' 
+          ? String(r.Entregador).trim() 
+          : 'Sin asignar'
+
+        // 🔧 Ruta OPCIONAL
+        const ruta = r.Ruta && r.Ruta.trim() !== '' 
+          ? String(r.Ruta).trim() 
+          : 'N/A'
 
         console.log(`[IMPORTAR] Fila ${i + 2}:`, {
           cliente: r.Cliente,
           total,
           montoPagado,
           saldoPendiente,
-          fecha: fechaParsed.toISOString()
+          fecha: fechaParsed.toISOString(),
+          entregador,
+          ruta
         })
 
         // Generar ID único
         const pedidoId = `FIA${Date.now()}${Math.random().toString(36).substr(2, 9)}`
 
-        // 🔧 CORRECCIÓN: Insertar en tabla "fiados" (no "pedidos")
+        // Insertar en tabla "fiados"
         await sql`
           INSERT INTO fiados (
             pedido_id,
@@ -130,21 +156,21 @@ export async function POST(request: Request) {
           ) VALUES (
             ${pedidoId},
             ${String(r.Cliente).trim()},
-            ${r.Direccion || null},
-            ${r.Telefono || null},
+            ${r.Direccion || r.Dirección || null},
+            ${r.Telefono || r.Teléfono || null},
             ${fechaParsed.toISOString()},
-            ${String(r.Entregador).trim()},
-            ${r.Ruta || null},
+            ${entregador},
+            ${ruta},
             ${total},
             ${montoPagado},
             ${saldoPendiente},
-            ${r.Estado?.trim() || 'fiado'},
+            ${saldoPendiente > 0 ? 'fiado' : 'pagado'},
             true,
             NOW()
           )
         `
 
-        // Guardar historial
+        // Guardar en historial
         await sql`
           INSERT INTO fiados_historial (
             pedido_id,
@@ -159,7 +185,7 @@ export async function POST(request: Request) {
           ) VALUES (
             ${pedidoId},
             ${String(r.Cliente).trim()},
-            ${r.Ruta || null},
+            ${ruta},
             ${fechaParsed.toISOString()},
             ${total},
             ${montoPagado},
@@ -184,15 +210,15 @@ export async function POST(request: Request) {
     console.log('[IMPORTAR] Importados:', importados)
     console.log('[IMPORTAR] Errores:', errores)
     if (erroresDetalle.length > 0) {
-      console.log('[IMPORTAR] Detalle de errores:', erroresDetalle)
+      console.log('[IMPORTAR] Primeros 10 errores:', erroresDetalle.slice(0, 10))
     }
 
     return NextResponse.json({
       success: true,
-      mensaje: `✅ ${importados} fiado(s) importado(s)${errores > 0 ? ` (${errores} errores)` : ''}`,
+      mensaje: `✅ ${importados} fiado(s) importado(s)${errores > 0 ? ` (${errores} con problemas)` : ''}`,
       importados,
       errores,
-      erroresDetalle: errores > 0 ? erroresDetalle.slice(0, 10) : undefined
+      erroresDetalle: errores > 0 ? erroresDetalle.slice(0, 20) : undefined
     })
 
   } catch (error) {
