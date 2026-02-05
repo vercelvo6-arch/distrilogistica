@@ -6,64 +6,57 @@ const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: Request) {
   try {
+    console.log('[IMPORTAR] === INICIO ===')
+    
     const session = await getSession()
     if (!session?.user) {
+      console.log('[IMPORTAR] ERROR: No autenticado')
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
+
+    console.log('[IMPORTAR] Usuario:', session.user.username)
 
     const formData = await request.formData()
     const file = formData.get('file') as File
     
     if (!file) {
+      console.log('[IMPORTAR] ERROR: No se recibió archivo')
       return NextResponse.json({ error: 'No se recibió archivo' }, { status: 400 })
     }
 
-    let rows: any[] = []
+    console.log('[IMPORTAR] Archivo:', file.name, 'Tamaño:', file.size)
 
-    // Detectar tipo de archivo
-    if (file.name.endsWith('.csv')) {
-      // Procesar CSV
-      const text = await file.text()
-      const lines = text.split('\n').filter(line => line.trim())
-
-      if (lines.length < 2) {
-        return NextResponse.json({ error: 'El archivo está vacío' }, { status: 400 })
-      }
-
-      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
-
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''))
-        const row: any = {}
-        headers.forEach((header, index) => {
-          row[header] = values[index] || ''
-        })
-        rows.push(row)
-      }
-
-    } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-      // Procesar Excel
-      const XLSX = require('xlsx')
-      const bytes = await file.arrayBuffer()
-      const buffer = Buffer.from(bytes)
-      
-      const workbook = XLSX.read(buffer, { type: 'buffer' })
-      const sheetName = workbook.SheetNames[0]
-      const worksheet = workbook.Sheets[sheetName]
-      
-      rows = XLSX.utils.sheet_to_json(worksheet)
-
-    } else {
+    if (!file.name.endsWith('.csv')) {
       return NextResponse.json({ 
-        error: 'Formato no soportado. Use .csv, .xlsx o .xls' 
+        error: 'Solo se aceptan archivos .csv' 
       }, { status: 400 })
     }
 
-    if (rows.length === 0) {
-      return NextResponse.json({ error: 'No hay datos para importar' }, { status: 400 })
+    // Leer CSV
+    const text = await file.text()
+    const lines = text.split('\n').filter(line => line.trim())
+
+    if (lines.length < 2) {
+      return NextResponse.json({ error: 'El archivo está vacío' }, { status: 400 })
     }
 
-    console.log('[IMPORTAR] Procesando', rows.length, 'registros')
+    const headers = lines[0].split(',').map(h => h.trim().replace(/["\r]/g, ''))
+    console.log('[IMPORTAR] Headers:', headers)
+
+    const rows: any[] = []
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim().replace(/["\r]/g, ''))
+      const row: any = {}
+      headers.forEach((header, index) => {
+        row[header] = values[index] || ''
+      })
+      rows.push(row)
+    }
+
+    console.log('[IMPORTAR] Total filas:', rows.length)
+    if (rows.length > 0) {
+      console.log('[IMPORTAR] Ejemplo primera fila:', rows[0])
+    }
 
     let importados = 0
     let errores = 0
@@ -77,34 +70,38 @@ export async function POST(request: Request) {
         if (!r.Cliente || !r.Total || !r.Entregador) {
           errores++
           erroresDetalle.push(`Fila ${i + 2}: Faltan Cliente, Total o Entregador`)
+          console.log(`[IMPORTAR] Fila ${i + 2} - Datos faltantes:`, r)
           continue
         }
 
-        // Parsear números
-        const total = parseFloat(String(r.Total).replace(/[^0-9.-]/g, '')) || 0
-        const montoPagado = parseFloat(String(r['Monto Pagado'] || r.Pagado || 0).replace(/[^0-9.-]/g, '')) || 0
+        // Parsear números (limpia $ y comas)
+        const total = parseFloat(String(r.Total).replace(/[\$,]/g, '')) || 0
+        const montoPagado = parseFloat(String(r['Monto Pagado'] || r.Pagado || 0).replace(/[\$,]/g, '')) || 0
         const saldoPendiente = r['Saldo Pendiente']
-          ? parseFloat(String(r['Saldo Pendiente']).replace(/[^0-9.-]/g, ''))
+          ? parseFloat(String(r['Saldo Pendiente']).replace(/[\$,]/g, ''))
           : total - montoPagado
 
-        // Parsear fecha
+        // Parsear fecha (formato DD/MM/YYYY)
         let fechaParsed = new Date()
         if (r.Fecha) {
-          if (typeof r.Fecha === 'number') {
-            // Excel serial date
-            const excelEpoch = new Date(1899, 11, 30)
-            fechaParsed = new Date(excelEpoch.getTime() + r.Fecha * 86400000)
-          } else if (typeof r.Fecha === 'string') {
-            if (r.Fecha.includes('/')) {
-              const [day, month, year] = r.Fecha.split('/')
-              fechaParsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-            } else {
-              fechaParsed = new Date(r.Fecha)
-            }
+          const fechaStr = String(r.Fecha).trim()
+          if (fechaStr.includes('/')) {
+            const [day, month, year] = fechaStr.split('/')
+            fechaParsed = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+          } else {
+            fechaParsed = new Date(fechaStr)
           }
         }
 
-        // Generar ID
+        console.log(`[IMPORTAR] Fila ${i + 2}:`, {
+          cliente: r.Cliente,
+          total,
+          montoPagado,
+          saldoPendiente,
+          fecha: fechaParsed
+        })
+
+        // Generar ID único
         const pedidoId = `FIA${Date.now()}${Math.random().toString(36).substr(2, 9)}`
 
         // Insertar pedido
@@ -140,7 +137,7 @@ export async function POST(request: Request) {
           )
         `
 
-        // Historial
+        // Guardar historial
         await sql`
           INSERT INTO fiados_historial (
             pedido_id,
@@ -160,13 +157,17 @@ export async function POST(request: Request) {
         `
 
         importados++
+        console.log(`[IMPORTAR] ✓ Fila ${i + 2} importada`)
 
       } catch (err) {
         errores++
-        console.error(`[IMPORTAR] Error fila ${i + 2}:`, err)
+        console.error(`[IMPORTAR] ✗ Error fila ${i + 2}:`, err)
         erroresDetalle.push(`Fila ${i + 2}: ${(err as Error).message}`)
       }
     }
+
+    console.log('[IMPORTAR] === FIN ===')
+    console.log('[IMPORTAR] Importados:', importados, 'Errores:', errores)
 
     return NextResponse.json({
       success: true,
@@ -177,7 +178,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[IMPORTAR] ERROR:', error)
+    console.error('[IMPORTAR] ERROR CRÍTICO:', error)
     return NextResponse.json(
       { 
         error: 'Error al importar',
