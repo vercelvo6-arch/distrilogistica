@@ -15,7 +15,16 @@ export async function GET(
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    const cuadreId = parseInt(params.id)
+    // ✅ CONVERTIR Y VALIDAR EL ID
+    const cuadreId = parseInt(params.id, 10)
+
+    if (isNaN(cuadreId) || cuadreId <= 0) {
+      console.error('[CUADRE EDIT] ID inválido recibido:', params.id)
+      return NextResponse.json(
+        { error: 'ID de cuadre inválido' },
+        { status: 400 }
+      )
+    }
 
     console.log('[CUADRE EDIT] Obteniendo cuadre ID:', cuadreId)
 
@@ -86,7 +95,17 @@ export async function PATCH(
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    const cuadreId = parseInt(params.id)
+    // ✅ CONVERTIR Y VALIDAR EL ID
+    const cuadreId = parseInt(params.id, 10)
+
+    if (isNaN(cuadreId) || cuadreId <= 0) {
+      console.error('[CUADRE EDIT] ID inválido recibido:', params.id)
+      return NextResponse.json(
+        { error: 'ID de cuadre inválido' },
+        { status: 400 }
+      )
+    }
+
     console.log('[CUADRE EDIT] Editando cuadre ID:', cuadreId)
     console.log('[CUADRE EDIT] Usuario:', session.user.username || session.user.email)
 
