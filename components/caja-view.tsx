@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2 } from "lucide-react"
+import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2, Edit2 } from "lucide-react"
 import type { RouteSheet, User, RecepcionCaja, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import {
@@ -118,6 +118,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [rutaParaCambiarFecha, setRutaParaCambiarFecha] = useState<{ id: number; nombre: string; fechaActual: string } | null>(null)
   const [nuevaFechaRuta, setNuevaFechaRuta] = useState("")
   const [cambiandoFecha, setCambiandoFecha] = useState(false)
+  const [editandoCuadreId, setEditandoCuadreId] = useState<number | null>(null)
 
   useEffect(() => {
     loadData()
@@ -1667,9 +1668,23 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                             {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
                           </p>
                         </div>
-                        <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
-                          {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+  <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
+    {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
+  </Badge>
+  
+  {rec.tipo === "agrupado" && (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => setEditandoCuadreId(rec.id)}
+      className="border-blue-300 text-blue-700 hover:bg-blue-50"
+    >
+      <Edit2 className="h-4 w-4 mr-1" />
+      Editar
+    </Button>
+  )}
+</div>
                       </div>
 
                       {/* Detalle de Novedades */}
@@ -3245,6 +3260,20 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Modal de edición de cuadres */}
+      {editandoCuadreId && (
+        <CuadreEditModal
+          cuadreId={editandoCuadreId}
+          onClose={() => setEditandoCuadreId(null)}
+          onSuccess={() => {
+            setEditandoCuadreId(null)
+            loadHistorial()
+          }}
+        />
+      )}
+    </>
+  )
+}
     </>
   )
 }
