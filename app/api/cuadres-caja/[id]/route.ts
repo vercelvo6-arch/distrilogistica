@@ -7,7 +7,7 @@ const sql = neon(process.env.DATABASE_URL!)
 // GET BY ID - Para cargar un cuadre específico
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getSession()
@@ -15,11 +15,12 @@ export async function GET(
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    // ✅ CONVERTIR Y VALIDAR EL ID
-    const cuadreId = parseInt(params.id, 10)
+    // ✅ RESOLVER PARAMS PRIMERO
+    const resolvedParams = await params
+    const cuadreId = parseInt(resolvedParams.id, 10)
 
     if (isNaN(cuadreId) || cuadreId <= 0) {
-      console.error('[CUADRE EDIT] ID inválido recibido:', params.id)
+      console.error('[CUADRE EDIT] ID inválido recibido:', resolvedParams.id)
       return NextResponse.json(
         { error: 'ID de cuadre inválido' },
         { status: 400 }
@@ -84,7 +85,7 @@ export async function GET(
 // PATCH - Para editar un cuadre existente
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     console.log('[CUADRE EDIT] === INICIO EDICIÓN ===')
@@ -95,11 +96,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    // ✅ CONVERTIR Y VALIDAR EL ID
-    const cuadreId = parseInt(params.id, 10)
+    // ✅ RESOLVER PARAMS PRIMERO
+    const resolvedParams = await params
+    const cuadreId = parseInt(resolvedParams.id, 10)
 
     if (isNaN(cuadreId) || cuadreId <= 0) {
-      console.error('[CUADRE EDIT] ID inválido recibido:', params.id)
+      console.error('[CUADRE EDIT] ID inválido recibido:', resolvedParams.id)
       return NextResponse.json(
         { error: 'ID de cuadre inválido' },
         { status: 400 }
