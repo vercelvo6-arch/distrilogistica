@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { ComisionesView } from "@/components/comisiones-view"
+import { CuadreEditModal } from "@/components/cuadre-edit-modal"
 
 interface CajaViewProps {
   onLogout: () => void
