@@ -3274,6 +3274,3 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     </>
   )
 }
-    </>
-  )
-}
