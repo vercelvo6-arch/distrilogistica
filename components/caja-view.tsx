@@ -1674,11 +1674,29 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
   </Badge>
   
-  {rec.tipo === "agrupado" && (
+    {rec.tipo === "agrupado" && (
     <Button
       variant="outline"
       size="sm"
-      onClick={() => setEditandoCuadreId(rec.id)}
+      onClick={() => {
+        console.log('[CAJA] 🔍 rec.id:', rec.id, 'tipo:', typeof rec.id)
+        
+        // ✅ VALIDAR Y CONVERTIR A NÚMERO
+        const cuadreId = Number(rec.id)
+        
+        if (!cuadreId || isNaN(cuadreId) || cuadreId <= 0) {
+          console.error('[CAJA] ❌ ID inválido:', rec.id)
+          toast({
+            title: "Error",
+            description: "ID de cuadre inválido",
+            variant: "destructive"
+          })
+          return
+        }
+        
+        console.log('[CAJA] ✅ Abriendo edición para cuadre ID:', cuadreId)
+        setEditandoCuadreId(cuadreId)
+      }}
       className="border-blue-300 text-blue-700 hover:bg-blue-50"
     >
       <Edit2 className="h-4 w-4 mr-1" />
