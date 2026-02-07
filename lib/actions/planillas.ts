@@ -169,9 +169,6 @@ export async function updatePedidoEstado(
     throw error
   }
 }
-    throw error
-  }
-}
 
 export async function updateProductoDevuelto(pedidoId: string, codigo: string, devuelto: boolean) {
   const sql = getDB()
