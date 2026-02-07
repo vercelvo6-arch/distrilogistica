@@ -39,6 +39,31 @@ export async function updatePedidoEstado(
 ) {
   const sql = getDB()
   try {
+    // Obtener información del pedido ANTES de actualizar
+    const pedidoActual = await sql`
+      SELECT 
+        p.id,
+        p.cliente,
+        p.direccion,
+        p.telefono,
+        p.barrio,
+        p.total,
+        p.observaciones,
+        p.planilla_id,
+        pl.fecha,
+        pl.entregador,
+        pl.tipo_ruta
+      FROM pedidos p
+      JOIN planillas pl ON p.planilla_id = pl.id
+      WHERE p.id = ${pedidoId}
+    `
+
+    if (pedidoActual.length === 0) {
+      throw new Error('Pedido no encontrado')
+    }
+
+    const pedido = pedidoActual[0]
+
     // Construir el objeto de actualización dinámicamente
     const updates: any = {
       estado,
@@ -61,37 +86,89 @@ export async function updatePedidoEstado(
       WHERE id = ${pedidoId}
     `
 
-    const pedido = await sql`SELECT planilla_id FROM pedidos WHERE id = ${pedidoId}`
-    
-    if (pedido.length > 0) {
-      const planillaId = pedido[0].planilla_id
+    // ✅ SI ES FIADO, CREAR REGISTRO EN TABLA FIADOS
+    if (estado === 'fiado') {
+      const montoTotal = Number(pedido.total)
+      const pagado = Number(montoPagado || 0)
+      const saldo = Number(saldoPendiente || montoTotal)
 
-      const totales = await sql`
-        SELECT 
-          COALESCE(SUM(CASE WHEN p.estado = 'entregado' THEN p.total ELSE 0 END), 0) as total_entregado,
-          COALESCE(SUM(CASE WHEN p.estado = 'fiado' THEN p.total ELSE 0 END), 0) as total_fiado,
-          COALESCE(SUM(CASE WHEN p.estado = 'repaso' THEN p.total ELSE 0 END), 0) as total_repaso,
-          COALESCE(SUM(CASE WHEN p.estado = 'devolucion' THEN p.total ELSE 0 END), 0) as total_devolucion
-        FROM pedidos p
-        WHERE p.planilla_id = ${planillaId}
-      `
+      console.log('[updatePedidoEstado] 💰 Creando registro en tabla fiados:', {
+        pedidoId,
+        cliente: pedido.cliente,
+        montoTotal,
+        montoPagado: pagado,
+        saldoPendiente: saldo
+      })
 
       await sql`
-        UPDATE planillas 
-        SET total_entregado = ${totales[0].total_entregado},
-            total_fiado = ${totales[0].total_fiado},
-            total_repaso = ${totales[0].total_repaso},
-            total_devolucion = ${totales[0].total_devolucion},
-            updated_at = NOW()
-        WHERE id = ${planillaId}
+        INSERT INTO fiados (
+          pedido_id,
+          cliente,
+          direccion,
+          telefono,
+          monto_total,
+          monto_pagado,
+          saldo_pendiente,
+          fecha_fiado,
+          entregador,
+          ruta,
+          estado,
+          observaciones
+        ) VALUES (
+          ${pedidoId},
+          ${pedido.cliente},
+          ${pedido.direccion || null},
+          ${pedido.telefono || null},
+          ${montoTotal},
+          ${pagado},
+          ${saldo},
+          ${pedido.fecha},
+          ${pedido.entregador},
+          ${pedido.tipo_ruta},
+          ${saldo > 0 ? 'pendiente' : 'pagado'},
+          ${pedido.observaciones || null}
+        )
+        ON CONFLICT (pedido_id) 
+        DO UPDATE SET
+          monto_pagado = EXCLUDED.monto_pagado,
+          saldo_pendiente = EXCLUDED.saldo_pendiente,
+          estado = EXCLUDED.estado,
+          updated_at = NOW()
       `
+
+      console.log('[updatePedidoEstado] ✓ Fiado registrado en tabla fiados')
     }
+
+    const planillaId = pedido.planilla_id
+
+    const totales = await sql`
+      SELECT 
+        COALESCE(SUM(CASE WHEN p.estado = 'entregado' THEN p.total ELSE 0 END), 0) as total_entregado,
+        COALESCE(SUM(CASE WHEN p.estado = 'fiado' THEN p.total ELSE 0 END), 0) as total_fiado,
+        COALESCE(SUM(CASE WHEN p.estado = 'repaso' THEN p.total ELSE 0 END), 0) as total_repaso,
+        COALESCE(SUM(CASE WHEN p.estado = 'devolucion' THEN p.total ELSE 0 END), 0) as total_devolucion
+      FROM pedidos p
+      WHERE p.planilla_id = ${planillaId}
+    `
+
+    await sql`
+      UPDATE planillas 
+      SET total_entregado = ${totales[0].total_entregado},
+          total_fiado = ${totales[0].total_fiado},
+          total_repaso = ${totales[0].total_repaso},
+          total_devolucion = ${totales[0].total_devolucion},
+          updated_at = NOW()
+      WHERE id = ${planillaId}
+    `
 
     revalidatePath("/")
     return { success: true }
     
   } catch (error) {
     console.error("[updatePedidoEstado] ❌ ERROR:", error)
+    throw error
+  }
+}
     throw error
   }
 }
