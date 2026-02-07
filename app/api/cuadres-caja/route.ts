@@ -1,8 +1,7 @@
-import { neon } from '@neondatabase/serverless'
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
-
-const sql = neon(process.env.DATABASE_URL!)
+import { getDB } from '@/lib/db'
+import { handleDBError } from '@/lib/db-helpers'
 
 export async function POST(request: Request) {
   try {
@@ -13,6 +12,8 @@ export async function POST(request: Request) {
       console.log('[CUADRE CAJA] ERROR: Usuario no autenticado')
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
+
+    const sql = getDB()
 
     console.log('[CUADRE CAJA] Usuario autenticado:', session.user.username)
 
@@ -223,19 +224,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[CUADRE CAJA] ❌❌❌ ERROR CRÍTICO:', error)
-    console.error('[CUADRE CAJA] Tipo:', typeof error)
-    console.error('[CUADRE CAJA] Mensaje:', error instanceof Error ? error.message : 'No message')
-    console.error('[CUADRE CAJA] Stack:', error instanceof Error ? error.stack : 'No stack')
-    
-    return NextResponse.json(
-      { 
-        error: 'Error al registrar cuadre',
-        details: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      },
-      { status: 500 }
-    )
+    return handleDBError(error, 'CUADRE CAJA POST')
   }
 }
 
@@ -245,6 +234,8 @@ export async function GET(request: Request) {
     if (!session?.user) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
+
+    const sql = getDB()
 
     console.log('[CUADRE CAJA] Obteniendo historial...')
 
@@ -286,13 +277,6 @@ export async function GET(request: Request) {
     })
 
   } catch (error) {
-    console.error('[CUADRE CAJA] ERROR al obtener historial:', error)
-    return NextResponse.json(
-      { 
-        error: 'Error al cargar historial',
-        details: error instanceof Error ? error.message : 'Error desconocido'
-      },
-      { status: 500 }
-    )
+    return handleDBError(error, 'CUADRE CAJA GET')
   }
 }
