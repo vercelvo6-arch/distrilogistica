@@ -1311,103 +1311,140 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const handleSubmitAgrupado = async () => {
-    if (!agrupadoData) return
+  if (!agrupadoData) return
 
-    if (!formData.efectivoRecibido || Number(formData.efectivoRecibido) < 0) {
+  if (!formData.efectivoRecibido || Number(formData.efectivoRecibido) < 0) {
+    toast({
+      title: "Error",
+      description: "El efectivo recibido debe ser un valor válido",
+      variant: "destructive",
+    })
+    return
+  }
+
+  if (formData.tieneConsignacion) {
+    if (!formData.numeroConsignacion || !formData.banco || !formData.montoConsignacion) {
       toast({
         title: "Error",
-        description: "El efectivo recibido debe ser un valor válido",
+        description: "Complete todos los datos de la consignación",
         variant: "destructive",
       })
       return
     }
 
-    if (formData.tieneConsignacion) {
-      if (!formData.numeroConsignacion || !formData.banco || !formData.montoConsignacion) {
-        toast({
-          title: "Error",
-          description: "Complete todos los datos de la consignación",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const existe = await validateConsignacion(formData.numeroConsignacion)
-      if (existe) return
-    }
-
-    try {
-      setSubmitting(true)
-
-      // USAR VALORES EDITABLES DEL FORMDATA
-      const fiadoFinal = Number(formData.fiados) || 0
-      const repasosFinal = Number(formData.repasos) || 0
-      const devolucionesFinal = Number(formData.devolucionesParciales) || 0
-      const agotadosFinal = Number(formData.agotados) || 0
-      const descuentoFinal = Number(formData.descuento) || 0
-
-      // Obtener errores de facturación del input (si existe)
-      const erroresFactInput = document.getElementById('erroresFactAgrupado') as HTMLInputElement
-      const erroresFacturacionFinal = Number(erroresFactInput?.value) || 0
-
-      const cargue = agrupadoData.totales.cargue || 0
-      const novedades = fiadoFinal + repasosFinal + devolucionesFinal + agotadosFinal + descuentoFinal + erroresFacturacionFinal
-      const totalEsperadoCalculado = cargue - novedades
-
-      const payload = {
-        planillaIds: agrupadoData.planillaIds,
-        entregador: agrupadoData.entregador,
-        totalEsperado: totalEsperadoCalculado,
-        efectivoRecibido: Number(formData.efectivoRecibido),
-        tieneConsignacion: formData.tieneConsignacion,
-        numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
-        banco: formData.tieneConsignacion ? formData.banco : null,
-        montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
-        observaciones: formData.observaciones || null,
-        descuento: descuentoFinal,
-        agotados: agotadosFinal,
-        fiado: fiadoFinal,
-        devoluciones: devolucionesFinal,
-        repasos: repasosFinal,
-        erroresFacturacion: erroresFacturacionFinal,
-      }
-
-      console.log('[CUADRE AGRUPADO] Enviando payload:', JSON.stringify(payload, null, 2))
-
-      const response = await fetch("/api/cuadres-caja", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await response.json()
-      console.log('[CUADRE AGRUPADO] Respuesta recibida:', data)
-
-      if (!response.ok) {
-        console.error('[CUADRE AGRUPADO] Error response:', data)
-        throw new Error(data.error || data.details || "Error al registrar cuadre agrupado")
-      }
-
-      toast({
-        title: "Cuadre Agrupado Registrado",
-        description: data.mensaje,
-      })
-
-      setShowAgrupadoModal(false)
-      setSelectedRoutes([])
-      setAgrupadoData(null)
-      await loadData()
-    } catch (error) {
-      console.error("[CUADRE AGRUPADO] Error completo:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Error al registrar cuadre",
-        variant: "destructive",
-      })
-    } finally {
-      setSubmitting(false)
-    }
+    const existe = await validateConsignacion(formData.numeroConsignacion)
+    if (existe) return
   }
+
+  try {
+    setSubmitting(true)
+
+    // ✅ PASO 1: GUARDAR TODOS LOS PEDIDOS FIADOS ANTES DEL CUADRE
+    console.log('[CUADRE AGRUPADO] 🔄 Guardando pedidos fiados en la BD...')
+    
+    const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
+    let pedidosFiadosGuardados = 0
+    
+    for (const route of rutasSeleccionadas) {
+      if (!Array.isArray(route.orders)) continue
+      
+      for (const order of route.orders) {
+        // Si el pedido está marcado como fiado en el estado local
+        if (order.estado === "fiado") {
+          const totalEfectivo = calculateOrderEffectiveTotal(order)
+          const montoPagado = Number(order.montoPagado) || 0
+          const saldoPendiente = totalEfectivo - montoPagado
+          
+          console.log('[CUADRE AGRUPADO] 💾 Guardando fiado:', {
+            cliente: order.cliente,
+            total: totalEfectivo,
+            pagado: montoPagado,
+            saldo: saldoPendiente
+          })
+          
+          // Guardar en la BD usando la función existente
+          await updatePedidoEstado(
+            order.id,
+            "fiado",
+            montoPagado,
+            saldoPendiente
+          )
+          
+          pedidosFiadosGuardados++
+        }
+      }
+    }
+    
+    console.log('[CUADRE AGRUPADO] ✅ Fiados guardados:', pedidosFiadosGuardados)
+
+    // ✅ PASO 2: CREAR EL CUADRE AGRUPADO (código original)
+    const fiadoFinal = Number(formData.fiados) || 0
+    const repasosFinal = Number(formData.repasos) || 0
+    const devolucionesFinal = Number(formData.devolucionesParciales) || 0
+    const agotadosFinal = Number(formData.agotados) || 0
+    const descuentoFinal = Number(formData.descuento) || 0
+
+    const erroresFactInput = document.getElementById('erroresFactAgrupado') as HTMLInputElement
+    const erroresFacturacionFinal = Number(erroresFactInput?.value) || 0
+
+    const cargue = agrupadoData.totales.cargue || 0
+    const novedades = fiadoFinal + repasosFinal + devolucionesFinal + agotadosFinal + descuentoFinal + erroresFacturacionFinal
+    const totalEsperadoCalculado = cargue - novedades
+
+    const payload = {
+      planillaIds: agrupadoData.planillaIds,
+      entregador: agrupadoData.entregador,
+      totalEsperado: totalEsperadoCalculado,
+      efectivoRecibido: Number(formData.efectivoRecibido),
+      tieneConsignacion: formData.tieneConsignacion,
+      numeroConsignacion: formData.tieneConsignacion ? formData.numeroConsignacion : null,
+      banco: formData.tieneConsignacion ? formData.banco : null,
+      montoConsignacion: formData.tieneConsignacion ? Number(formData.montoConsignacion) : null,
+      observaciones: formData.observaciones || null,
+      descuento: descuentoFinal,
+      agotados: agotadosFinal,
+      fiado: fiadoFinal,
+      devoluciones: devolucionesFinal,
+      repasos: repasosFinal,
+      erroresFacturacion: erroresFacturacionFinal,
+    }
+
+    console.log('[CUADRE AGRUPADO] 📤 Enviando payload:', JSON.stringify(payload, null, 2))
+
+    const response = await fetch("/api/cuadres-caja", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    const data = await response.json()
+    console.log('[CUADRE AGRUPADO] 📥 Respuesta recibida:', data)
+
+    if (!response.ok) {
+      console.error('[CUADRE AGRUPADO] ❌ Error response:', data)
+      throw new Error(data.error || data.details || "Error al registrar cuadre agrupado")
+    }
+
+    toast({
+      title: "Cuadre Agrupado Registrado",
+      description: `✅ ${data.mensaje}${pedidosFiadosGuardados > 0 ? ` · ${pedidosFiadosGuardados} fiado(s) guardado(s)` : ''}`,
+    })
+
+    setShowAgrupadoModal(false)
+    setSelectedRoutes([])
+    setAgrupadoData(null)
+    await loadData()
+  } catch (error) {
+    console.error("[CUADRE AGRUPADO] ❌ Error completo:", error)
+    toast({
+      title: "Error",
+      description: error instanceof Error ? error.message : "Error al registrar cuadre",
+      variant: "destructive",
+    })
+  } finally {
+    setSubmitting(false)
+  }
+}
 
   // CORRECCIÓN PRINCIPAL: handleSubmitFiado ahora usa el total efectivo calculado
   const handleSubmitFiado = async () => {
