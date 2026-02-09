@@ -154,13 +154,14 @@ export async function POST(request: Request) {
     // Actualizar planillas
     console.log('[CUADRE CAJA] Actualizando', planillaIds.length, 'planillas...')
     for (const planillaId of planillaIds) {
-      await sql`
-        UPDATE planillas
-        SET cuadrado_en_caja = true,
-            updated_at = NOW()
-        WHERE id = ${planillaId}
-      `
-    }
+  await sql`
+    UPDATE planillas
+    SET cuadrado_en_caja = true,
+        estado = 'cerrado',
+        updated_at = NOW()
+    WHERE id = ${planillaId}
+  `
+}
     console.log('[CUADRE CAJA] ✓ Planillas actualizadas')
 
    // Comisión
