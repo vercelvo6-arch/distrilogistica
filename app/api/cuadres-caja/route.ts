@@ -224,6 +224,10 @@ return NextResponse.json({
   cuadreId,
   mensaje: `✅ Cuadre registrado para ${planillaIds.length} ruta${planillaIds.length > 1 ? 's' : ''}`
 })
+    } catch (error) {
+    return handleDBError(error, 'CUADRE CAJA POST')
+  }
+}
 export async function GET(request: Request) {
   try {
     const session = await getSession()
