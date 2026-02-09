@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2, MapPin, Phone, AlertCircle } from "lucide-react"
+import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2, MapPin, Phone, AlertCircle, History, X } from "lucide-react"
 import { User } from "lucide-react"
 import type { RouteSheet, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
@@ -29,6 +29,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null)
   const [completingRoute, setCompletingRoute] = useState(false)
+  const [showHistorial, setShowHistorial] = useState(false)
+  const [historial, setHistorial] = useState<any[]>([])
+  const [loadingHistorial, setLoadingHistorial] = useState(false)
 
   const deliveryPerson = user.nombre
 
@@ -105,6 +108,30 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       })
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadHistorial() {
+    try {
+      setLoadingHistorial(true)
+      const response = await fetch('/api/entregadores/historial', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (!response.ok) throw new Error('Error al cargar historial')
+      
+      const data = await response.json()
+      setHistorial(data.historial || [])
+    } catch (err) {
+      console.error("[ENTREGADOR] Error loading historial:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo cargar el historial",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingHistorial(false)
     }
   }
 
@@ -285,13 +312,75 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 </p>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={onLogout}>
-              <LogOut className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Salir</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => {
+                setShowHistorial(!showHistorial)
+                if (!showHistorial && historial.length === 0) {
+                  loadHistorial()
+                }
+              }}>
+                <History className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Historial</span>
+              </Button>
+              <Button variant="outline" size="sm" onClick={onLogout}>
+                <LogOut className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Salir</span>
+              </Button>
+            </div>
           </div>
         </div>
       </header>
+
+      {showHistorial && (
+        <div className="bg-white border-b">
+          <div className="container mx-auto px-3 md:px-4 py-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Mi Historial de Entregas</h3>
+              <Button variant="ghost" size="sm" onClick={() => setShowHistorial(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            {loadingHistorial ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : historial.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">No hay historial disponible</p>
+            ) : (
+              <div className="space-y-2">
+                {historial.map((h: any) => (
+                  <Card key={h.id} className="p-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium text-sm">
+                          {new Date(h.fecha).toLocaleDateString('es-CO', { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}
+                        </p>
+                        <p className="text-xs text-gray-500">Ruta {h.ruta}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-green-600">
+                          {formatCOP(h.total_entregado)}
+                        </p>
+                        {h.total_devoluciones > 0 && (
+                          <p className="text-xs text-red-600">
+                            Dev: {formatCOP(h.total_devoluciones)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-6xl">
         {activeRoute ? (
