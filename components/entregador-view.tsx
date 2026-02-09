@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2, MapPin, Phone, AlertCircle, History, X } from "lucide-react"
+import { Truck, LogOut, ChevronDown, ChevronUp, CheckCircle2, MapPin, Phone, AlertCircle, History, X, Calendar } from "lucide-react"
 import { User } from "lucide-react"
 import type { RouteSheet, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
@@ -16,6 +16,7 @@ import {
   updateSubtotalAjustado,
 } from "@/lib/actions/planillas"
 import { useToast } from "@/hooks/use-toast"
+import { AgrupacionFechas } from "@/components/agrupacion-fechas"
 
 interface EntregadorViewProps {
   onLogout: () => void
@@ -32,6 +33,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [showHistorial, setShowHistorial] = useState(false)
   const [historial, setHistorial] = useState<any[]>([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
+  const [vistaAgrupada, setVistaAgrupada] = useState(false)
 
   const deliveryPerson = user.nombre
 
@@ -296,6 +298,41 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     )
   }
 
+  // SI ESTÁ EN VISTA AGRUPADA
+  if (vistaAgrupada) {
+    return (
+      <>
+        <header className="border-b bg-card">
+          <div className="container mx-auto px-3 md:px-4 py-3 md:py-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg bg-blue-600">
+                  <User className="h-5 w-5 md:h-6 md:w-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-lg md:text-xl">{deliveryPerson}</h2>
+                  <p className="text-xs md:text-sm text-muted-foreground">Entregador</p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={onLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Salir
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-6xl">
+          <AgrupacionFechas 
+            onBack={() => setVistaAgrupada(false)}
+            entregador={deliveryPerson}
+          />
+        </main>
+      </>
+    )
+  }
+
+  // VISTA NORMAL (ORIGINAL)
   return (
     <>
       <header className="border-b bg-card">
@@ -321,6 +358,14 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
               }}>
                 <History className="h-4 w-4 md:mr-2" />
                 <span className="hidden md:inline">Historial</span>
+              </Button>
+              <Button 
+                variant={vistaAgrupada ? "default" : "outline"} 
+                size="sm" 
+                onClick={() => setVistaAgrupada(!vistaAgrupada)}
+              >
+                <Calendar className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Agrupar por Fechas</span>
               </Button>
               <Button variant="outline" size="sm" onClick={onLogout}>
                 <LogOut className="h-4 w-4 md:mr-2" />
