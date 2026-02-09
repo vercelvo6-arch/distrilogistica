@@ -138,12 +138,13 @@ export async function POST(request: NextRequest) {
     `
 
     await sql`
-      UPDATE planillas 
-      SET 
-        cuadrado_en_caja = true,
-        fecha_cuadre_caja = NOW(),
-        updated_at = NOW()
-      WHERE id = ${planillaId}
+  UPDATE planillas 
+  SET 
+    cuadrado_en_caja = true,
+    estado = 'cerrado',
+    fecha_cuadre_caja = NOW(),
+    updated_at = NOW()
+  WHERE id = ${planillaId}
     `
 
     console.log('[API recibir-efectivo] ✓ Planilla actualizada como cuadrada')
