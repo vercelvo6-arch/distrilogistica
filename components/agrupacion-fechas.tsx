@@ -64,6 +64,16 @@ export function AgrupacionFechas({ onBack, entregador }: AgrupacionFechasProps) 
     )
   }
 
+  // CALCULAR TOTALES GENERALES (SUMA DE TODAS LAS FECHAS)
+  const totalesGenerales = agrupaciones.reduce((acc, agrupacion) => ({
+    cargue: acc.cargue + agrupacion.totales.cargue,
+    entregado: acc.entregado + agrupacion.totales.entregado,
+    fiado: acc.fiado + agrupacion.totales.fiado,
+    repasos: acc.repasos + agrupacion.totales.repasos,
+    devoluciones: acc.devoluciones + agrupacion.totales.devoluciones,
+    agotados: acc.agotados + agrupacion.totales.agotados,
+  }), { cargue: 0, entregado: 0, fiado: 0, repasos: 0, devoluciones: 0, agotados: 0 })
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -73,13 +83,43 @@ export function AgrupacionFechas({ onBack, entregador }: AgrupacionFechasProps) 
             Volver
           </Button>
           <div>
-            <h2 className="text-xl font-bold">Agrupación por Fechas</h2>
+            <h2 className="text-xl font-bold">Mis Entregas - Totales</h2>
             <p className="text-sm text-muted-foreground">
-              Vista consolidada de tus entregas
+              Vista consolidada de todas tus novedades
             </p>
           </div>
         </div>
       </div>
+
+      {/* TOTALES GENERALES - IGUAL QUE CAJA */}
+      {agrupaciones.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <Card className="p-3 md:p-4 text-center bg-blue-50 border-blue-200">
+            <p className="text-xs text-blue-600 font-medium mb-1">Total Cargue</p>
+            <p className="text-lg md:text-xl font-bold text-blue-700">{formatCOP(totalesGenerales.cargue)}</p>
+          </Card>
+          <Card className="p-3 md:p-4 text-center bg-green-50 border-green-200">
+            <p className="text-xs text-green-600 font-medium mb-1">Entregado</p>
+            <p className="text-lg md:text-xl font-bold text-green-700">{formatCOP(totalesGenerales.entregado)}</p>
+          </Card>
+          <Card className="p-3 md:p-4 text-center bg-orange-50 border-orange-200">
+            <p className="text-xs text-orange-600 font-medium mb-1">Fiado (CxC)</p>
+            <p className="text-lg md:text-xl font-bold text-orange-700">{formatCOP(totalesGenerales.fiado)}</p>
+          </Card>
+          <Card className="p-3 md:p-4 text-center bg-red-50 border-red-200">
+            <p className="text-xs text-red-600 font-medium mb-1">Devoluciones</p>
+            <p className="text-lg md:text-xl font-bold text-red-700">{formatCOP(totalesGenerales.devoluciones)}</p>
+          </Card>
+          <Card className="p-3 md:p-4 text-center bg-blue-50 border-blue-200">
+            <p className="text-xs text-blue-600 font-medium mb-1">Repasos</p>
+            <p className="text-lg md:text-xl font-bold text-blue-700">{formatCOP(totalesGenerales.repasos)}</p>
+          </Card>
+          <Card className="p-3 md:p-4 text-center bg-gray-50 border-gray-200">
+            <p className="text-xs text-gray-600 font-medium mb-1">Agotados</p>
+            <p className="text-lg md:text-xl font-bold text-gray-700">{formatCOP(totalesGenerales.agotados)}</p>
+          </Card>
+        </div>
+      )}
 
       {agrupaciones.length === 0 ? (
         <Card className="p-8 text-center">
@@ -91,6 +131,7 @@ export function AgrupacionFechas({ onBack, entregador }: AgrupacionFechasProps) 
         </Card>
       ) : (
         <div className="space-y-4">
+          <h3 className="font-semibold text-lg">Detalle por Fecha</h3>
           {agrupaciones.map((agrupacion) => {
             const totalNovedades = agrupacion.totales.fiado + 
                                     agrupacion.totales.repasos + 
@@ -100,10 +141,10 @@ export function AgrupacionFechas({ onBack, entregador }: AgrupacionFechasProps) 
             const efectivoAEntregar = agrupacion.totales.cargue - totalNovedades
 
             return (
-              <Card key={agrupacion.fecha} className="p-6">
+              <Card key={agrupacion.fecha} className="p-4 md:p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-bold">
+                    <h3 className="text-base md:text-lg font-bold">
                       {new Date(agrupacion.fecha).toLocaleDateString('es-CO', {
                         weekday: 'long',
                         year: 'numeric',
@@ -111,14 +152,14 @@ export function AgrupacionFechas({ onBack, entregador }: AgrupacionFechasProps) 
                         day: 'numeric'
                       })}
                     </h3>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs md:text-sm text-muted-foreground">
                       {agrupacion.totalRutas} ruta{agrupacion.totalRutas !== 1 ? 's' : ''} · 
                       Rutas: {agrupacion.rutasNombres.join(', ')}
                     </p>
                   </div>
                 </div>
 
-                {/* Totales */}
+                {/* Totales por fecha */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                   <div className="text-center p-3 bg-blue-50 rounded">
                     <span className="text-xs text-blue-600 font-medium">Cargue</span>
@@ -161,7 +202,7 @@ export function AgrupacionFechas({ onBack, entregador }: AgrupacionFechasProps) 
                         </p>
                       </div>
                     </div>
-                    <p className="text-2xl font-bold text-emerald-700">
+                    <p className="text-xl md:text-2xl font-bold text-emerald-700">
                       {formatCOP(efectivoAEntregar)}
                     </p>
                   </div>
