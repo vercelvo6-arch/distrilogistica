@@ -39,7 +39,7 @@ export async function updatePedidoEstado(
 ) {
   const sql = getDB()
   try {
-    // Obtener información del pedido ANTES de actualizar
+    // 1️⃣ Obtener información del pedido ANTES de actualizar
     const pedidoActual = await sql`
       SELECT 
         p.id,
@@ -50,6 +50,8 @@ export async function updatePedidoEstado(
         p.total,
         p.observaciones,
         p.planilla_id,
+        p.es_cobro,
+        p.pedido_fiado_id,
         pl.fecha,
         pl.entregador,
         pl.tipo_ruta
@@ -64,7 +66,7 @@ export async function updatePedidoEstado(
 
     const pedido = pedidoActual[0]
 
-    // Construir el objeto de actualización dinámicamente
+    // 2️⃣ Construir el objeto de actualización dinámicamente
     const updates: any = {
       estado,
       entregado_en: estado === "entregado" ? new Date().toISOString() : null,
@@ -76,6 +78,7 @@ export async function updatePedidoEstado(
       updates.saldo_pendiente = saldoPendiente
     }
 
+    // 3️⃣ Actualizar el pedido
     await sql`
       UPDATE pedidos 
       SET estado = ${updates.estado},
@@ -86,8 +89,67 @@ export async function updatePedidoEstado(
       WHERE id = ${pedidoId}
     `
 
-    // ✅ SI ES FIADO, CREAR REGISTRO EN TABLA FIADOS
-    if (estado === 'fiado') {
+    // 4️⃣ SI ES UN COBRO → Actualizar el fiado original
+    if (pedido.es_cobro && pedido.pedido_fiado_id) {
+      console.log('[updatePedidoEstado] 🔄 Actualizando fiado original:', {
+        fiadoId: pedido.pedido_fiado_id,
+        montoPagado: montoPagado || 0,
+        estado
+      })
+
+      // Obtener el fiado original
+      const fiadoOriginal = await sql`
+        SELECT * FROM fiados 
+        WHERE id = ${pedido.pedido_fiado_id}
+      `
+
+      if (fiadoOriginal.length > 0) {
+        const fiado = fiadoOriginal[0]
+        const pagoActual = Number(montoPagado || 0)
+        const nuevoSaldo = Number(fiado.saldo_pendiente) - pagoActual
+        const nuevoEstado = nuevoSaldo === 0 ? 'pagado' : 'abonado'
+
+        // Actualizar el fiado
+        await sql`
+          UPDATE fiados 
+          SET saldo_pendiente = ${nuevoSaldo},
+              estado = ${nuevoEstado},
+              updated_at = NOW()
+          WHERE id = ${pedido.pedido_fiado_id}
+        `
+
+        // Registrar el abono (solo si pagó algo)
+        if (pagoActual > 0) {
+          await sql`
+            INSERT INTO abonos_fiados (
+              fiado_id,
+              pedido_cobro_id,
+              monto_abono,
+              saldo_anterior,
+              saldo_nuevo,
+              notas
+            ) VALUES (
+              ${pedido.pedido_fiado_id},
+              ${pedidoId},
+              ${pagoActual},
+              ${fiado.saldo_pendiente},
+              ${nuevoSaldo},
+              ${pagoActual === fiado.saldo_pendiente ? 'Pago completo' : `Abono parcial de $${pagoActual.toLocaleString()}`}
+            )
+          `
+        }
+
+        console.log('[updatePedidoEstado] ✅ Fiado actualizado:', {
+          fiadoId: pedido.pedido_fiado_id,
+          saldoAnterior: fiado.saldo_pendiente,
+          nuevoSaldo,
+          nuevoEstado
+        })
+      }
+    }
+
+    // 5️⃣ SI ES FIADO (pedido normal marcado como fiado), crear registro en tabla fiados
+    if (estado === 'fiado' && !pedido.es_cobro) {
       const montoTotal = Number(pedido.total)
       const pagado = Number(montoPagado || 0)
       const saldo = Number(saldoPendiente || montoTotal)
@@ -139,6 +201,7 @@ export async function updatePedidoEstado(
       console.log('[updatePedidoEstado] ✓ Fiado registrado en tabla fiados')
     }
 
+    // 6️⃣ Recalcular totales de la planilla
     const planillaId = pedido.planilla_id
 
     const totales = await sql`
