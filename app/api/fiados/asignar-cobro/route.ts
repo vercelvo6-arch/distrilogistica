@@ -99,10 +99,20 @@ export async function POST(request: NextRequest) {
     // Crear el pedido de COBRO
     console.log('[API asignar-cobro] 💾 Insertando pedido de cobro...')
     try {
+      // Obtener la última secuencia de la planilla
+      const ultimaSecuencia = await sql`
+        SELECT COALESCE(MAX(secuencia), 0) as max_sec
+        FROM pedidos
+        WHERE planilla_id = ${planillaDestinoId}
+      `
+      const nuevaSecuencia = (ultimaSecuencia[0]?.max_sec || 0) + 1
+      console.log('[API asignar-cobro] Nueva secuencia:', nuevaSecuencia)
+
       await sql`
         INSERT INTO pedidos (
           id,
           planilla_id,
+          secuencia,
           cliente,
           direccion,
           telefono,
@@ -117,6 +127,7 @@ export async function POST(request: NextRequest) {
         ) VALUES (
           ${cobroId},
           ${planillaDestinoId},
+          ${nuevaSecuencia},
           ${pedidoFiado[0].cliente + ' (COBRO)'},
           ${pedidoFiado[0].direccion || 'Por definir'},
           ${pedidoFiado[0].telefono || 'N/A'},
