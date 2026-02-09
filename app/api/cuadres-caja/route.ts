@@ -151,18 +151,29 @@ export async function POST(request: Request) {
     const cuadreId = result[0].id
     console.log('[CUADRE CAJA] ✓ Cuadre insertado con ID:', cuadreId)
 
-    // Actualizar planillas
-    console.log('[CUADRE CAJA] Actualizando', planillaIds.length, 'planillas...')
-    for (const planillaId of planillaIds) {
-  await sql`
-    UPDATE planillas
-    SET cuadrado_en_caja = true,
-        estado = 'cerrado',
-        updated_at = NOW()
-    WHERE id = ${planillaId}
-  `
-}
-    console.log('[CUADRE CAJA] ✓ Planillas actualizadas')
+    // ========================================
+    // ✅ REQUISITO 1: ELIMINAR PLANILLAS Y PEDIDOS
+    // Las planillas desaparecen tanto de Caja como del Entregador
+    // ========================================
+    console.log('[CUADRE CAJA] Eliminando pedidos de', planillaIds.length, 'planillas...')
+    
+    // Primero eliminar pedidos asociados
+    const pedidosEliminados = await sql`
+      DELETE FROM pedidos
+      WHERE planilla_id = ANY(${planillaIds})
+      RETURNING id
+    `
+    console.log('[CUADRE CAJA] ✓ Pedidos eliminados:', pedidosEliminados.length)
+    
+    // Luego eliminar las planillas
+    console.log('[CUADRE CAJA] Eliminando planillas...')
+    const planillasEliminadas = await sql`
+      DELETE FROM planillas
+      WHERE id = ANY(${planillaIds})
+      RETURNING id
+    `
+    console.log('[CUADRE CAJA] ✓ Planillas eliminadas:', planillasEliminadas.length)
+    console.log('[CUADRE CAJA] ✓ Las planillas YA NO aparecerán en Caja ni en Entregador')
 
    // Comisión
 console.log('[CUADRE CAJA] Buscando configuración de comisión...')
@@ -186,7 +197,6 @@ if (configComision.length > 0) {
     monto: montoComision
   })
 
-  // ✅ SOLUCIÓN: No usar planilla_id para cuadres agrupados
   await sql`
     INSERT INTO comisiones (
       entregador,
@@ -223,12 +233,15 @@ console.log('[CUADRE CAJA] ✓✓✓ PROCESO COMPLETADO EXITOSAMENTE')
 return NextResponse.json({
   success: true,
   cuadreId,
-  mensaje: `✅ Cuadre registrado para ${planillaIds.length} ruta${planillaIds.length > 1 ? 's' : ''}`
+  planillasEliminadas: planillasEliminadas.length,
+  pedidosEliminados: pedidosEliminados.length,
+  mensaje: `✅ Cuadre registrado y ${planillasEliminadas.length} ruta${planillasEliminadas.length > 1 ? 's' : ''} eliminada${planillasEliminadas.length > 1 ? 's' : ''}`
 })
     } catch (error) {
     return handleDBError(error, 'CUADRE CAJA POST')
   }
 }
+
 export async function GET(request: Request) {
   try {
     const session = await getSession()
