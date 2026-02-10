@@ -14,7 +14,6 @@ export async function POST(request: Request) {
     }
 
     const sql = getDB()
-
     console.log('[CUADRE CAJA] Usuario autenticado:', session.user.username)
 
     const body = await request.json()
@@ -67,6 +66,111 @@ export async function POST(request: Request) {
       )
     }
     console.log('[CUADRE CAJA] ✓ Efectivo recibido:', efectivoRecibido)
+
+    // ========================================
+    // ✅ PASO 1: GUARDAR FIADOS EN LA TABLA `fiados`
+    // ========================================
+    console.log('[CUADRE CAJA] 🔄 Guardando pedidos fiados...')
+    
+    const pedidosFiados = await sql`
+      SELECT 
+        p.id,
+        p.cliente,
+        p.direccion,
+        p.telefono,
+        p.total,
+        p.monto_pagado,
+        p.saldo_pendiente,
+        p.observaciones,
+        pl.fecha,
+        pl.entregador,
+        pl.tipo_ruta
+      FROM pedidos p
+      JOIN planillas pl ON p.planilla_id = pl.id
+      WHERE p.estado = 'fiado'
+        AND pl.id = ANY(${planillaIds})
+        AND p.es_cobro = false
+    `
+
+    for (const pedido of pedidosFiados) {
+      const montoTotal = Number(pedido.total)
+      const montoPagado = Number(pedido.monto_pagado || 0)
+      const saldoPendiente = Number(pedido.saldo_pendiente || montoTotal)
+
+      console.log('[CUADRE CAJA] 💾 Guardando fiado:', {
+        pedidoId: pedido.id,
+        cliente: pedido.cliente,
+        montoTotal,
+        montoPagado,
+        saldoPendiente
+      })
+
+      await sql`
+        INSERT INTO fiados (
+          pedido_id,
+          cliente,
+          direccion,
+          telefono,
+          monto_total,
+          monto_pagado,
+          saldo_pendiente,
+          fecha_fiado,
+          entregador,
+          ruta,
+          estado,
+          observaciones
+        ) VALUES (
+          ${pedido.id},
+          ${pedido.cliente},
+          ${pedido.direccion || null},
+          ${pedido.telefono || null},
+          ${montoTotal},
+          ${montoPagado},
+          ${saldoPendiente},
+          ${pedido.fecha},
+          ${pedido.entregador},
+          ${pedido.tipo_ruta},
+          ${saldoPendiente > 0 ? 'pendiente' : 'pagado'},
+          ${pedido.observaciones || null}
+        )
+        ON CONFLICT (pedido_id) 
+        DO UPDATE SET
+          monto_pagado = EXCLUDED.monto_pagado,
+          saldo_pendiente = EXCLUDED.saldo_pendiente,
+          estado = EXCLUDED.estado,
+          updated_at = NOW()
+      `
+    }
+
+    console.log('[CUADRE CAJA] ✅ Fiados guardados:', pedidosFiados.length)
+
+    // ========================================
+    // ✅ PASO 2: LOS REPASOS PERMANECEN EN `pedidos`
+    // ========================================
+    const pedidosRepasos = await sql`
+      SELECT COUNT(*) as total
+      FROM pedidos p
+      JOIN planillas pl ON p.planilla_id = pl.id
+      WHERE p.estado = 'repaso'
+        AND pl.id = ANY(${planillaIds})
+    `
+
+    console.log('[CUADRE CAJA] ℹ️ Repasos en estas planillas:', pedidosRepasos[0].total)
+    console.log('[CUADRE CAJA] ✅ Los repasos permanecen en BD con estado = "repaso"')
+
+    // ========================================
+    // ✅ PASO 3: LAS DEVOLUCIONES PERMANECEN
+    // ========================================
+    const pedidosDevoluciones = await sql`
+      SELECT COUNT(*) as total
+      FROM pedidos p
+      JOIN planillas pl ON p.planilla_id = pl.id
+      WHERE p.estado = 'devolucion'
+        AND pl.id = ANY(${planillaIds})
+    `
+
+    console.log('[CUADRE CAJA] ℹ️ Devoluciones en estas planillas:', pedidosDevoluciones[0].total)
+    console.log('[CUADRE CAJA] ✅ Las devoluciones permanecen en BD con estado = "devolucion"')
 
     // Cálculos
     const totalConsignado = Number(montoConsignacion || 0)
@@ -152,23 +256,23 @@ export async function POST(request: Request) {
     console.log('[CUADRE CAJA] ✓ Cuadre insertado con ID:', cuadreId)
 
     // ========================================
-    // ✅ MARCAR PLANILLAS COMO CUADRADAS (SIN CAMBIAR ESTADO)
-    // Las planillas permanecen en BD para supervisión
-    // Ya no aparecen en Caja pero SÍ en Coordinador
+    // ✅ MARCAR PLANILLAS COMO CUADRADAS
+    // ❌ NO CAMBIAR ESTADO - Solo marcar cuadrado_en_caja
     // ========================================
     console.log('[CUADRE CAJA] Marcando', planillaIds.length, 'planillas como cuadradas...')
     
     const planillasActualizadas = await sql`
       UPDATE planillas
-SET 
-  cuadrado_en_caja = true,
-  estado = 'cerrado',
-  updated_at = NOW()
-WHERE id = ANY(${planillaIds})
-      RETURNING id, tipo_ruta
+      SET 
+        cuadrado_en_caja = true,
+        fecha_cuadre = NOW(),
+        updated_at = NOW()
+      WHERE id = ANY(${planillaIds})
+      RETURNING id, tipo_ruta, estado
     `
     
     console.log('[CUADRE CAJA] ✓ Planillas marcadas como cuadradas:', planillasActualizadas.length)
+    console.log('[CUADRE CAJA] ✓ Estados preservados:', planillasActualizadas.map(p => ({ id: p.id, estado: p.estado })))
     console.log('[CUADRE CAJA] ✓ Planillas ya NO aparecerán en Caja')
     console.log('[CUADRE CAJA] ✓ Coordinador SÍ puede verlas en Supervisión')
 
@@ -231,7 +335,10 @@ WHERE id = ANY(${planillaIds})
       success: true,
       cuadreId,
       planillasMarcadas: planillasActualizadas.length,
-      mensaje: `✅ Cuadre registrado para ${planillasActualizadas.length} ruta${planillasActualizadas.length > 1 ? 's' : ''}`
+      fiadosGuardados: pedidosFiados.length,
+      repasosPreservados: pedidosRepasos[0].total,
+      devolucionesPreservadas: pedidosDevoluciones[0].total,
+      mensaje: `✅ Cuadre registrado · ${pedidosFiados.length} fiado(s) · ${pedidosRepasos[0].total} repaso(s) · ${pedidosDevoluciones[0].total} devolución(es)`
     })
 
   } catch (error) {
