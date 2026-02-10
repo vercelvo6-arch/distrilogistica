@@ -152,9 +152,9 @@ export async function POST(request: Request) {
     console.log('[CUADRE CAJA] ✓ Cuadre insertado con ID:', cuadreId)
 
     // ========================================
-    // ✅ MARCAR PLANILLAS COMO CUADRADAS (NO ELIMINAR)
+    // ✅ MARCAR PLANILLAS COMO CUADRADAS (SIN CAMBIAR ESTADO)
     // Las planillas permanecen en BD para supervisión
-    // Pero ya no aparecen en Caja ni Entregador
+    // Ya no aparecen en Caja pero SÍ en Coordinador
     // ========================================
     console.log('[CUADRE CAJA] Marcando', planillaIds.length, 'planillas como cuadradas...')
     
@@ -164,78 +164,78 @@ export async function POST(request: Request) {
         cuadrado_en_caja = true,
         fecha_cuadre_caja = NOW(),
         cuadre_caja_id = ${cuadreId},
-        estado = 'cerrado',
         updated_at = NOW()
       WHERE id = ANY(${planillaIds})
       RETURNING id, tipo_ruta
     `
     
     console.log('[CUADRE CAJA] ✓ Planillas marcadas como cuadradas:', planillasActualizadas.length)
-    console.log('[CUADRE CAJA] ✓ Planillas ya NO aparecerán en Caja ni Entregador')
+    console.log('[CUADRE CAJA] ✓ Planillas ya NO aparecerán en Caja')
     console.log('[CUADRE CAJA] ✓ Coordinador SÍ puede verlas en Supervisión')
 
-   // Comisión
-console.log('[CUADRE CAJA] Buscando configuración de comisión...')
-const configComision = await sql`
-  SELECT porcentaje_comision 
-  FROM comisiones_config 
-  WHERE entregador = ${entregador} 
-    AND activo = true
-`
+    // Comisión
+    console.log('[CUADRE CAJA] Buscando configuración de comisión...')
+    const configComision = await sql`
+      SELECT porcentaje_comision 
+      FROM comisiones_config 
+      WHERE entregador = ${entregador} 
+        AND activo = true
+    `
 
-if (configComision.length > 0) {
-  const porcentaje = Number(configComision[0].porcentaje_comision)
-  const totalDevoluciones = devolucionesNum
-  const baseComisionable = Math.round(totalEfectivo * 100) / 100
-  const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
+    if (configComision.length > 0) {
+      const porcentaje = Number(configComision[0].porcentaje_comision)
+      const totalDevoluciones = devolucionesNum
+      const baseComisionable = Math.round(totalEfectivo * 100) / 100
+      const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
-  console.log('[CUADRE CAJA] Creando comisión:', {
-    porcentaje,
-    totalDevoluciones,
-    base: baseComisionable,
-    monto: montoComision
-  })
+      console.log('[CUADRE CAJA] Creando comisión:', {
+        porcentaje,
+        totalDevoluciones,
+        base: baseComisionable,
+        monto: montoComision
+      })
 
-  await sql`
-    INSERT INTO comisiones (
-      entregador,
-      fecha,
-      planilla_id,
-      total_entregas_efectivas,
-      total_devoluciones,
-      base_comisionable,
-      porcentaje_aplicado,
-      monto_comision,
-      estado,
-      cuadre_agrupado_id
-    ) VALUES (
-      ${entregador},
-      (NOW() AT TIME ZONE 'America/Bogota')::date,
-      NULL,
-      ${totalEfectivo},
-      ${totalDevoluciones},
-      ${baseComisionable},
-      ${porcentaje},
-      ${montoComision},
-      'pendiente',
-      ${cuadreId}
-    )
-  `
+      await sql`
+        INSERT INTO comisiones (
+          entregador,
+          fecha,
+          planilla_id,
+          total_entregas_efectivas,
+          total_devoluciones,
+          base_comisionable,
+          porcentaje_aplicado,
+          monto_comision,
+          estado,
+          cuadre_agrupado_id
+        ) VALUES (
+          ${entregador},
+          (NOW() AT TIME ZONE 'America/Bogota')::date,
+          NULL,
+          ${totalEfectivo},
+          ${totalDevoluciones},
+          ${baseComisionable},
+          ${porcentaje},
+          ${montoComision},
+          'pendiente',
+          ${cuadreId}
+        )
+      `
 
-  console.log('[CUADRE CAJA] ✓ Comisión creada')
-} else {
-  console.log('[CUADRE CAJA] ⚠️ No hay configuración de comisión para:', entregador)
-}
+      console.log('[CUADRE CAJA] ✓ Comisión creada')
+    } else {
+      console.log('[CUADRE CAJA] ⚠️ No hay configuración de comisión para:', entregador)
+    }
 
-console.log('[CUADRE CAJA] ✓✓✓ PROCESO COMPLETADO EXITOSAMENTE')
+    console.log('[CUADRE CAJA] ✓✓✓ PROCESO COMPLETADO EXITOSAMENTE')
 
-return NextResponse.json({
-  success: true,
-  cuadreId,
-  planillasMarcadas: planillasActualizadas.length,
-  mensaje: `✅ Cuadre registrado para ${planillasActualizadas.length} ruta${planillasActualizadas.length > 1 ? 's' : ''}`
-})
-    } catch (error) {
+    return NextResponse.json({
+      success: true,
+      cuadreId,
+      planillasMarcadas: planillasActualizadas.length,
+      mensaje: `✅ Cuadre registrado para ${planillasActualizadas.length} ruta${planillasActualizadas.length > 1 ? 's' : ''}`
+    })
+
+  } catch (error) {
     return handleDBError(error, 'CUADRE CAJA POST')
   }
 }
