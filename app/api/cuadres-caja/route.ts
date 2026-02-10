@@ -152,28 +152,27 @@ export async function POST(request: Request) {
     console.log('[CUADRE CAJA] ✓ Cuadre insertado con ID:', cuadreId)
 
     // ========================================
-    // ✅ REQUISITO 1: ELIMINAR PLANILLAS Y PEDIDOS
-    // Las planillas desaparecen tanto de Caja como del Entregador
+    // ✅ MARCAR PLANILLAS COMO CUADRADAS (NO ELIMINAR)
+    // Las planillas permanecen en BD para supervisión
+    // Pero ya no aparecen en Caja ni Entregador
     // ========================================
-    console.log('[CUADRE CAJA] Eliminando pedidos de', planillaIds.length, 'planillas...')
+    console.log('[CUADRE CAJA] Marcando', planillaIds.length, 'planillas como cuadradas...')
     
-    // Primero eliminar pedidos asociados
-    const pedidosEliminados = await sql`
-      DELETE FROM pedidos
-      WHERE planilla_id = ANY(${planillaIds})
-      RETURNING id
-    `
-    console.log('[CUADRE CAJA] ✓ Pedidos eliminados:', pedidosEliminados.length)
-    
-    // Luego eliminar las planillas
-    console.log('[CUADRE CAJA] Eliminando planillas...')
-    const planillasEliminadas = await sql`
-      DELETE FROM planillas
+    const planillasActualizadas = await sql`
+      UPDATE planillas
+      SET 
+        cuadrado_en_caja = true,
+        fecha_cuadre_caja = NOW(),
+        cuadre_caja_id = ${cuadreId},
+        estado = 'cerrado',
+        updated_at = NOW()
       WHERE id = ANY(${planillaIds})
-      RETURNING id
+      RETURNING id, tipo_ruta
     `
-    console.log('[CUADRE CAJA] ✓ Planillas eliminadas:', planillasEliminadas.length)
-    console.log('[CUADRE CAJA] ✓ Las planillas YA NO aparecerán en Caja ni en Entregador')
+    
+    console.log('[CUADRE CAJA] ✓ Planillas marcadas como cuadradas:', planillasActualizadas.length)
+    console.log('[CUADRE CAJA] ✓ Planillas ya NO aparecerán en Caja ni Entregador')
+    console.log('[CUADRE CAJA] ✓ Coordinador SÍ puede verlas en Supervisión')
 
    // Comisión
 console.log('[CUADRE CAJA] Buscando configuración de comisión...')
@@ -233,9 +232,8 @@ console.log('[CUADRE CAJA] ✓✓✓ PROCESO COMPLETADO EXITOSAMENTE')
 return NextResponse.json({
   success: true,
   cuadreId,
-  planillasEliminadas: planillasEliminadas.length,
-  pedidosEliminados: pedidosEliminados.length,
-  mensaje: `✅ Cuadre registrado y ${planillasEliminadas.length} ruta${planillasEliminadas.length > 1 ? 's' : ''} eliminada${planillasEliminadas.length > 1 ? 's' : ''}`
+  planillasMarcadas: planillasActualizadas.length,
+  mensaje: `✅ Cuadre registrado para ${planillasActualizadas.length} ruta${planillasActualizadas.length > 1 ? 's' : ''}`
 })
     } catch (error) {
     return handleDBError(error, 'CUADRE CAJA POST')
