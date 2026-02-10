@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       observaciones,
       descuento,           
       motivoDescuento,
-      agotados  // ← AGREGADO
+      agotados
     } = body
 
     if (!planillaId || efectivoEsperado === undefined || efectivoRecibido === undefined) {
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (planilla[0].estado !== 'completado' && planilla[0].estado !== 'alistado') {
-        return NextResponse.json(
+      return NextResponse.json(
         { error: 'La planilla debe estar completada o alistada para cuadrar en caja' },
         { status: 400 }
       )
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
         estado,
         descuento,              
         motivo_descuento,
-        agotados  // ← AGREGADO
+        agotados
       ) VALUES (
         ${recepcionId},
         ${planillaId},
@@ -132,24 +132,24 @@ export async function POST(request: NextRequest) {
         ${estado},
         ${descuento || 0},              
         ${motivoDescuento || null},
-        ${agotados || 0}  // ← AGREGADO
+        ${agotados || 0}
       )
       RETURNING *
     `
 
+    // ✅ MARCAR PLANILLA COMO CUADRADA (SIN CAMBIAR ESTADO)
     await sql`
-  UPDATE planillas 
-  SET 
-    cuadrado_en_caja = true,
-    estado = 'cerrado',
-    fecha_cuadre_caja = NOW(),
-    updated_at = NOW()
-  WHERE id = ${planillaId}
+      UPDATE planillas 
+      SET 
+        cuadrado_en_caja = true,
+        fecha_cuadre_caja = NOW(),
+        updated_at = NOW()
+      WHERE id = ${planillaId}
     `
 
     console.log('[API recibir-efectivo] ✓ Planilla actualizada como cuadrada')
 
-    // ✅ CÁLCULO DE COMISIÓN CORREGIDO
+    // ✅ CÁLCULO DE COMISIÓN
     const configComision = await sql`
       SELECT porcentaje_comision 
       FROM comisiones_config 
@@ -161,8 +161,6 @@ export async function POST(request: NextRequest) {
       const porcentaje = Number(configComision[0].porcentaje_comision)
       const totalDevoluciones = Number(planilla[0].total_devolucion) || 0
       
-      // ✅ FIX: Base = efectivo recibido (SIN restar devoluciones)
-      // Las devoluciones YA están excluidas del efectivo esperado/recibido
       const baseComisionable = Math.round(Number(efectivoRecibido) * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
