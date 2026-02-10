@@ -160,12 +160,11 @@ export async function POST(request: Request) {
     
     const planillasActualizadas = await sql`
       UPDATE planillas
-      SET 
-        cuadrado_en_caja = true,
-        fecha_cuadre_caja = NOW(),
-        cuadre_caja_id = ${cuadreId},
-        updated_at = NOW()
-      WHERE id = ANY(${planillaIds})
+SET 
+  cuadrado_en_caja = true,
+  estado = 'cerrado',
+  updated_at = NOW()
+WHERE id = ANY(${planillaIds})
       RETURNING id, tipo_ruta
     `
     
