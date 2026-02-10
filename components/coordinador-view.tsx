@@ -209,17 +209,18 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   try {
     console.log('[SUPERVISION] 🔄 Cargando datos...')
 
-    // 1. Cargar planillas alistadas
+    // 1. Cargar planillas alistadas Y CUADRADAS
     const response = await fetch("/api/planillas")
     if (!response.ok) throw new Error("Error al cargar planillas")
 
     const data = await response.json()
 
-    const planillasAlistadas = (data.planillas || [])
+    const planillasSupervision = (data.planillas || [])
       .filter((p: any) => 
         p.estado === "alistado" || 
         p.estado === "en_ruta" || 
-        p.estado === "completado"
+        p.estado === "completado" ||
+        p.cuadrado_en_caja === true  // ✅ MOSTRAR TAMBIÉN LAS CUADRADAS
       )
       .map((p: any) => ({
         id: p.id,
@@ -228,11 +229,13 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         fecha_alistamiento: p.fecha_alistamiento,
         entregador: p.entregador,
         estado: p.estado,
+        cuadrado_en_caja: p.cuadrado_en_caja || false,  // ✅ Agregar indicador
         totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
         totalAmount: Number(p.total_cargue) || 0,
         orders: (p.pedidos || []).map((ped: any) => ({
           id: ped.id,
           cliente: ped.cliente,
+          estado: ped.estado,  // ✅ Agregar estado del pedido
           items: (ped.productos || []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
@@ -248,20 +251,19 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         })),
       }))
 
-    setSupervisionSheets(planillasAlistadas)
+    setSupervisionSheets(planillasSupervision)
 
     // 2. Cargar SOLO faltantes pendientes
     const faltantesResponse = await fetch("/api/faltantes")
     if (faltantesResponse.ok) {
       const faltantesData = await faltantesResponse.json()
       
-      // ✅ El endpoint ya filtra por pendientes, pero por seguridad filtramos también aquí
       const faltantesPendientes = (faltantesData.faltantes || []).filter(
         (f: any) => f.estado === 'pendiente'
       )
       
       console.log('[SUPERVISION] ✓ Datos cargados:', {
-        planillas: planillasAlistadas.length,
+        planillas: planillasSupervision.length,
         totalFaltantes: faltantesData.faltantes?.length || 0,
         faltantesPendientes: faltantesPendientes.length
       })
