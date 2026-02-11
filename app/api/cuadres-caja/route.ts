@@ -4,20 +4,21 @@ import { getDB } from '@/lib/db'
 import { handleDBError } from '@/lib/db-helpers'
 
 export async function POST(request: Request) {
+  const sql = getDB()
+  
   try {
-    console.log('[CUADRE CAJA] === INICIO DE REQUEST ===')
+    console.log('🔥🔥🔥 [CUADRE] INICIO - NUEVO CÓDIGO CARGADO 🔥🔥🔥')
     
     const session = await getSession()
     if (!session?.user) {
-      console.log('[CUADRE CAJA] ERROR: Usuario no autenticado')
+      console.log('❌ [CUADRE] No autenticado')
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    const sql = getDB()
-    console.log('[CUADRE CAJA] Usuario autenticado:', session.user.username)
+    console.log('✅ [CUADRE] Usuario:', session.user.username)
 
     const body = await request.json()
-    console.log('[CUADRE CAJA] Body recibido:', JSON.stringify(body, null, 2))
+    console.log('📦 [CUADRE] Body completo:', JSON.stringify(body, null, 2))
 
     const {
       planillaIds,
@@ -38,39 +39,23 @@ export async function POST(request: Request) {
     } = body
 
     // Validaciones
-    console.log('[CUADRE CAJA] Iniciando validaciones...')
-    
     if (!planillaIds || !Array.isArray(planillaIds) || planillaIds.length === 0) {
-      console.error('[CUADRE CAJA] ❌ planillaIds inválido:', planillaIds)
-      return NextResponse.json(
-        { error: 'No se recibieron planillas válidas', details: `planillaIds: ${JSON.stringify(planillaIds)}` },
-        { status: 400 }
-      )
+      console.error('❌ [CUADRE] planillaIds inválido:', planillaIds)
+      return NextResponse.json({ error: 'planillaIds inválido' }, { status: 400 })
     }
-    console.log('[CUADRE CAJA] ✓ planillaIds válido:', planillaIds)
 
     if (!entregador) {
-      console.error('[CUADRE CAJA] ❌ entregador faltante')
-      return NextResponse.json(
-        { error: 'Entregador es requerido' },
-        { status: 400 }
-      )
+      console.error('❌ [CUADRE] entregador faltante')
+      return NextResponse.json({ error: 'Entregador requerido' }, { status: 400 })
     }
-    console.log('[CUADRE CAJA] ✓ Entregador:', entregador)
 
-    if (efectivoRecibido === undefined || efectivoRecibido === null) {
-      console.error('[CUADRE CAJA] ❌ efectivoRecibido faltante')
-      return NextResponse.json(
-        { error: 'Efectivo recibido es requerido' },
-        { status: 400 }
-      )
-    }
-    console.log('[CUADRE CAJA] ✓ Efectivo recibido:', efectivoRecibido)
+    console.log('✅ [CUADRE] Validaciones OK')
+    console.log('📋 [CUADRE] Planillas a cuadrar:', planillaIds)
 
     // ========================================
-    // ✅ PASO 1: GUARDAR FIADOS EN LA TABLA `fiados`
+    // PASO 1: BUSCAR Y GUARDAR FIADOS
     // ========================================
-    console.log('[CUADRE CAJA] 🔄 Guardando pedidos fiados...')
+    console.log('🔍 [CUADRE] Buscando pedidos con estado = fiado...')
     
     const pedidosFiados = await sql`
       SELECT 
@@ -79,8 +64,8 @@ export async function POST(request: Request) {
         p.direccion,
         p.telefono,
         p.total,
-        p.monto_pagado,
-        p.saldo_pendiente,
+        COALESCE(p.monto_pagado, 0) as monto_pagado,
+        COALESCE(p.saldo_pendiente, p.total) as saldo_pendiente,
         p.observaciones,
         pl.fecha,
         pl.entregador,
@@ -92,87 +77,111 @@ export async function POST(request: Request) {
         AND p.es_cobro = false
     `
 
-    for (const pedido of pedidosFiados) {
-      const montoTotal = Number(pedido.total)
-      const montoPagado = Number(pedido.monto_pagado || 0)
-      const saldoPendiente = Number(pedido.saldo_pendiente || montoTotal)
+    console.log(`📊 [CUADRE] Fiados encontrados: ${pedidosFiados.length}`)
 
-      console.log('[CUADRE CAJA] 💾 Guardando fiado:', {
-        pedidoId: pedido.id,
-        cliente: pedido.cliente,
-        montoTotal,
-        montoPagado,
-        saldoPendiente
-      })
+    if (pedidosFiados.length > 0) {
+      console.log('💾 [CUADRE] Guardando fiados en tabla fiados...')
+      
+      for (const pedido of pedidosFiados) {
+        const montoTotal = Number(pedido.total)
+        const montoPagado = Number(pedido.monto_pagado)
+        const saldoPendiente = Number(pedido.saldo_pendiente)
 
-      await sql`
-        INSERT INTO fiados (
-          pedido_id,
-          cliente,
-          direccion,
-          telefono,
-          monto_total,
-          monto_pagado,
-          saldo_pendiente,
-          fecha_fiado,
-          entregador,
-          ruta,
-          estado,
-          observaciones
-        ) VALUES (
-          ${pedido.id},
-          ${pedido.cliente},
-          ${pedido.direccion || null},
-          ${pedido.telefono || null},
-          ${montoTotal},
-          ${montoPagado},
-          ${saldoPendiente},
-          ${pedido.fecha},
-          ${pedido.entregador},
-          ${pedido.tipo_ruta},
-          ${saldoPendiente > 0 ? 'pendiente' : 'pagado'},
-          ${pedido.observaciones || null}
-        )
-        ON CONFLICT (pedido_id) 
-        DO UPDATE SET
-          monto_pagado = EXCLUDED.monto_pagado,
-          saldo_pendiente = EXCLUDED.saldo_pendiente,
-          estado = EXCLUDED.estado,
-          updated_at = NOW()
-      `
+        console.log(`  → Fiado: ${pedido.cliente} | Total: ${montoTotal} | Pagado: ${montoPagado} | Saldo: ${saldoPendiente}`)
+
+        try {
+          await sql`
+            INSERT INTO fiados (
+              pedido_id,
+              cliente,
+              direccion,
+              telefono,
+              monto_total,
+              monto_pagado,
+              saldo_pendiente,
+              fecha_fiado,
+              entregador,
+              ruta,
+              estado,
+              observaciones
+            ) VALUES (
+              ${pedido.id},
+              ${pedido.cliente},
+              ${pedido.direccion || null},
+              ${pedido.telefono || null},
+              ${montoTotal},
+              ${montoPagado},
+              ${saldoPendiente},
+              ${pedido.fecha},
+              ${pedido.entregador},
+              ${pedido.tipo_ruta},
+              ${saldoPendiente > 0 ? 'pendiente' : 'pagado'},
+              ${pedido.observaciones || null}
+            )
+            ON CONFLICT (pedido_id) 
+            DO UPDATE SET
+              monto_pagado = EXCLUDED.monto_pagado,
+              saldo_pendiente = EXCLUDED.saldo_pendiente,
+              estado = EXCLUDED.estado,
+              updated_at = NOW()
+          `
+          console.log(`  ✅ Guardado: ${pedido.cliente}`)
+        } catch (err) {
+          console.error(`  ❌ Error guardando fiado ${pedido.cliente}:`, err)
+          throw err
+        }
+      }
+      
+      console.log(`✅ [CUADRE] ${pedidosFiados.length} fiados guardados exitosamente`)
+    } else {
+      console.log('ℹ️ [CUADRE] No hay fiados para guardar')
     }
 
-    console.log('[CUADRE CAJA] ✅ Fiados guardados:', pedidosFiados.length)
-
     // ========================================
-    // ✅ PASO 2: LOS REPASOS PERMANECEN EN `pedidos`
+    // PASO 2: CONTAR REPASOS (NO BORRAR)
     // ========================================
+    console.log('🔍 [CUADRE] Contando repasos...')
+    
     const pedidosRepasos = await sql`
-      SELECT COUNT(*) as total
+      SELECT 
+        p.id,
+        p.cliente
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.estado = 'repaso'
         AND pl.id = ANY(${planillaIds})
     `
 
-    console.log('[CUADRE CAJA] ℹ️ Repasos en estas planillas:', pedidosRepasos[0].total)
-    console.log('[CUADRE CAJA] ✅ Los repasos permanecen en BD con estado = "repaso"')
+    console.log(`📊 [CUADRE] Repasos encontrados: ${pedidosRepasos.length}`)
+    if (pedidosRepasos.length > 0) {
+      console.log('  Clientes:', pedidosRepasos.map(r => r.cliente).join(', '))
+    }
+    console.log('✅ [CUADRE] Repasos PERMANECEN en BD (no se borran)')
 
     // ========================================
-    // ✅ PASO 3: LAS DEVOLUCIONES PERMANECEN
+    // PASO 3: CONTAR DEVOLUCIONES (NO BORRAR)
     // ========================================
+    console.log('🔍 [CUADRE] Contando devoluciones...')
+    
     const pedidosDevoluciones = await sql`
-      SELECT COUNT(*) as total
+      SELECT 
+        p.id,
+        p.cliente
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.estado = 'devolucion'
         AND pl.id = ANY(${planillaIds})
     `
 
-    console.log('[CUADRE CAJA] ℹ️ Devoluciones en estas planillas:', pedidosDevoluciones[0].total)
-    console.log('[CUADRE CAJA] ✅ Las devoluciones permanecen en BD con estado = "devolucion"')
+    console.log(`📊 [CUADRE] Devoluciones encontradas: ${pedidosDevoluciones.length}`)
+    if (pedidosDevoluciones.length > 0) {
+      console.log('  Clientes:', pedidosDevoluciones.map(d => d.cliente).join(', '))
+    }
+    console.log('✅ [CUADRE] Devoluciones PERMANECEN en BD (no se borran)')
 
-    // Cálculos
+    // ========================================
+    // CÁLCULOS
+    // ========================================
     const totalConsignado = Number(montoConsignacion || 0)
     const totalEfectivo = Number(efectivoRecibido) || 0
     const totalEsperadoNum = Number(totalEsperado) || 0
@@ -187,23 +196,19 @@ export async function POST(request: Request) {
     const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
     const estado = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
-    console.log('[CUADRE CAJA] Valores calculados:', {
+    console.log('💰 [CUADRE] Cálculos:', {
       totalEsperado: totalEsperadoNum,
       efectivo: totalEfectivo,
       consignacion: totalConsignado,
       totalRecibido,
       diferencia,
-      estado,
-      descuento: descuentoNum,
-      agotados: agotadosNum,
-      fiado: fiadoNum,
-      devoluciones: devolucionesNum,
-      repasos: repasosNum,
-      erroresFacturacion: erroresFacturacionNum
+      estado
     })
 
-    // INSERT
-    console.log('[CUADRE CAJA] Ejecutando INSERT en cuadres_caja...')
+    // ========================================
+    // GUARDAR CUADRE
+    // ========================================
+    console.log('💾 [CUADRE] Guardando en cuadres_caja...')
     
     const result = await sql`
       INSERT INTO cuadres_caja (
@@ -248,18 +253,13 @@ export async function POST(request: Request) {
       RETURNING id
     `
 
-    if (!result || result.length === 0) {
-      throw new Error('INSERT no retornó resultados')
-    }
-
     const cuadreId = result[0].id
-    console.log('[CUADRE CAJA] ✓ Cuadre insertado con ID:', cuadreId)
+    console.log(`✅ [CUADRE] Cuadre guardado con ID: ${cuadreId}`)
 
     // ========================================
-    // ✅ MARCAR PLANILLAS COMO CUADRADAS
-    // ❌ NO CAMBIAR ESTADO - Solo marcar cuadrado_en_caja
+    // MARCAR PLANILLAS (SIN CAMBIAR ESTADO)
     // ========================================
-    console.log('[CUADRE CAJA] Marcando', planillaIds.length, 'planillas como cuadradas...')
+    console.log('🏷️ [CUADRE] Marcando planillas como cuadradas...')
     
     const planillasActualizadas = await sql`
       UPDATE planillas
@@ -271,13 +271,16 @@ export async function POST(request: Request) {
       RETURNING id, tipo_ruta, estado
     `
     
-    console.log('[CUADRE CAJA] ✓ Planillas marcadas como cuadradas:', planillasActualizadas.length)
-    console.log('[CUADRE CAJA] ✓ Estados preservados:', planillasActualizadas.map(p => ({ id: p.id, estado: p.estado })))
-    console.log('[CUADRE CAJA] ✓ Planillas ya NO aparecerán en Caja')
-    console.log('[CUADRE CAJA] ✓ Coordinador SÍ puede verlas en Supervisión')
+    console.log(`✅ [CUADRE] ${planillasActualizadas.length} planillas marcadas`)
+    planillasActualizadas.forEach(p => {
+      console.log(`  → Ruta ${p.tipo_ruta}: estado="${p.estado}", cuadrado_en_caja=true`)
+    })
 
-    // Comisión
-    console.log('[CUADRE CAJA] Buscando configuración de comisión...')
+    // ========================================
+    // COMISIÓN
+    // ========================================
+    console.log('💵 [CUADRE] Buscando config de comisión...')
+    
     const configComision = await sql`
       SELECT porcentaje_comision 
       FROM comisiones_config 
@@ -287,16 +290,10 @@ export async function POST(request: Request) {
 
     if (configComision.length > 0) {
       const porcentaje = Number(configComision[0].porcentaje_comision)
-      const totalDevoluciones = devolucionesNum
       const baseComisionable = Math.round(totalEfectivo * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
-      console.log('[CUADRE CAJA] Creando comisión:', {
-        porcentaje,
-        totalDevoluciones,
-        base: baseComisionable,
-        monto: montoComision
-      })
+      console.log(`💵 [CUADRE] Comisión: ${porcentaje}% de ${baseComisionable} = ${montoComision}`)
 
       await sql`
         INSERT INTO comisiones (
@@ -315,7 +312,7 @@ export async function POST(request: Request) {
           (NOW() AT TIME ZONE 'America/Bogota')::date,
           NULL,
           ${totalEfectivo},
-          ${totalDevoluciones},
+          ${devolucionesNum},
           ${baseComisionable},
           ${porcentaje},
           ${montoComision},
@@ -323,25 +320,26 @@ export async function POST(request: Request) {
           ${cuadreId}
         )
       `
-
-      console.log('[CUADRE CAJA] ✓ Comisión creada')
+      console.log('✅ [CUADRE] Comisión guardada')
     } else {
-      console.log('[CUADRE CAJA] ⚠️ No hay configuración de comisión para:', entregador)
+      console.log('⚠️ [CUADRE] No hay config de comisión')
     }
 
-    console.log('[CUADRE CAJA] ✓✓✓ PROCESO COMPLETADO EXITOSAMENTE')
+    console.log('🎉🎉🎉 [CUADRE] COMPLETADO EXITOSAMENTE 🎉🎉🎉')
 
     return NextResponse.json({
       success: true,
       cuadreId,
       planillasMarcadas: planillasActualizadas.length,
       fiadosGuardados: pedidosFiados.length,
-      repasosPreservados: pedidosRepasos[0].total,
-      devolucionesPreservadas: pedidosDevoluciones[0].total,
-      mensaje: `✅ Cuadre registrado · ${pedidosFiados.length} fiado(s) · ${pedidosRepasos[0].total} repaso(s) · ${pedidosDevoluciones[0].total} devolución(es)`
+      repasosPreservados: pedidosRepasos.length,
+      devolucionesPreservadas: pedidosDevoluciones.length,
+      mensaje: `✅ ${pedidosFiados.length} fiado(s) · ${pedidosRepasos.length} repaso(s) · ${pedidosDevoluciones.length} devolución(es) guardados`
     })
 
   } catch (error) {
+    console.error('💥💥💥 [CUADRE] ERROR CRÍTICO:', error)
+    console.error('Stack:', error instanceof Error ? error.stack : 'No stack')
     return handleDBError(error, 'CUADRE CAJA POST')
   }
 }
@@ -355,30 +353,9 @@ export async function GET(request: Request) {
 
     const sql = getDB()
 
-    console.log('[CUADRE CAJA] Obteniendo historial...')
-
     const cuadres = await sql`
       SELECT 
-        c.id,
-        c.entregador,
-        c.fecha_cuadre,
-        c.planillas_ids,
-        c.total_esperado,
-        c.total_efectivo,
-        c.total_consignado,
-        c.diferencia,
-        c.estado,
-        c.observaciones,
-        c.tiene_consignacion,
-        c.numero_consignacion,
-        c.banco,
-        c.descuento,
-        c.motivo_descuento,
-        c.agotados,
-        c.fiado,
-        c.devoluciones,
-        c.repasos,
-        c.errores_facturacion,
+        c.*,
         array_agg(DISTINCT p.tipo_ruta) FILTER (WHERE p.tipo_ruta IS NOT NULL) as rutas_nombres
       FROM cuadres_caja c
       LEFT JOIN planillas p ON p.id = ANY(c.planillas_ids)
@@ -386,8 +363,6 @@ export async function GET(request: Request) {
       ORDER BY c.fecha_cuadre DESC
       LIMIT 100
     `
-
-    console.log('[CUADRE CAJA] ✓ Historial obtenido:', cuadres.length, 'registros')
 
     return NextResponse.json({
       success: true,
