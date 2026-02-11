@@ -3,10 +3,7 @@ import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
     if (!session?.user) {
@@ -17,11 +14,15 @@ export async function POST(
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
-    const resolvedParams = await params
-    const pedidoId = resolvedParams.id
-
     const body = await request.json()
-    const { montoAbono, metodoPago, observaciones, usuarioId } = body
+    const { pedidoId, montoAbono, metodoPago, observaciones, usuarioId } = body
+
+    if (!pedidoId) {
+      return NextResponse.json(
+        { error: 'pedidoId es requerido' },
+        { status: 400 }
+      )
+    }
 
     if (!montoAbono || montoAbono <= 0) {
       return NextResponse.json(
