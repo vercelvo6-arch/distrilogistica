@@ -7,18 +7,17 @@ export async function POST(request: Request) {
   const sql = getDB()
   
   try {
-    console.log('🔥🔥🔥 [CUADRE] INICIO - NUEVO CÓDIGO CARGADO 🔥🔥🔥')
+    console.log('\n\n🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
+    console.log('🔥 [CUADRE] NUEVO CÓDIGO CON DEBUG EXTREMO 🔥')
+    console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n')
     
     const session = await getSession()
     if (!session?.user) {
-      console.log('❌ [CUADRE] No autenticado')
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    console.log('✅ [CUADRE] Usuario:', session.user.username)
-
     const body = await request.json()
-    console.log('📦 [CUADRE] Body completo:', JSON.stringify(body, null, 2))
+    console.log('📦 [CUADRE] Body recibido:', JSON.stringify(body, null, 2))
 
     const {
       planillaIds,
@@ -40,22 +39,38 @@ export async function POST(request: Request) {
 
     // Validaciones
     if (!planillaIds || !Array.isArray(planillaIds) || planillaIds.length === 0) {
-      console.error('❌ [CUADRE] planillaIds inválido:', planillaIds)
+      console.error('❌ planillaIds inválido')
       return NextResponse.json({ error: 'planillaIds inválido' }, { status: 400 })
     }
 
-    if (!entregador) {
-      console.error('❌ [CUADRE] entregador faltante')
-      return NextResponse.json({ error: 'Entregador requerido' }, { status: 400 })
+    console.log('✅ [CUADRE] planillaIds:', planillaIds)
+    console.log('✅ [CUADRE] Tipo:', typeof planillaIds, Array.isArray(planillaIds))
+
+    // ========================================
+    // VERIFICAR QUE LAS PLANILLAS EXISTEN
+    // ========================================
+    console.log('\n🔍 [CUADRE] Verificando que las planillas existen...')
+    
+    const planillasExistentes = await sql`
+      SELECT id, tipo_ruta, entregador, estado, cuadrado_en_caja
+      FROM planillas
+      WHERE id = ANY(${planillaIds})
+    `
+
+    console.log(`📊 [CUADRE] Planillas encontradas: ${planillasExistentes.length}/${planillaIds.length}`)
+    planillasExistentes.forEach(p => {
+      console.log(`  → ${p.id} | Ruta ${p.tipo_ruta} | Estado: ${p.estado} | Cuadrado: ${p.cuadrado_en_caja}`)
+    })
+
+    if (planillasExistentes.length === 0) {
+      console.error('❌ [CUADRE] NO SE ENCONTRARON PLANILLAS CON ESOS IDs')
+      return NextResponse.json({ error: 'Planillas no encontradas' }, { status: 404 })
     }
 
-    console.log('✅ [CUADRE] Validaciones OK')
-    console.log('📋 [CUADRE] Planillas a cuadrar:', planillaIds)
-
     // ========================================
-    // PASO 1: BUSCAR Y GUARDAR FIADOS
+    // GUARDAR FIADOS
     // ========================================
-    console.log('🔍 [CUADRE] Buscando pedidos con estado = fiado...')
+    console.log('\n🔍 [CUADRE] Buscando pedidos fiados...')
     
     const pedidosFiados = await sql`
       SELECT 
@@ -74,20 +89,20 @@ export async function POST(request: Request) {
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.estado = 'fiado'
         AND pl.id = ANY(${planillaIds})
-        AND p.es_cobro = false
+        AND COALESCE(p.es_cobro, false) = false
     `
 
     console.log(`📊 [CUADRE] Fiados encontrados: ${pedidosFiados.length}`)
 
     if (pedidosFiados.length > 0) {
-      console.log('💾 [CUADRE] Guardando fiados en tabla fiados...')
+      console.log('💾 [CUADRE] Guardando fiados...')
       
       for (const pedido of pedidosFiados) {
         const montoTotal = Number(pedido.total)
         const montoPagado = Number(pedido.monto_pagado)
         const saldoPendiente = Number(pedido.saldo_pendiente)
 
-        console.log(`  → Fiado: ${pedido.cliente} | Total: ${montoTotal} | Pagado: ${montoPagado} | Saldo: ${saldoPendiente}`)
+        console.log(`  → ${pedido.cliente}: $${montoTotal.toLocaleString()} (Pagado: $${montoPagado.toLocaleString()}, Saldo: $${saldoPendiente.toLocaleString()})`)
 
         try {
           await sql`
@@ -125,59 +140,38 @@ export async function POST(request: Request) {
               estado = EXCLUDED.estado,
               updated_at = NOW()
           `
-          console.log(`  ✅ Guardado: ${pedido.cliente}`)
         } catch (err) {
-          console.error(`  ❌ Error guardando fiado ${pedido.cliente}:`, err)
+          console.error(`  ❌ Error guardando fiado:`, err)
           throw err
         }
       }
       
-      console.log(`✅ [CUADRE] ${pedidosFiados.length} fiados guardados exitosamente`)
-    } else {
-      console.log('ℹ️ [CUADRE] No hay fiados para guardar')
+      console.log(`✅ [CUADRE] ${pedidosFiados.length} fiados guardados`)
     }
 
     // ========================================
-    // PASO 2: CONTAR REPASOS (NO BORRAR)
+    // CONTAR REPASOS
     // ========================================
-    console.log('🔍 [CUADRE] Contando repasos...')
-    
     const pedidosRepasos = await sql`
-      SELECT 
-        p.id,
-        p.cliente
+      SELECT COUNT(*) as total
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.estado = 'repaso'
         AND pl.id = ANY(${planillaIds})
     `
-
-    console.log(`📊 [CUADRE] Repasos encontrados: ${pedidosRepasos.length}`)
-    if (pedidosRepasos.length > 0) {
-      console.log('  Clientes:', pedidosRepasos.map(r => r.cliente).join(', '))
-    }
-    console.log('✅ [CUADRE] Repasos PERMANECEN en BD (no se borran)')
+    console.log(`📊 [CUADRE] Repasos: ${pedidosRepasos[0].total}`)
 
     // ========================================
-    // PASO 3: CONTAR DEVOLUCIONES (NO BORRAR)
+    // CONTAR DEVOLUCIONES
     // ========================================
-    console.log('🔍 [CUADRE] Contando devoluciones...')
-    
     const pedidosDevoluciones = await sql`
-      SELECT 
-        p.id,
-        p.cliente
+      SELECT COUNT(*) as total
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.estado = 'devolucion'
         AND pl.id = ANY(${planillaIds})
     `
-
-    console.log(`📊 [CUADRE] Devoluciones encontradas: ${pedidosDevoluciones.length}`)
-    if (pedidosDevoluciones.length > 0) {
-      console.log('  Clientes:', pedidosDevoluciones.map(d => d.cliente).join(', '))
-    }
-    console.log('✅ [CUADRE] Devoluciones PERMANECEN en BD (no se borran)')
+    console.log(`📊 [CUADRE] Devoluciones: ${pedidosDevoluciones[0].total}`)
 
     // ========================================
     // CÁLCULOS
@@ -196,19 +190,10 @@ export async function POST(request: Request) {
     const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
     const estado = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
-    console.log('💰 [CUADRE] Cálculos:', {
-      totalEsperado: totalEsperadoNum,
-      efectivo: totalEfectivo,
-      consignacion: totalConsignado,
-      totalRecibido,
-      diferencia,
-      estado
-    })
-
     // ========================================
     // GUARDAR CUADRE
     // ========================================
-    console.log('💾 [CUADRE] Guardando en cuadres_caja...')
+    console.log('\n💾 [CUADRE] Guardando cuadre...')
     
     const result = await sql`
       INSERT INTO cuadres_caja (
@@ -254,33 +239,82 @@ export async function POST(request: Request) {
     `
 
     const cuadreId = result[0].id
-    console.log(`✅ [CUADRE] Cuadre guardado con ID: ${cuadreId}`)
+    console.log(`✅ [CUADRE] Cuadre guardado - ID: ${cuadreId}`)
 
     // ========================================
-    // MARCAR PLANILLAS (SIN CAMBIAR ESTADO)
+    // 🔥 MARCAR PLANILLAS - VERSIÓN FORZADA 🔥
     // ========================================
-    console.log('🏷️ [CUADRE] Marcando planillas como cuadradas...')
+    console.log('\n🔥🔥🔥 [CUADRE] INICIANDO UPDATE DE PLANILLAS 🔥🔥🔥')
+    console.log('🔥 IDs a actualizar:', planillaIds)
+
+    // MÉTODO 1: Update con ANY (actual)
+    console.log('\n📝 [CUADRE] Método 1: UPDATE con ANY...')
     
-    const planillasActualizadas = await sql`
-      UPDATE planillas
-      SET 
-        cuadrado_en_caja = true,
-        fecha_cuadre = NOW(),
-        updated_at = NOW()
+    try {
+      const updateResult1 = await sql`
+        UPDATE planillas
+        SET 
+          cuadrado_en_caja = true,
+          fecha_cuadre = NOW(),
+          updated_at = NOW()
+        WHERE id = ANY(${planillaIds})
+        RETURNING id, tipo_ruta, estado, cuadrado_en_caja, fecha_cuadre
+      `
+      
+      console.log(`✅ [CUADRE] Método 1 - Filas afectadas: ${updateResult1.length}`)
+      updateResult1.forEach(p => {
+        console.log(`  → ${p.id} | Ruta ${p.tipo_ruta} | cuadrado=${p.cuadrado_en_caja} | fecha=${p.fecha_cuadre}`)
+      })
+      
+      if (updateResult1.length === 0) {
+        console.log('⚠️ [CUADRE] Método 1 no actualizó nada, probando método 2...')
+        
+        // MÉTODO 2: Update uno por uno
+        console.log('\n📝 [CUADRE] Método 2: UPDATE individual...')
+        
+        for (const planillaId of planillaIds) {
+          console.log(`  Actualizando ${planillaId}...`)
+          
+          const updateResult2 = await sql`
+            UPDATE planillas
+            SET 
+              cuadrado_en_caja = true,
+              fecha_cuadre = NOW(),
+              updated_at = NOW()
+            WHERE id = ${planillaId}
+            RETURNING id, cuadrado_en_caja, fecha_cuadre
+          `
+          
+          if (updateResult2.length > 0) {
+            console.log(`  ✅ Actualizada: ${updateResult2[0].id}`)
+          } else {
+            console.log(`  ❌ NO ACTUALIZADA: ${planillaId}`)
+          }
+        }
+      }
+      
+    } catch (updateError) {
+      console.error('❌ [CUADRE] ERROR EN UPDATE:', updateError)
+      throw updateError
+    }
+
+    // VERIFICAR ESTADO FINAL
+    console.log('\n🔍 [CUADRE] Verificando estado final...')
+    
+    const planillasFinales = await sql`
+      SELECT id, tipo_ruta, cuadrado_en_caja, fecha_cuadre
+      FROM planillas
       WHERE id = ANY(${planillaIds})
-      RETURNING id, tipo_ruta, estado
     `
     
-    console.log(`✅ [CUADRE] ${planillasActualizadas.length} planillas marcadas`)
-    planillasActualizadas.forEach(p => {
-      console.log(`  → Ruta ${p.tipo_ruta}: estado="${p.estado}", cuadrado_en_caja=true`)
+    console.log('📊 [CUADRE] Estado final de planillas:')
+    planillasFinales.forEach(p => {
+      console.log(`  → ${p.id} | cuadrado=${p.cuadrado_en_caja} | fecha=${p.fecha_cuadre}`)
     })
 
     // ========================================
     // COMISIÓN
     // ========================================
-    console.log('💵 [CUADRE] Buscando config de comisión...')
-    
     const configComision = await sql`
       SELECT porcentaje_comision 
       FROM comisiones_config 
@@ -292,8 +326,6 @@ export async function POST(request: Request) {
       const porcentaje = Number(configComision[0].porcentaje_comision)
       const baseComisionable = Math.round(totalEfectivo * 100) / 100
       const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
-
-      console.log(`💵 [CUADRE] Comisión: ${porcentaje}% de ${baseComisionable} = ${montoComision}`)
 
       await sql`
         INSERT INTO comisiones (
@@ -321,24 +353,23 @@ export async function POST(request: Request) {
         )
       `
       console.log('✅ [CUADRE] Comisión guardada')
-    } else {
-      console.log('⚠️ [CUADRE] No hay config de comisión')
     }
 
-    console.log('🎉🎉🎉 [CUADRE] COMPLETADO EXITOSAMENTE 🎉🎉🎉')
+    console.log('\n🎉🎉🎉 [CUADRE] PROCESO COMPLETADO 🎉🎉🎉\n')
 
     return NextResponse.json({
       success: true,
       cuadreId,
-      planillasMarcadas: planillasActualizadas.length,
+      planillasMarcadas: planillasFinales.filter(p => p.cuadrado_en_caja).length,
       fiadosGuardados: pedidosFiados.length,
-      repasosPreservados: pedidosRepasos.length,
-      devolucionesPreservadas: pedidosDevoluciones.length,
-      mensaje: `✅ ${pedidosFiados.length} fiado(s) · ${pedidosRepasos.length} repaso(s) · ${pedidosDevoluciones.length} devolución(es) guardados`
+      repasosPreservados: pedidosRepasos[0].total,
+      devolucionesPreservadas: pedidosDevoluciones[0].total,
+      mensaje: `✅ Cuadre #${cuadreId} | ${pedidosFiados.length} fiado(s) | ${pedidosRepasos[0].total} repaso(s)`
     })
 
   } catch (error) {
-    console.error('💥💥💥 [CUADRE] ERROR CRÍTICO:', error)
+    console.error('\n💥💥💥 [CUADRE] ERROR CRÍTICO 💥💥💥')
+    console.error('Error:', error)
     console.error('Stack:', error instanceof Error ? error.stack : 'No stack')
     return handleDBError(error, 'CUADRE CAJA POST')
   }
