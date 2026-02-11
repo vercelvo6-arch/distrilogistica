@@ -109,7 +109,6 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
       
       // ✅ NUEVO FILTRO: Solo excluir planillas ya cuadradas en caja
       const planillasFuturas = (data.planillas || [])
-        .filter((p: any) => !p.cuadrado_en_caja)
         .sort((a: any, b: any) => {
           // Ordenar por fecha (más recientes primero)
           return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
