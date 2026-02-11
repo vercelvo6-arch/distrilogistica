@@ -228,7 +228,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       const data = await response.json()
       
       const planillas = (data.planillas || [])
-        .filter((p: any) => !p.cuadrado_en_caja)
         .sort((a: any, b: any) => {
           return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
         })
