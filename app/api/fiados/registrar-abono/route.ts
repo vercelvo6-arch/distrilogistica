@@ -17,6 +17,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { pedidoId, montoAbono, metodoPago, observaciones, usuarioId } = body
 
+    console.log('[REGISTRAR ABONO] Request recibido:', { pedidoId, montoAbono, metodoPago })
+
     if (!pedidoId) {
       return NextResponse.json(
         { error: 'pedidoId es requerido' },
@@ -45,39 +47,45 @@ export async function POST(request: NextRequest) {
         id::text as id,
         total,
         COALESCE(monto_pagado, 0) as monto_pagado,
-        COALESCE(saldo_pendiente, total - COALESCE(monto_pagado, 0)) as saldo_pendiente,
+        (total - COALESCE(monto_pagado, 0)) as saldo_pendiente,
         estado
       FROM pedidos
       WHERE id::text = ${pedidoId}
         AND estado IN ('fiado', 'pagado')
     `
 
+    console.log('[REGISTRAR ABONO] Resultado búsqueda en pedidos:', pedidosResult)
+
     if (pedidosResult.length > 0) {
       pedidoEncontrado = pedidosResult[0]
       origenTabla = 'pedidos'
-      console.log('[REGISTRAR ABONO] ✓ Encontrado en tabla pedidos')
+      console.log('[REGISTRAR ABONO] ✓ Encontrado en tabla pedidos:', pedidoEncontrado)
     } else {
       // 2. Buscar en tabla fiados
+      console.log('[REGISTRAR ABONO] No encontrado en pedidos, buscando en tabla fiados...')
+      
       const fiadosResult = await sql`
         SELECT 
           COALESCE(pedido_id, id::text) as id,
           monto_total as total,
           COALESCE(monto_pagado, 0) as monto_pagado,
-          COALESCE(saldo_pendiente, monto_total - COALESCE(monto_pagado, 0)) as saldo_pendiente,
+          (monto_total - COALESCE(monto_pagado, 0)) as saldo_pendiente,
           estado
         FROM fiados
         WHERE COALESCE(pedido_id, id::text) = ${pedidoId}
       `
 
+      console.log('[REGISTRAR ABONO] Resultado búsqueda en fiados:', fiadosResult)
+
       if (fiadosResult.length > 0) {
         pedidoEncontrado = fiadosResult[0]
         origenTabla = 'fiados'
-        console.log('[REGISTRAR ABONO] ✓ Encontrado en tabla fiados')
+        console.log('[REGISTRAR ABONO] ✓ Encontrado en tabla fiados:', pedidoEncontrado)
       }
     }
 
     if (!pedidoEncontrado) {
-      console.log('[REGISTRAR ABONO] ✗ Fiado no encontrado:', pedidoId)
+      console.log('[REGISTRAR ABONO] ✗ Fiado no encontrado en ninguna tabla:', pedidoId)
       return NextResponse.json(
         { error: 'Fiado no encontrado' },
         { status: 404 }
@@ -86,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     const totalPedido = Number(pedidoEncontrado.total)
     const montoPagadoActual = Number(pedidoEncontrado.monto_pagado || 0)
-    const saldoActual = Number(pedidoEncontrado.saldo_pendiente || totalPedido - montoPagadoActual)
+    const saldoActual = Number(pedidoEncontrado.saldo_pendiente)
 
     console.log('[REGISTRAR ABONO] Estado actual:', {
       origen: origenTabla,
@@ -98,8 +106,17 @@ export async function POST(request: NextRequest) {
 
     // Validar que el abono no exceda el saldo
     if (montoAbono > saldoActual) {
+      console.log('[REGISTRAR ABONO] ✗ Abono mayor al saldo')
       return NextResponse.json(
-        { error: `El abono ($${montoAbono.toLocaleString()}) no puede ser mayor al saldo pendiente ($${saldoActual.toLocaleString()})` },
+        { 
+          error: `El abono ($${montoAbono.toLocaleString()}) no puede ser mayor al saldo pendiente ($${saldoActual.toLocaleString()})`,
+          detalles: {
+            total: totalPedido,
+            pagado: montoPagadoActual,
+            saldo: saldoActual,
+            abono: montoAbono
+          }
+        },
         { status: 400 }
       )
     }
@@ -109,7 +126,14 @@ export async function POST(request: NextRequest) {
     const nuevoSaldo = totalPedido - nuevoMontoPagado
     const nuevoEstado = nuevoSaldo === 0 ? 'pagado' : 'fiado'
 
+    console.log('[REGISTRAR ABONO] Valores calculados:', {
+      nuevoMontoPagado,
+      nuevoSaldo,
+      nuevoEstado
+    })
+
     // Registrar el abono
+    console.log('[REGISTRAR ABONO] Insertando abono en abonos_fiados...')
     await sql`
       INSERT INTO abonos_fiados (
         pedido_id,
@@ -125,9 +149,11 @@ export async function POST(request: NextRequest) {
         ${usuarioId || session.user.id}
       )
     `
+    console.log('[REGISTRAR ABONO] ✓ Abono insertado en abonos_fiados')
 
     // ✅ ACTUALIZAR EN LA TABLA CORRECTA
     if (origenTabla === 'pedidos') {
+      console.log('[REGISTRAR ABONO] Actualizando tabla pedidos...')
       await sql`
         UPDATE pedidos
         SET 
@@ -137,7 +163,9 @@ export async function POST(request: NextRequest) {
           updated_at = NOW()
         WHERE id::text = ${pedidoId}
       `
+      console.log('[REGISTRAR ABONO] ✓ Tabla pedidos actualizada')
     } else {
+      console.log('[REGISTRAR ABONO] Actualizando tabla fiados...')
       await sql`
         UPDATE fiados
         SET 
@@ -147,9 +175,10 @@ export async function POST(request: NextRequest) {
           updated_at = NOW()
         WHERE COALESCE(pedido_id, id::text) = ${pedidoId}
       `
+      console.log('[REGISTRAR ABONO] ✓ Tabla fiados actualizada')
     }
 
-    console.log('[REGISTRAR ABONO] ✓ Abono registrado:', {
+    console.log('[REGISTRAR ABONO] ✓✓✓ Abono registrado exitosamente:', {
       pedidoId,
       montoAbono,
       nuevoMontoPagado,
@@ -175,6 +204,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
+    console.error('[REGISTRAR ABONO] ❌ ERROR:', error)
     return handleDBError(error, 'REGISTRAR ABONO')
   }
 }
