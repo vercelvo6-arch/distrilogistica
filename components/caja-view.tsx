@@ -1340,41 +1340,45 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setSubmitting(true)
 
     // ✅ PASO 1: GUARDAR TODOS LOS PEDIDOS FIADOS ANTES DEL CUADRE
-    console.log('[CUADRE AGRUPADO] 🔄 Guardando pedidos fiados en la BD...')
+   console.log('[CUADRE AGRUPADO] 🔄 Guardando pedidos con estado especial...')
     
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
-    let pedidosFiadosGuardados = 0
+    let pedidosGuardados = 0
     
     for (const route of rutasSeleccionadas) {
       if (!Array.isArray(route.orders)) continue
       
       for (const order of route.orders) {
-        // Si el pedido está marcado como fiado en el estado local
+        // Guardar FIADOS
         if (order.estado === "fiado") {
           const totalEfectivo = calculateOrderEffectiveTotal(order)
           const montoPagado = Number(order.montoPagado) || 0
           const saldoPendiente = totalEfectivo - montoPagado
           
-          console.log('[CUADRE AGRUPADO] 💾 Guardando fiado:', {
+          console.log('[CUADRE AGRUPADO] 💾 Guardando FIADO:', {
             cliente: order.cliente,
             total: totalEfectivo,
             pagado: montoPagado,
             saldo: saldoPendiente
           })
           
-          // Guardar en la BD usando la función existente
-          await updatePedidoEstado(
-            order.id,
-            "fiado",
-            montoPagado,
-            saldoPendiente
-          )
+          await updatePedidoEstado(order.id, "fiado", montoPagado, saldoPendiente)
+          pedidosGuardados++
+        }
+        
+        // Guardar REPASOS
+        if (order.estado === "repaso") {
+          console.log('[CUADRE AGRUPADO] 💾 Guardando REPASO:', {
+            cliente: order.cliente
+          })
           
-          pedidosFiadosGuardados++
+          await updatePedidoEstado(order.id, "repaso")
+          pedidosGuardados++
         }
       }
     }
     
+    console.log('[CUADRE AGRUPADO] ✅ Pedidos guardados:', pedidosGuardados)   
     console.log('[CUADRE AGRUPADO] ✅ Fiados guardados:', pedidosFiadosGuardados)
 
     // ✅ PASO 2: CREAR EL CUADRE AGRUPADO (código original)
