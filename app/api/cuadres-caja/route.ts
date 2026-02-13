@@ -259,6 +259,10 @@ export async function POST(request: Request) {
           updated_at = NOW()
         WHERE id = ANY(${planillaIds})
         RETURNING id, tipo_ruta, estado, cuadrado_en_caja, fecha_cuadre
+
+        if (updateResult1.length === 0) {
+  throw new Error(`❌ NO SE ACTUALIZARON PLANILLAS. IDs: ${planillaIds}`)
+}
       `
       
       console.log(`✅ [CUADRE] Método 1 - Filas afectadas: ${updateResult1.length}`)
