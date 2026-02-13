@@ -1379,7 +1379,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
     
     console.log('[CUADRE AGRUPADO] ✅ Pedidos guardados:', pedidosGuardados)   
-    console.log('[CUADRE AGRUPADO] ✅ Fiados guardados:', pedidosFiadosGuardados)
 
     // ✅ PASO 2: CREAR EL CUADRE AGRUPADO (código original)
     const fiadoFinal = Number(formData.fiados) || 0
