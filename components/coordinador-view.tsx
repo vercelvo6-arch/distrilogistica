@@ -216,12 +216,12 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     const data = await response.json()
 
     const planillasSupervision = (data.planillas || [])
-      .filter((p: any) => 
-        p.estado === "alistado" || 
-        p.estado === "en_ruta" || 
-        p.estado === "completado" ||
-        p.cuadrado_en_caja === true  // ✅ MOSTRAR TAMBIÉN LAS CUADRADAS
-      )
+  .filter((p: any) => 
+    p.estado === "alistado" || 
+    p.estado === "en_ruta" || 
+    p.estado === "completado" ||
+    p.cuadrado_en_caja === true  // ✅ Incluir cuadradas
+  )
       .map((p: any) => ({
         id: p.id,
         ruta: p.tipo_ruta,
