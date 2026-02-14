@@ -615,7 +615,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                       return (
                         <TableRow key={fiado.id}>
                           <TableCell>
-                            {(fiado.estado === "fiado" || fiado.estado === "parcial") && (
+                            {(fiado.estado === "fiado" || fiado.estado === "parcial" || fiado.estado === "pendiente") && saldo > 0 && (
                               <Checkbox
                                 checked={selectedFiados.has(fiado.id)}
                                 onCheckedChange={(checked) => {
@@ -664,7 +664,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex gap-2 justify-center">
-                              {(fiado.estado === "fiado" || fiado.estado === "parcial") && saldo > 0 && (
+                              {(fiado.estado === "fiado" || fiado.estado === "parcial" || fiado.estado === "pendiente") && saldo > 0 && (
                                 <>
                                   <Button
                                     variant="outline"
