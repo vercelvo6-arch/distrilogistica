@@ -135,20 +135,23 @@ export async function POST(request: NextRequest) {
     // Registrar el abono
     console.log('[REGISTRAR ABONO] Insertando abono en abonos_fiados...')
     await sql`
-      INSERT INTO abonos_fiados (
-        pedido_id,
-        monto_abono,
-        metodo_pago,
-        observaciones,
-        registrado_por
-      ) VALUES (
-        ${pedidoId},
-        ${montoAbono},
-        ${metodoPago || 'efectivo'},
-        ${observaciones || null},
-        ${usuarioId || session.user.id}
-      )
-    `
+  INSERT INTO abonos_fiados (
+    pedido_id,
+    monto_abono,
+    metodo_pago,
+    observaciones,
+    registrado_por,
+    origen_tabla
+  ) VALUES (
+    ${pedidoId},
+    ${montoAbono},
+    ${metodoPago || 'efectivo'},
+    ${observaciones || null},
+    ${usuarioId || session.user.id},
+    ${origenTabla}
+  )
+
+    
     console.log('[REGISTRAR ABONO] ✓ Abono insertado en abonos_fiados')
 
     // ✅ ACTUALIZAR EN LA TABLA CORRECTA
