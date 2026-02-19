@@ -137,15 +137,72 @@ export async function POST(request: Request) {
       console.log(`[CUADRE] ${pedidosFiados.length} fiados guardados`)
     }
 
-    // CONTAR REPASOS
-    const pedidosRepasos = await sql`
-      SELECT COUNT(*) as total
+    // GUARDAR REPASOS
+    // Los repasos se insertan en la tabla 'repasos' para que aparezcan
+    // visiblemente en el Admin y puedan ser reasignados a una nueva ruta.
+    console.log('[CUADRE] Buscando pedidos de repaso...')
+
+    const pedidosRepaso = await sql`
+      SELECT 
+        p.id,
+        p.cliente,
+        p.direccion,
+        p.telefono,
+        p.total,
+        p.observaciones,
+        pl.fecha,
+        pl.entregador,
+        pl.tipo_ruta
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.estado = 'repaso'
         AND pl.id = ANY(${planillaIds})
     `
-    console.log(`[CUADRE] Repasos: ${pedidosRepasos[0].total}`)
+
+    console.log(`[CUADRE] Repasos encontrados: ${pedidosRepaso.length}`)
+
+    if (pedidosRepaso.length > 0) {
+      console.log('[CUADRE] Guardando repasos...')
+
+      for (const pedido of pedidosRepaso) {
+        try {
+          await sql`
+            INSERT INTO repasos (
+              pedido_id,
+              cliente,
+              direccion,
+              telefono,
+              monto_total,
+              fecha_repaso,
+              entregador,
+              ruta,
+              estado,
+              observaciones
+            ) VALUES (
+              ${pedido.id},
+              ${pedido.cliente},
+              ${pedido.direccion || null},
+              ${pedido.telefono || null},
+              ${Number(pedido.total)},
+              ${pedido.fecha},
+              ${pedido.entregador},
+              ${pedido.tipo_ruta},
+              'pendiente',
+              ${pedido.observaciones || null}
+            )
+            ON CONFLICT (pedido_id)
+            DO UPDATE SET
+              estado = 'pendiente',
+              updated_at = NOW()
+          `
+        } catch (err) {
+          console.error('[CUADRE] Error guardando repaso:', err)
+          throw err
+        }
+      }
+
+      console.log(`[CUADRE] ${pedidosRepaso.length} repasos guardados`)
+    }
 
     // CONTAR DEVOLUCIONES
     const pedidosDevoluciones = await sql`
@@ -160,13 +217,22 @@ export async function POST(request: Request) {
     // CALCULOS
     const totalConsignado = Number(montoConsignacion || 0)
     const totalEfectivo = Number(efectivoRecibido) || 0
-    const totalEsperadoNum = Number(totalEsperado) || 0
     const descuentoNum = Number(descuento || 0)
     const agotadosNum = Number(agotados || 0)
     const fiadoNum = Number(fiado || 0)
     const devolucionesNum = Number(devoluciones || 0)
     const repasosNum = Number(repasos || 0)
     const erroresFacturacionNum = Number(erroresFacturacion || 0)
+
+    // El totalEsperado viene calculado correctamente desde el frontend:
+    // cargue - (fiado + repasos + devoluciones + agotados + descuentos + erroresFacturacion)
+    const totalEsperadoNum = Number(totalEsperado) || 0
+
+    console.log('[CUADRE] Verificando efectivo esperado:', {
+      totalEsperado: totalEsperadoNum,
+      erroresFacturacion: erroresFacturacionNum,
+      nota: 'totalEsperado ya viene calculado desde frontend (cargue - todas las novedades incluyendo errores de facturación)'
+    })
     
     const totalRecibido = totalEfectivo + totalConsignado
     const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
@@ -284,9 +350,9 @@ export async function POST(request: Request) {
       cuadreId,
       planillasMarcadas: updateResult.length,
       fiadosGuardados: pedidosFiados.length,
-      repasosPreservados: pedidosRepasos[0].total,
+      repasosGuardados: pedidosRepaso.length,
       devolucionesPreservadas: pedidosDevoluciones[0].total,
-      mensaje: `Cuadre registrado - ${pedidosFiados.length} fiado(s), ${pedidosRepasos[0].total} repaso(s)`
+      mensaje: `Cuadre registrado - ${pedidosFiados.length} fiado(s), ${pedidosRepaso.length} repaso(s)`
     })
 
   } catch (error) {
