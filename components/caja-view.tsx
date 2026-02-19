@@ -1430,7 +1430,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     toast({
       title: "Cuadre Agrupado Registrado",
-      description: `✅ ${data.mensaje}${pedidosFiadosGuardados > 0 ? ` · ${pedidosFiadosGuardados} fiado(s) guardado(s)` : ''}`,
+      description: `✅ ${data.mensaje}`,
     })
 
     setShowAgrupadoModal(false)
