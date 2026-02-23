@@ -120,6 +120,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [nuevaFechaRuta, setNuevaFechaRuta] = useState("")
   const [cambiandoFecha, setCambiandoFecha] = useState(false)
   const [editandoCuadreId, setEditandoCuadreId] = useState<number | null>(null)
+  // Estados para export
+  const [exportFechaDesde, setExportFechaDesde] = useState(new Date().toISOString().split("T")[0])
+  const [exportFechaHasta, setExportFechaHasta] = useState(new Date().toISOString().split("T")[0])
+  const [exportando, setExportando] = useState(false)
+  
 
   useEffect(() => {
     loadData()
@@ -1632,6 +1637,41 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const diferencia = selectedPlanilla
     ? Math.round((totalRecibido - calculateRouteTotals(selectedPlanilla).entregado) * 100) / 100
     : 0
+  const handleExportarHistorial = async () => {
+    try {
+      setExportando(true)
+
+      const response = await fetch(`/api/caja/exportar-historial?desde=${exportFechaDesde}&hasta=${exportFechaHasta}`)
+      
+      if (!response.ok) {
+        throw new Error('Error al exportar')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `seguimiento_entregas_${exportFechaDesde}_${exportFechaHasta}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      toast({
+        title: "Exportado",
+        description: "El archivo se descargó correctamente",
+      })
+    } catch (error) {
+      console.error('Error exportando:', error)
+      toast({
+        title: "Error",
+        description: "No se pudo exportar el historial",
+        variant: "destructive",
+      })
+    } finally {
+      setExportando(false)
+    }
+  }
 
   return (
     <>
@@ -1688,7 +1728,43 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             <ComisionesView />
           ) : selectedView === "historial" ? (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Historial de Recepciones</h2>
+  <div className="flex justify-between items-center mb-4">
+    <h2 className="text-lg font-semibold">Historial de Recepciones</h2>
+    
+    <div className="flex items-center gap-3">
+      <Input
+        type="date"
+        value={exportFechaDesde}
+        onChange={(e) => setExportFechaDesde(e.target.value)}
+        className="w-[140px]"
+      />
+      <span className="text-sm text-gray-500">-</span>
+      <Input
+        type="date"
+        value={exportFechaHasta}
+        onChange={(e) => setExportFechaHasta(e.target.value)}
+        className="w-[140px]"
+      />
+      <Button 
+        onClick={handleExportarHistorial}
+        disabled={exportando}
+        size="sm"
+        className="bg-green-600 hover:bg-green-700"
+      >
+        {exportando ? (
+          <>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            Exportando...
+          </>
+        ) : (
+          <>
+            <Calendar className="h-4 w-4 mr-2" />
+            Exportar Excel
+          </>
+        )}
+      </Button>
+    </div>
+  </div>
               {recepciones.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No hay recepciones registradas</p>
               ) : (
