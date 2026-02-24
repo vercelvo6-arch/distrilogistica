@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
           )
         `
 
+        let secuencia = 1
         for (const order of sheet.orders) {
           const pedidoTimestamp = Date.now()
           const pedidoRandom = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
@@ -102,7 +103,8 @@ export async function POST(request: NextRequest) {
               barrio,
               estado,
               total,
-              observaciones
+              observaciones,
+              secuencia
             ) VALUES (
               ${pedidoId},
               ${planillaId},
@@ -112,9 +114,12 @@ export async function POST(request: NextRequest) {
               ${order.barrio || null},
               'pendiente',
               ${order.total},
-              ${order.comentarios || null}
+              ${order.comentarios || null},
+              ${secuencia}
             )
           `
+
+          secuencia++
 
           for (const item of order.items) {
             await sql`
