@@ -334,27 +334,49 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       const nurturingText = await nurturingFile.text()
       const planillaText = await planillaFile.text()
 
-      // PASO 1: Parse - contar filas
-      setImportStatus("Analizando archivo...")
+      // PASO 1: Generar TODAS las rutas en el frontend
+      setImportStatus("Generando rutas...")
+      const sales = parseNurturingCSV(nurturingText)
+      const products = parsePlanillaCSV(planillaText)
+
+      if (sales.length === 0) {
+        setError("No se encontraron ventas en el archivo NURTURING")
+        setIsImporting(false)
+        return
+      }
+
+      if (products.length === 0) {
+        setError("No se encontró inventario en el archivo PLANILLA")
+        setIsImporting(false)
+        return
+      }
+
+      const fecha = new Date().toISOString().split("T")[0]
+      const orders = generateOrdersFromSales(sales, products, fecha)
+      const sheets = generateRouteSheets(orders)
+
+      setImportStatus(`Procesando ${sheets.length} rutas...`)
+
+      // PASO 2: Parse - informar al backend cuántas rutas hay
       const parseResponse = await fetch('/api/import-csv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'parse',
-          nurturingCSV: nurturingText
+          routeSheets: sheets
         })
       })
 
       const parseData = await parseResponse.json()
       
       if (!parseResponse.ok) {
-        throw new Error(parseData.error || 'Error al analizar archivo')
+        throw new Error(parseData.error || 'Error al analizar rutas')
       }
 
-      const totalRows = parseData.totalRows
-      setImportStatus(`Procesando ${totalRows} ventas...`)
+      const totalRoutes = parseData.totalRoutes
+      setImportStatus(`Guardando ${totalRoutes} rutas...`)
 
-      // PASO 2: Import por lotes
+      // PASO 3: Import por lotes de RUTAS COMPLETAS
       let offset = 0
       let hasMore = true
       let totalImported = 0
@@ -365,8 +387,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'import-batch',
-            nurturingCSV: nurturingText,
-            planillaCSV: planillaText,
+            routeSheets: sheets,
             offset
           })
         })
@@ -382,10 +403,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         hasMore = batchData.hasMore
         
         setImportProgress(batchData.progress)
-        setImportStatus(`Procesando... ${totalImported}/${totalRows} ventas (${batchData.progress}%)`)
+        setImportStatus(`Guardando rutas... ${totalImported}/${totalRoutes} (${batchData.progress}%)`)
 
         // Pequeña pausa para no saturar el servidor
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 200))
       }
 
       setImportStatus("✅ Importación completada")
@@ -405,16 +426,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       setImportProgress(0)
       setImportStatus("")
     }
-  }
-
-  const handleOpenAssignModal = (sheetId: string, ruta: string) => {
-    const today = new Date().toISOString().split("T")[0]
-    setAssignmentModal({
-      sheetId,
-      ruta,
-      entregadorSeleccionado: "",
-      fechaAlistamiento: today,
-    })
   }
 
   const handleConfirmAssignment = async () => {
