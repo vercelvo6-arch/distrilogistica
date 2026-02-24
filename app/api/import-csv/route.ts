@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { getDB } from '@/lib/db'
-import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateRouteSheets } from '@/lib/csv-parser'
 
-const BATCH_SIZE = 200 // Procesar 200 pedidos por lote
+const BATCH_SIZE = 10 // Procesar 10 rutas completas por lote
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,37 +12,28 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { action, nurturingCSV, planillaCSV, offset } = body
+    const { action, routeSheets, offset } = body
 
-    // ACCIÓN 1: PARSE - Contar filas
+    // ACCIÓN 1: PARSE - Contar rutas
     if (action === 'parse') {
-      const sales = parseNurturingCSV(nurturingCSV)
-      
       return NextResponse.json({
         success: true,
-        totalRows: sales.length,
-        message: `Se encontraron ${sales.length} ventas en el archivo`
+        totalRoutes: routeSheets.length,
+        message: `Se generaron ${routeSheets.length} rutas`
       })
     }
 
-    // ACCIÓN 2: IMPORT-BATCH - Procesar lote
+    // ACCIÓN 2: IMPORT-BATCH - Procesar lote de rutas completas
     if (action === 'import-batch') {
-      const sales = parseNurturingCSV(nurturingCSV)
-      const products = parsePlanillaCSV(planillaCSV)
-
-      if (sales.length === 0) {
-        return NextResponse.json({ error: 'No se encontraron ventas' }, { status: 400 })
+      if (!Array.isArray(routeSheets) || routeSheets.length === 0) {
+        return NextResponse.json({ error: 'No se recibieron rutas' }, { status: 400 })
       }
 
-      if (products.length === 0) {
-        return NextResponse.json({ error: 'No se encontró inventario' }, { status: 400 })
-      }
-
-      // Obtener el lote actual
+      // Obtener el lote actual de RUTAS COMPLETAS
       const currentOffset = offset || 0
-      const salesBatch = sales.slice(currentOffset, currentOffset + BATCH_SIZE)
+      const sheetsBatch = routeSheets.slice(currentOffset, currentOffset + BATCH_SIZE)
 
-      if (salesBatch.length === 0) {
+      if (sheetsBatch.length === 0) {
         return NextResponse.json({
           success: true,
           imported: 0,
@@ -53,16 +43,12 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Generar pedidos del lote
-      const fecha = new Date().toISOString().split('T')[0]
-      const orders = generateOrdersFromSales(salesBatch, products, fecha)
-      const sheets = generateRouteSheets(orders)
-
       // Guardar en BD
       const sql = getDB()
       let insertedCount = 0
+      const fecha = new Date().toISOString().split('T')[0]
 
-      for (const sheet of sheets) {
+      for (const sheet of sheetsBatch) {
         const timestamp = Date.now()
         const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
         const planillaId = `PLN${timestamp}${random}`
@@ -148,17 +134,17 @@ export async function POST(request: NextRequest) {
       }
 
       const nextOffset = currentOffset + BATCH_SIZE
-      const hasMore = nextOffset < sales.length
-      const progress = Math.round((nextOffset / sales.length) * 100)
+      const hasMore = nextOffset < routeSheets.length
+      const progress = Math.round((nextOffset / routeSheets.length) * 100)
 
       return NextResponse.json({
         success: true,
-        imported: salesBatch.length,
+        imported: sheetsBatch.length,
         insertedSheets: insertedCount,
         hasMore,
         offset: nextOffset,
         progress: Math.min(progress, 100),
-        totalRows: sales.length
+        totalRoutes: routeSheets.length
       })
     }
 
