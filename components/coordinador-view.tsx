@@ -42,6 +42,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [loading, setLoading] = useState(true)
   const [entregadores, setEntregadores] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState("generar")
+  // Estados para importación por lotes
+  const [importProgress, setImportProgress] = useState(0)
+  const [importStatus, setImportStatus] = useState<string>("")
+  const [isImporting, setIsImporting] = useState(false)
 
   // Estados para supervisión
   const [supervisionSheets, setSupervisionSheets] = useState<RouteSheet[]>([])
@@ -321,51 +325,85 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       return
     }
 
-    setIsProcessing(true)
+    setIsImporting(true)
+    setImportProgress(0)
+    setImportStatus("Leyendo archivos...")
     setError(null)
 
     try {
       const nurturingText = await nurturingFile.text()
       const planillaText = await planillaFile.text()
 
-      const sales = parseNurturingCSV(nurturingText)
-      const products = parsePlanillaCSV(planillaText)
-
-      if (sales.length === 0) {
-        setError("No se encontraron ventas en el archivo NURTURING")
-        setIsProcessing(false)
-        return
-      }
-
-      if (products.length === 0) {
-        setError("No se encontró inventario en el archivo PLANILLA")
-        setIsProcessing(false)
-        return
-      }
-
-      const fecha = new Date().toISOString().split("T")[0]
-      const orders = generateOrdersFromSales(sales, products, fecha)
-      const sheets = generateRouteSheets(orders)
-
-      const response = await fetch("/api/planillas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routeSheets: sheets }),
+      // PASO 1: Parse - contar filas
+      setImportStatus("Analizando archivo...")
+      const parseResponse = await fetch('/api/import-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'parse',
+          nurturingCSV: nurturingText
+        })
       })
 
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || `Error del servidor: ${response.status}`)
+      const parseData = await parseResponse.json()
+      
+      if (!parseResponse.ok) {
+        throw new Error(parseData.error || 'Error al analizar archivo')
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      const totalRows = parseData.totalRows
+      setImportStatus(`Procesando ${totalRows} ventas...`)
+
+      // PASO 2: Import por lotes
+      let offset = 0
+      let hasMore = true
+      let totalImported = 0
+
+      while (hasMore) {
+        const batchResponse = await fetch('/api/import-csv', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'import-batch',
+            nurturingCSV: nurturingText,
+            planillaCSV: planillaText,
+            offset
+          })
+        })
+
+        const batchData = await batchResponse.json()
+
+        if (!batchResponse.ok) {
+          throw new Error(batchData.error || 'Error al importar lote')
+        }
+
+        totalImported += batchData.imported
+        offset = batchData.offset
+        hasMore = batchData.hasMore
+        
+        setImportProgress(batchData.progress)
+        setImportStatus(`Procesando... ${totalImported}/${totalRows} ventas (${batchData.progress}%)`)
+
+        // Pequeña pausa para no saturar el servidor
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+
+      setImportStatus("✅ Importación completada")
+      setImportProgress(100)
+      
+      await new Promise(resolve => setTimeout(resolve, 1000))
       await loadPlanillas()
       setActiveTab("asignar")
-      setIsProcessing(false)
+      
+      setIsImporting(false)
+      setImportProgress(0)
+      setImportStatus("")
+
     } catch (err) {
-      setError("Error al procesar los archivos: " + (err as Error).message)
-      setIsProcessing(false)
+      setError("Error al procesar: " + (err as Error).message)
+      setIsImporting(false)
+      setImportProgress(0)
+      setImportStatus("")
     }
   }
 
@@ -653,14 +691,28 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                   </Alert>
                 )}
 
+                {isImporting && (
+                  <div className="space-y-3 mb-4">
+                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className="bg-blue-600 h-3 transition-all duration-300 rounded-full"
+                        style={{ width: `${importProgress}%` }}
+                      />
+                    </div>
+                    <p className="text-sm text-center text-muted-foreground">
+                      {importStatus}
+                    </p>
+                  </div>
+                )}
+
                 <Button
                   onClick={handleGeneratePlanillas}
-                  disabled={!nurturingFile || !planillaFile || isProcessing}
+                  disabled={!nurturingFile || !planillaFile || isImporting}
                   className="w-full"
                   size="lg"
                 >
                   <FileSpreadsheet className="h-4 w-4 md:h-5 md:w-5 mr-2" />
-                  {isProcessing ? "Procesando..." : "Generar Planillas por Ruta"}
+                  {isImporting ? "Procesando..." : "Generar Planillas por Ruta"}
                 </Button>
               </div>
             </Card>
