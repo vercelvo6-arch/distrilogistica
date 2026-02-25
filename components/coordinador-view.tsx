@@ -428,6 +428,16 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
   }
 
+  const handleOpenAssignModal = (sheetId: string, ruta: string) => {
+    const today = new Date().toISOString().split("T")[0]
+    setAssignmentModal({
+      sheetId,
+      ruta,
+      entregadorSeleccionado: "",
+      fechaAlistamiento: today,
+    })
+  }
+
   const handleConfirmAssignment = async () => {
     if (!assignmentModal || !assignmentModal.entregadorSeleccionado) {
       alert("Seleccione un entregador")
