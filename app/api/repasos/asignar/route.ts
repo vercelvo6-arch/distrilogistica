@@ -16,12 +16,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     
-    // ✅ AGREGAR LOGGING PARA DEBUG
     console.log('[API asignar-repaso] 📥 Datos recibidos:', body)
     
     const { pedidoId, planillaDestinoId } = body
 
-    // ✅ VALIDACIÓN SIMPLE - Solo verificar que existan
     if (!pedidoId || !planillaDestinoId) {
       console.error('[API asignar-repaso] ❌ Validación falló:', {
         pedidoId,
@@ -35,7 +33,6 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // ✅ Aceptar pedidoId como STRING
     const pedido = await sql`
       SELECT id, total, estado, planilla_id
       FROM pedidos
@@ -50,7 +47,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ✅ USAR planillaDestinoId directamente como STRING
     const planillaDestino = await sql`
       SELECT id, tipo_ruta, total_cargue, estado, cuadrado_en_caja
       FROM planillas
@@ -69,17 +65,16 @@ export async function POST(request: NextRequest) {
     const totalPedido = Number(pedido[0].total)
     const totalCargueActual = Number(planillaDestino[0].total_cargue) || 0
 
-    // Actualizar el pedido para cambiar su planilla_id y estado
+    // ✅ CAMBIO CRÍTICO: estado = 'entregado' en lugar de 'pendiente'
     await sql`
       UPDATE pedidos
       SET 
         planilla_id = ${planillaDestinoId},
-        estado = 'pendiente',
+        estado = 'entregado',
         updated_at = NOW()
       WHERE id = ${pedidoId}
     `
 
-    // Actualizar el total_cargue de la planilla destino
     const nuevoTotalCargue = totalCargueActual + totalPedido
     
     await sql`
