@@ -124,7 +124,7 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
 
       return {
         codigo: sale.numeroArticulo,
-        descripcion: product?.descripcion || sale.nombreProducto,
+        descripcion: sale.nombreProducto || product?.descripcion,
         categoria: product?.categoria || "",
         cantidad: sale.cantidadComprada,
         valorUnidad: sale.totalesUnidad / sale.cantidadComprada,
