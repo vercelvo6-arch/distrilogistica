@@ -7,42 +7,37 @@ export async function POST(request: NextRequest) {
   
   try {
     const session = await getSession()
-    console.log('[API asignar-cobro] Session:', session?.user)
-    
     if (!session?.user) {
-      console.log('[API asignar-cobro] ❌ No autenticado')
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
     if (!['administrador'].includes(session.user.rol)) {
-      console.log('[API asignar-cobro] ❌ No autorizado:', session.user.rol)
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
     const body = await request.json()
-    console.log('[API asignar-cobro] 📥 Body completo:', JSON.stringify(body, null, 2))
-    
     const { pedidoFiadoId, planillaDestinoId } = body
 
     if (!pedidoFiadoId || !planillaDestinoId) {
-      console.error('[API asignar-cobro] ❌ Validación falló:', {
-        pedidoFiadoId,
-        planillaDestinoId
-      })
       return NextResponse.json(
         { error: 'Datos incompletos: pedidoFiadoId y planillaDestinoId son requeridos' },
         { status: 400 }
       )
     }
 
-    console.log('[API asignar-cobro] ✓ Validación OK')
     const sql = getDB()
 
-    // Verificar que el pedido fiado existe
-    console.log('[API asignar-cobro] 🔍 Buscando pedido fiado:', pedidoFiadoId)
+    // ===================================================
+    // PASO 1: Buscar el fiado en AMBAS tablas
+    // ===================================================
+    let fiadoData: any = null
+    let origenFiado: 'pedidos' | 'fiados' = 'pedidos'
+
+    // Intentar primero en tabla "pedidos"
+    console.log('[API asignar-cobro] 🔍 Buscando en tabla pedidos:', pedidoFiadoId)
     const pedidoFiado = await sql`
       SELECT 
-        p.id, 
+        p.id::text as id, 
         p.cliente, 
         p.saldo_pendiente,
         p.estado,
@@ -54,154 +49,144 @@ export async function POST(request: NextRequest) {
         AND p.estado = 'fiado'
         AND p.saldo_pendiente > 0
     `
-    console.log('[API asignar-cobro] Pedido fiado encontrado:', pedidoFiado.length > 0 ? 'SÍ' : 'NO')
-    console.log('[API asignar-cobro] Datos:', JSON.stringify(pedidoFiado, null, 2))
 
-    if (pedidoFiado.length === 0) {
-      console.error('[API asignar-cobro] ❌ Pedido fiado no encontrado:', pedidoFiadoId)
+    if (pedidoFiado.length > 0) {
+      fiadoData = pedidoFiado[0]
+      origenFiado = 'pedidos'
+      console.log('[API asignar-cobro] ✓ Fiado encontrado en tabla pedidos')
+    } else {
+      // Buscar en tabla "fiados" (importados desde CSV)
+      console.log('[API asignar-cobro] 🔍 No encontrado en pedidos, buscando en tabla fiados:', pedidoFiadoId)
+      
+      // El ID puede venir como número o como string
+      const fiadoTabla = await sql`
+        SELECT 
+          id::text as id,
+          cliente,
+          COALESCE(saldo_pendiente, monto_total) as saldo_pendiente,
+          estado,
+          direccion,
+          telefono,
+          NULL as barrio
+        FROM fiados
+        WHERE id::text = ${pedidoFiadoId}
+          AND estado != 'pagado_completo'
+          AND COALESCE(saldo_pendiente, monto_total) > 0
+      `
+
+      if (fiadoTabla.length > 0) {
+        fiadoData = fiadoTabla[0]
+        origenFiado = 'fiados'
+        console.log('[API asignar-cobro] ✓ Fiado encontrado en tabla fiados')
+      }
+    }
+
+    if (!fiadoData) {
+      console.error('[API asignar-cobro] ❌ Fiado no encontrado en ninguna tabla:', pedidoFiadoId)
       return NextResponse.json(
-        { error: 'Pedido fiado no encontrado o sin saldo pendiente' },
+        { error: 'Fiado no encontrado o sin saldo pendiente' },
         { status: 404 }
       )
     }
 
-    // Verificar que la planilla destino existe y está disponible
-    console.log('[API asignar-cobro] 🔍 Buscando planilla destino:', planillaDestinoId)
+    // ===================================================
+    // PASO 2: Verificar planilla destino
+    // ===================================================
     const planillaDestino = await sql`
       SELECT id, tipo_ruta, entregador, total_cargue, estado, cuadrado_en_caja
       FROM planillas
       WHERE id = ${planillaDestinoId}
         AND (cuadrado_en_caja IS NULL OR cuadrado_en_caja = false)
     `
-    console.log('[API asignar-cobro] Planilla encontrada:', planillaDestino.length > 0 ? 'SÍ' : 'NO')
-    console.log('[API asignar-cobro] Datos:', JSON.stringify(planillaDestino, null, 2))
 
     if (planillaDestino.length === 0) {
-      console.error('[API asignar-cobro] ❌ Planilla no encontrada o ya cuadrada:', planillaDestinoId)
       return NextResponse.json(
         { error: 'Planilla destino no encontrada o ya fue cuadrada en caja' },
         { status: 404 }
       )
     }
 
-    const saldoPendiente = Number(pedidoFiado[0].saldo_pendiente)
+    const saldoPendiente = Number(fiadoData.saldo_pendiente)
     const totalCargueActual = Number(planillaDestino[0].total_cargue) || 0
 
-    console.log('[API asignar-cobro] Montos:', {
-      saldoPendiente,
-      totalCargueActual
-    })
-
-    // Generar ID único para el pedido de cobro
+    // ===================================================
+    // PASO 3: Crear pedido de COBRO en la planilla destino
+    // ===================================================
     const cobroId = `COB${Date.now()}${Math.random().toString(36).substring(2, 9)}`
-    console.log('[API asignar-cobro] Generado cobroId:', cobroId)
 
-    // Crear el pedido de COBRO
-    console.log('[API asignar-cobro] 💾 Insertando pedido de cobro...')
-    try {
-      // Obtener la última secuencia de la planilla
-      const ultimaSecuencia = await sql`
-        SELECT COALESCE(MAX(secuencia), 0) as max_sec
-        FROM pedidos
-        WHERE planilla_id = ${planillaDestinoId}
-      `
-      const nuevaSecuencia = (ultimaSecuencia[0]?.max_sec || 0) + 1
-      console.log('[API asignar-cobro] Nueva secuencia:', nuevaSecuencia)
+    const ultimaSecuencia = await sql`
+      SELECT COALESCE(MAX(secuencia), 0) as max_sec
+      FROM pedidos
+      WHERE planilla_id = ${planillaDestinoId}
+    `
+    const nuevaSecuencia = (ultimaSecuencia[0]?.max_sec || 0) + 1
 
-      await sql`
-        INSERT INTO pedidos (
-          id,
-          planilla_id,
-          secuencia,
-          cliente,
-          direccion,
-          telefono,
-          barrio,
-          total,
-          estado,
-          es_cobro,
-          pedido_fiado_id,
-          observaciones,
-          created_at,
-          updated_at
-        ) VALUES (
-          ${cobroId},
-          ${planillaDestinoId},
-          ${nuevaSecuencia},
-          ${pedidoFiado[0].cliente + ' (COBRO)'},
-          ${pedidoFiado[0].direccion || 'Por definir'},
-          ${pedidoFiado[0].telefono || 'N/A'},
-          ${pedidoFiado[0].barrio || 'N/A'},
-          ${saldoPendiente},
-          'pendiente',
-          true,
-          ${pedidoFiadoId},
-          ${'Cobro de fiado pendiente'},
-          NOW(),
-          NOW()
-        )
-      `
-      console.log('[API asignar-cobro] ✓ Pedido de cobro insertado')
-    } catch (insertError) {
-      console.error('[API asignar-cobro] ❌ ERROR al insertar pedido:', insertError)
-      throw insertError
-    }
+    await sql`
+      INSERT INTO pedidos (
+        id, planilla_id, secuencia, cliente, direccion, telefono, barrio,
+        total, estado, es_cobro, pedido_fiado_id, observaciones,
+        created_at, updated_at
+      ) VALUES (
+        ${cobroId},
+        ${planillaDestinoId},
+        ${nuevaSecuencia},
+        ${fiadoData.cliente + ' (COBRO)'},
+        ${fiadoData.direccion || 'Por definir'},
+        ${fiadoData.telefono || 'N/A'},
+        ${fiadoData.barrio || 'N/A'},
+        ${saldoPendiente},
+        'pendiente',
+        true,
+        ${pedidoFiadoId},
+        ${'Cobro de fiado pendiente'},
+        NOW(),
+        NOW()
+      )
+    `
 
-    // Agregar un "producto" descriptivo al cobro
-    console.log('[API asignar-cobro] 💾 Insertando producto de cobro...')
-    try {
-      await sql`
-        INSERT INTO pedido_productos (
-          pedido_id,
-          codigo,
-          nombre,
-          cantidad,
-          precio_unitario,
-          total,
-          created_at,
-          updated_at
-        ) VALUES (
-          ${cobroId},
-          'COBRO',
-          ${'Cobro de cuenta por cobrar - ' + pedidoFiado[0].cliente},
-          1,
-          ${saldoPendiente},
-          ${saldoPendiente},
-          NOW(),
-          NOW()
-        )
-      `
-      console.log('[API asignar-cobro] ✓ Producto de cobro insertado')
-    } catch (insertError) {
-      console.error('[API asignar-cobro] ❌ ERROR al insertar producto:', insertError)
-      throw insertError
-    }
+    await sql`
+      INSERT INTO pedido_productos (
+        pedido_id, codigo, nombre, cantidad, precio_unitario, total,
+        created_at, updated_at
+      ) VALUES (
+        ${cobroId},
+        'COBRO',
+        ${'Cobro de cuenta por cobrar - ' + fiadoData.cliente},
+        1,
+        ${saldoPendiente},
+        ${saldoPendiente},
+        NOW(),
+        NOW()
+      )
+    `
 
-    // Actualizar el total_cargue de la planilla destino
+    // ===================================================
+    // PASO 4: Actualizar total_cargue de la planilla
+    // ===================================================
     const nuevoTotalCargue = totalCargueActual + saldoPendiente
 
-    console.log('[API asignar-cobro] 💾 Actualizando total_cargue de planilla...')
-    try {
+    await sql`
+      UPDATE planillas
+      SET total_cargue = ${nuevoTotalCargue}, updated_at = NOW()
+      WHERE id = ${planillaDestinoId}
+    `
+
+    // ===================================================
+    // PASO 5: Si el fiado viene de tabla "fiados",
+    // actualizar planilla_id para que aparezca en FiadosAsignadosSection
+    // ===================================================
+    if (origenFiado === 'fiados') {
+      console.log('[API asignar-cobro] 📝 Actualizando planilla_id en tabla fiados:', pedidoFiadoId)
       await sql`
-        UPDATE planillas
-        SET 
-          total_cargue = ${nuevoTotalCargue},
-          updated_at = NOW()
-        WHERE id = ${planillaDestinoId}
+        UPDATE fiados
+        SET planilla_id = ${Number(planillaDestinoId)}, updated_at = NOW()
+        WHERE id::text = ${pedidoFiadoId}
       `
-      console.log('[API asignar-cobro] ✓ Total_cargue actualizado')
-    } catch (updateError) {
-      console.error('[API asignar-cobro] ❌ ERROR al actualizar planilla:', updateError)
-      throw updateError
+      console.log('[API asignar-cobro] ✓ planilla_id actualizado en tabla fiados')
     }
 
-    console.log('[API asignar-cobro] ✅ ÉXITO - Cobro asignado:', {
-      cobroId,
-      pedidoFiadoId,
-      planillaDestinoId,
-      montoCobro: saldoPendiente,
-      totalCargueAnterior: totalCargueActual,
-      nuevoTotalCargue
+    console.log('[API asignar-cobro] ✅ ÉXITO:', {
+      cobroId, origen: origenFiado, saldoPendiente, nuevoTotalCargue
     })
 
     return NextResponse.json({
@@ -210,7 +195,8 @@ export async function POST(request: NextRequest) {
       cobro: {
         id: cobroId,
         monto: saldoPendiente,
-        cliente: pedidoFiado[0].cliente
+        cliente: fiadoData.cliente,
+        origen: origenFiado
       },
       planilla: {
         id: planillaDestino[0].id,
@@ -223,14 +209,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[API asignar-cobro] ❌ ERROR FATAL:', error)
-    console.error('[API asignar-cobro] Error stack:', error instanceof Error ? error.stack : 'No stack')
-    console.error('[API asignar-cobro] Error message:', error instanceof Error ? error.message : error)
-    
     return NextResponse.json(
       { 
         error: 'Error al asignar cobro',
-        details: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )
