@@ -8,7 +8,6 @@ export async function GET(request: NextRequest) {
     
     const session = await getSession()
     if (!session?.user) {
-      console.log('[API fiados] No autenticado')
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
@@ -16,10 +15,42 @@ export async function GET(request: NextRequest) {
     const fechaInicio = searchParams.get('fechaInicio')
     const fechaFin = searchParams.get('fechaFin')
     const entregador = searchParams.get('entregador')
-
-    console.log('[API fiados] Filtros:', { fechaInicio, fechaFin, entregador })
+    const planillaId = searchParams.get('planilla_id') // ← NUEVO
 
     const sql = getDB()
+
+    // ========================================
+    // CASO ESPECIAL: filtro por planilla_id
+    // Usado por FiadosAsignadosSection en Caja
+    // Solo consulta tabla "fiados" con planilla_id asignado
+    // ========================================
+    if (planillaId) {
+      console.log('[API fiados] Filtrando por planilla_id:', planillaId)
+      
+      const fiadosAsignados = await sql`
+        SELECT 
+          f.id,
+          f.cliente,
+          f.direccion,
+          f.telefono,
+          f.monto_total,
+          COALESCE(f.monto_pagado, 0) as monto_pagado,
+          COALESCE(f.saldo_pendiente, f.monto_total) as saldo_pendiente,
+          f.estado,
+          f.entregador,
+          f.ruta,
+          f.planilla_id,
+          f.observaciones
+        FROM fiados f
+        WHERE f.planilla_id = ${Number(planillaId)}
+          AND f.estado != 'pagado_completo'
+        ORDER BY f.cliente ASC
+      `
+
+      console.log('[API fiados] Fiados asignados a planilla', planillaId, ':', fiadosAsignados.length)
+
+      return NextResponse.json({ fiados: fiadosAsignados, resumen: [] })
+    }
 
     // ========================================
     // CONSULTA 1: Tabla "pedidos" (fiados de planillas diarias)
@@ -103,7 +134,6 @@ export async function GET(request: NextRequest) {
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       } else {
-        // SIN FILTROS - traer todos los de pedidos
         fiadosPedidos = await sql`
           SELECT 
             p.id::text as id,
@@ -155,7 +185,7 @@ export async function GET(request: NextRequest) {
             f.fecha_fiado::date::text as fecha,
             f.entregador,
             f.ruta as tipo_ruta,
-            NULL as planilla_id,
+            f.planilla_id::text as planilla_id,
             'fiados' as origen
           FROM fiados f
           WHERE f.fecha_fiado >= ${fechaInicio}::date
@@ -179,7 +209,7 @@ export async function GET(request: NextRequest) {
             f.fecha_fiado::date::text as fecha,
             f.entregador,
             f.ruta as tipo_ruta,
-            NULL as planilla_id,
+            f.planilla_id::text as planilla_id,
             'fiados' as origen
           FROM fiados f
           WHERE f.fecha_fiado >= ${fechaInicio}::date
@@ -202,14 +232,13 @@ export async function GET(request: NextRequest) {
             f.fecha_fiado::date::text as fecha,
             f.entregador,
             f.ruta as tipo_ruta,
-            NULL as planilla_id,
+            f.planilla_id::text as planilla_id,
             'fiados' as origen
           FROM fiados f
           WHERE f.entregador = ${entregador}
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       } else {
-        // SIN FILTROS - traer todos los de fiados
         fiadosTabla = await sql`
           SELECT 
             COALESCE(f.pedido_id, f.id::text) as id,
@@ -225,7 +254,7 @@ export async function GET(request: NextRequest) {
             f.fecha_fiado::date::text as fecha,
             f.entregador,
             f.ruta as tipo_ruta,
-            NULL as planilla_id,
+            f.planilla_id::text as planilla_id,
             'fiados' as origen
           FROM fiados f
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
@@ -234,7 +263,6 @@ export async function GET(request: NextRequest) {
       console.log('[API fiados] ✓ Fiados desde tabla fiados:', fiadosTabla.length)
     } catch (error) {
       console.error('[API fiados] ✗ Error en query fiados:', error)
-      console.error('[API fiados] Error details:', error)
       fiadosTabla = []
     }
 
@@ -242,9 +270,6 @@ export async function GET(request: NextRequest) {
     // COMBINAR RESULTADOS
     // ========================================
     const todosLosFiados = [...fiadosPedidos, ...fiadosTabla]
-    console.log('[API fiados] 📊 Total fiados combinados:', todosLosFiados.length)
-    console.log('[API fiados]    - Desde pedidos:', fiadosPedidos.length)
-    console.log('[API fiados]    - Desde fiados:', fiadosTabla.length)
 
     // ========================================
     // OBTENER ABONOS
@@ -269,7 +294,6 @@ export async function GET(request: NextRequest) {
             WHERE a.pedido_id = ANY(${pedidosIds})
             ORDER BY a.fecha_abono DESC
           `
-          console.log('[API fiados] ✓ Abonos encontrados:', abonos.length)
         } catch (error) {
           console.error('[API fiados] ✗ Error obteniendo abonos:', error)
           abonos = []
@@ -277,9 +301,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ========================================
-    // AGRUPAR ABONOS POR PEDIDO
-    // ========================================
     const fiadosConAbonos = todosLosFiados.map((fiado: any) => ({
       ...fiado,
       abonos: abonos.filter((a: any) => a.pedido_id === fiado.id)
@@ -309,23 +330,12 @@ export async function GET(request: NextRequest) {
       ...data
     }))
 
-    console.log('[API fiados] 📈 Resumen por entregador:', resumen)
-    console.log('[API fiados] === FIN EXITOSO ===')
-
-    return NextResponse.json({
-      fiados: fiadosConAbonos,
-      resumen
-    })
+    return NextResponse.json({ fiados: fiadosConAbonos, resumen })
 
   } catch (error) {
     console.error('[API fiados] ❌ ERROR CRÍTICO:', error)
-    console.error('[API fiados] Stack:', error instanceof Error ? error.stack : 'No stack')
-    
     return NextResponse.json(
-      { 
-        error: 'Error al cargar fiados',
-        details: error instanceof Error ? error.message : String(error)
-      },
+      { error: 'Error al cargar fiados', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     )
   }
