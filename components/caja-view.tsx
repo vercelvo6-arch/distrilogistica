@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { ComisionesView } from "@/components/comisiones-view"
 import { CuadreEditModal } from "@/components/cuadre-edit-modal"
+import { FiadosAsignadosSection } from "@/components/fiados-asignados-section"
 
 interface CajaViewProps {
   onLogout: () => void
@@ -124,6 +125,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [exportFechaDesde, setExportFechaDesde] = useState(new Date().toISOString().split("T")[0])
   const [exportFechaHasta, setExportFechaHasta] = useState(new Date().toISOString().split("T")[0])
   const [exportando, setExportando] = useState(false)
+  
+  // Estado para tracking de cobros de fiados asignados
+  const [totalCobrosAsignados, setTotalCobrosAsignados] = useState(0)
   
 
   useEffect(() => {
@@ -1142,6 +1146,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const handleOpenModal = (planilla: RouteSheet) => {
     const totals = calculateRouteTotals(planilla)
     setSelectedPlanilla(planilla)
+    setTotalCobrosAsignados(0)
     setFormData({
       efectivoRecibido: "",
       tieneConsignacion: false,
@@ -1164,6 +1169,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const handleCloseModal = () => {
     setShowModal(false)
     setSelectedPlanilla(null)
+    setTotalCobrosAsignados(0)
     setFormData({
       efectivoRecibido: "",
       tieneConsignacion: false,
@@ -1549,10 +1555,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       const totals = calculateRouteTotals(selectedPlanilla)
 
-      // Calcular totalEsperado = cargue - novedades (fiado + devoluciones + repasos + agotados + descuentos)
+      // Calcular totalEsperado = cargue - novedades (fiado + devoluciones + repasos + agotados + descuentos) + cobros de fiados asignados
       const cargue = selectedPlanilla.montoCargue || 0
       const novedades = totals.fiado + totals.devoluciones + totals.repasos + totals.agotados + totals.erroresFacturacion + Number(formData.descuento || 0)
-      const totalEsperadoCalculado = cargue - novedades
+      const totalEsperadoCalculado = cargue - novedades + totalCobrosAsignados
 
       const response = await fetch("/api/caja/recibir-efectivo", {
         method: "POST",
@@ -2770,6 +2776,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             </div>
 
             {selectedPlanilla && (
+              <FiadosAsignadosSection
+                planillaId={selectedPlanilla.id}
+                onTotalCobrosChange={setTotalCobrosAsignados}
+              />
+            )}
+
+            {selectedPlanilla && (
               <div className="border-t pt-4">
                 <p className="text-sm font-medium mb-2">Resumen de la Ruta:</p>
                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -2801,13 +2814,20 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                       {formatCOP(calculateRouteTotals(selectedPlanilla).repasos)}
                     </p>
                   </div>
+                  {totalCobrosAsignados > 0 && (
+                    <div>
+                      <span className="text-gray-500">Cobros Fiados</span>
+                      <p className="font-semibold text-amber-600">+ {formatCOP(totalCobrosAsignados)}</p>
+                    </div>
+                  )}
+
                   <div>
                     <span className="text-gray-500">Diferencia Esperada</span>
                     {(() => {
                       const totals = calculateRouteTotals(selectedPlanilla)
                       const cargue = selectedPlanilla?.montoCargue || 0
                       const novedades = totals.fiado + totals.devoluciones + totals.repasos + totals.agotados + Number(formData.descuento || 0)
-                      const totalEsperado = cargue - novedades
+                      const totalEsperado = cargue - novedades + totalCobrosAsignados
                       const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
                       const diferencia = Math.round((totalRecibido - totalEsperado) * 100) / 100
                       return (
