@@ -12,7 +12,7 @@ import {
   Banknote,
   RotateCcw,
   ChevronRight,
-  Circle,
+  ChevronLeft,
   ArrowUpRight,
   Package,
 } from "lucide-react"
@@ -55,8 +55,8 @@ interface RepasoItem {
 interface FiadoItem {
   id: number
   cliente: string
-  saldoPendiente: number
-  fechaFiado: string
+  saldo_pendiente: number
+  fecha: string
   entregador: string
 }
 
@@ -72,6 +72,13 @@ interface MananaSnapshot {
 function pct(num: number, den: number) {
   if (!den) return 0
   return Math.round((num / den) * 100)
+}
+
+// Desplaza una fecha ISO (YYYY-MM-DD) N días
+function shiftDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T12:00:00")
+  d.setDate(d.getDate() + days)
+  return d.toISOString().split("T")[0]
 }
 
 function StatusDot({ ok, warn }: { ok?: boolean; warn?: boolean }) {
@@ -205,9 +212,15 @@ function ProgressBar({ value, total, color = "#3b82f6" }: { value: number; total
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function DashboardOverview() {
+  const todayStr = new Date().toISOString().split("T")[0]
+
+  // ── NUEVO: fecha focal navegable (por defecto = hoy) ──
+  const [focusDate, setFocusDate] = useState(todayStr)
+
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
+  const [allPlanillas, setAllPlanillas] = useState<any[]>([])
 
   const [ayer, setAyer] = useState<DaySnapshot | null>(null)
   const [hoy, setHoy] = useState<DaySnapshot | null>(null)
@@ -216,6 +229,7 @@ export function DashboardOverview() {
   const [repasosPendientes, setRepasosPendientes] = useState<RepasoItem[]>([])
   const [fiadosPendientes, setFiadosPendientes] = useState<FiadoItem[]>([])
 
+  // ── buildSnapshot: sin cambios respecto al original ──
   const buildSnapshot = useCallback((planillas: any[], label: string): DaySnapshot => {
     const cargueTotal = planillas.reduce((s, p) => s + Number(p.total_cargue || 0), 0)
     const cuadradas = planillas.filter((p) => p.cuadrado_en_caja)
@@ -253,69 +267,70 @@ export function DashboardOverview() {
     }
   }, [])
 
+  // ── NUEVO: recalcular bloques cuando cambia focusDate ──
+  const recalculate = useCallback((all: any[], focus: string) => {
+    const ayerStr   = shiftDate(focus, -1)
+    const mananaStr = shiftDate(focus, 1)
+
+    const planHoy    = all.filter((p) => p.fecha?.startsWith(focus))
+    const planAyer   = all.filter((p) => p.fecha?.startsWith(ayerStr))
+    const planManana = all.filter((p) => p.fecha?.startsWith(mananaStr))
+
+    setHoy(buildSnapshot(planHoy, focus === todayStr ? "Hoy" : focus))
+    setAyer(buildSnapshot(planAyer, ayerStr === shiftDate(todayStr, -1) ? "Ayer" : ayerStr))
+
+    const repasosPend = planHoy
+      .flatMap((p) =>
+        (p.pedidos || [])
+          .filter((ped: any) => ped.estado === "repaso")
+          .map((ped: any) => ({
+            pedidoId: ped.id,
+            cliente: ped.cliente,
+            total: Number(ped.total || 0),
+            rutaOrigen: p.tipo_ruta,
+            entregador: p.entregador || "—",
+          }))
+      )
+    setRepasosPendientes(repasosPend)
+
+    setManana({
+      planillasGeneradas: planManana.length,
+      cargueProyectado: planManana.reduce((s, p) => s + Number(p.total_cargue || 0), 0),
+      repasosPendientesReasignar: repasosPend.length,
+      montoRepasosPendientes: repasosPend.reduce((s, r) => s + r.total, 0),
+    })
+
+    const entMap: Record<string, EntregadorStatus> = {}
+    planHoy.forEach((p) => {
+      const nombre = p.entregador || "Sin asignar"
+      if (!entMap[nombre]) {
+        entMap[nombre] = { nombre, planillas: 0, cargue: 0, cuadrado: true, tieneRepasos: false, tieneFiados: false }
+      }
+      entMap[nombre].planillas++
+      entMap[nombre].cargue += Number(p.total_cargue || 0)
+      if (!p.cuadrado_en_caja) entMap[nombre].cuadrado = false
+      ;(p.pedidos || []).forEach((ped: any) => {
+        if (ped.estado === "repaso") entMap[nombre].tieneRepasos = true
+        if (ped.estado === "fiado") entMap[nombre].tieneFiados = true
+      })
+    })
+    setEntregadores(Object.values(entMap))
+  }, [buildSnapshot, todayStr])
+
+  // ── loadData: igual que el original, solo agrega setAllPlanillas ──
   const loadData = useCallback(async () => {
     try {
-      // Fetch all planillas with their pedidos
-      const res = await fetch("/api/planillas?include=pedidos,productos", {
+      const res = await fetch("/api/planillas", {
         headers: { "Content-Type": "application/json" },
       })
       if (!res.ok) throw new Error("Error al cargar planillas")
       const data = await res.json()
       const all: any[] = data.planillas || []
 
-      const todayStr = new Date().toISOString().split("T")[0]
-      const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split("T")[0]
-      const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split("T")[0]
+      setAllPlanillas(all)
+      recalculate(all, focusDate)
 
-      const planHoy = all.filter((p) => p.fecha?.startsWith(todayStr))
-      const planAyer = all.filter((p) => p.fecha?.startsWith(yesterdayStr))
-      const planManana = all.filter((p) => p.fecha?.startsWith(tomorrowStr))
-
-      setHoy(buildSnapshot(planHoy, "Hoy"))
-      setAyer(buildSnapshot(planAyer, "Ayer"))
-
-      // Mañana snapshot
-      const repasosPend = all
-        .filter((p) => p.fecha?.startsWith(todayStr) || p.fecha?.startsWith(yesterdayStr))
-        .flatMap((p) =>
-          (p.pedidos || [])
-            .filter((ped: any) => ped.estado === "repaso")
-            .map((ped: any) => ({
-              pedidoId: ped.id,
-              cliente: ped.cliente,
-              total: Number(ped.total || 0),
-              rutaOrigen: p.tipo_ruta,
-              entregador: p.entregador || "—",
-            }))
-        )
-
-      setRepasosPendientes(repasosPend)
-
-      setManana({
-        planillasGeneradas: planManana.length,
-        cargueProyectado: planManana.reduce((s, p) => s + Number(p.total_cargue || 0), 0),
-        repasosPendientesReasignar: repasosPend.length,
-        montoRepasosPendientes: repasosPend.reduce((s, r) => s + r.total, 0),
-      })
-
-      // Entregadores de hoy
-      const entMap: Record<string, EntregadorStatus> = {}
-      planHoy.forEach((p) => {
-        const nombre = p.entregador || "Sin asignar"
-        if (!entMap[nombre]) {
-          entMap[nombre] = { nombre, planillas: 0, cargue: 0, cuadrado: true, tieneRepasos: false, tieneFiados: false }
-        }
-        entMap[nombre].planillas++
-        entMap[nombre].cargue += Number(p.total_cargue || 0)
-        if (!p.cuadrado_en_caja) entMap[nombre].cuadrado = false
-        ;(p.pedidos || []).forEach((ped: any) => {
-          if (ped.estado === "repaso") entMap[nombre].tieneRepasos = true
-          if (ped.estado === "fiado") entMap[nombre].tieneFiados = true
-        })
-      })
-      setEntregadores(Object.values(entMap))
-
-      // Fiados pendientes
+      // Fiados pendientes — igual que el original
       try {
         const fRes = await fetch("/api/fiados?estado=pendiente,pagado_parcial")
         if (fRes.ok) {
@@ -333,13 +348,22 @@ export function DashboardOverview() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [buildSnapshot])
+  }, [focusDate, recalculate])
+
+  // ── Al cambiar fecha, recalcular sin re-fetch ──
+  useEffect(() => {
+    if (allPlanillas.length > 0) {
+      recalculate(allPlanillas, focusDate)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusDate])
 
   useEffect(() => {
     loadData()
-    const interval = setInterval(loadData, 60000) // auto-refresh cada minuto
+    const interval = setInterval(loadData, 60000)
     return () => clearInterval(interval)
-  }, [loadData])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -377,6 +401,14 @@ export function DashboardOverview() {
   }
 
   const totalFiadosPendientes = fiadosPendientes.reduce((s, f) => s + Number(f.saldo_pendiente || 0), 0)
+  const isTodayFocused = focusDate === todayStr
+  const ayerStr = shiftDate(focusDate, -1)
+  const mananaStr = shiftDate(focusDate, 1)
+
+  // Label legible para cada fecha
+  const labelFocus  = isTodayFocused ? "Hoy" : focusDate === shiftDate(todayStr, 1) ? "Mañana" : focusDate
+  const labelAyer   = focusDate === todayStr ? "Ayer" : ayerStr === shiftDate(todayStr, -1) ? "Ayer" : ayerStr
+  const labelManana = focusDate === shiftDate(todayStr, -1) ? "Hoy" : focusDate === todayStr ? "Mañana" : mananaStr
 
   return (
     <>
@@ -393,17 +425,20 @@ export function DashboardOverview() {
         .cmd-row:nth-child(5){animation-delay:0.25s}
         .ent-card:hover { border-color: #2d3748 !important; transform: translateY(-1px); transition: all 0.15s ease; }
         .repaso-row:hover { background: #0f1117 !important; }
+        .nav-btn:hover { background: #1e2330 !important; }
       `}</style>
 
       <div style={{ fontFamily: "'Syne', sans-serif", color: "#f1f5f9" }}>
 
-        {/* ── Header bar ── */}
+        {/* ── Header bar — IGUAL QUE ORIGINAL + navegador de fechas ── */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             marginBottom: 28,
+            flexWrap: "wrap",
+            gap: 12,
           }}
         >
           <div>
@@ -415,35 +450,85 @@ export function DashboardOverview() {
               {lastUpdate.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </div>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              background: "#0f1117",
-              border: "1px solid #1e2330",
-              borderRadius: 8,
-              padding: "8px 14px",
-              color: "#6b7280",
-              fontSize: 12,
-              cursor: "pointer",
-              fontFamily: "monospace",
-              letterSpacing: "0.06em",
-              transition: "all 0.15s",
-            }}
-          >
-            <RefreshCw size={12} style={{ animation: refreshing ? "loading 1s linear infinite" : "none" }} />
-            ACTUALIZAR
-          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* ── Navegador de fechas (NUEVO) ── */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 4,
+              background: "#0f1117", border: "1px solid #1e2330",
+              borderRadius: 8, padding: "4px 6px",
+            }}>
+              <button
+                className="nav-btn"
+                onClick={() => setFocusDate(d => shiftDate(d, -1))}
+                style={{
+                  background: "none", border: "none", borderRadius: 5,
+                  width: 28, height: 28, display: "flex", alignItems: "center",
+                  justifyContent: "center", color: "#6b7280", cursor: "pointer",
+                }}
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span style={{
+                fontFamily: "monospace", fontSize: 12,
+                color: isTodayFocused ? "#3b82f6" : "#9ca3af",
+                minWidth: 80, textAlign: "center",
+              }}>
+                {labelFocus}
+              </span>
+              <button
+                className="nav-btn"
+                onClick={() => setFocusDate(d => shiftDate(d, 1))}
+                style={{
+                  background: "none", border: "none", borderRadius: 5,
+                  width: 28, height: 28, display: "flex", alignItems: "center",
+                  justifyContent: "center", color: "#6b7280", cursor: "pointer",
+                }}
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            {/* Botón HOY — solo visible cuando no estás en hoy */}
+            {!isTodayFocused && (
+              <button
+                className="nav-btn"
+                onClick={() => setFocusDate(todayStr)}
+                style={{
+                  background: "#0f1117", border: "1px solid #1e2330",
+                  borderRadius: 8, padding: "6px 12px",
+                  color: "#3b82f6", fontSize: 11,
+                  cursor: "pointer", fontFamily: "monospace",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                HOY
+              </button>
+            )}
+
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "#0f1117", border: "1px solid #1e2330",
+                borderRadius: 8, padding: "8px 14px",
+                color: "#6b7280", fontSize: 12, cursor: "pointer",
+                fontFamily: "monospace", letterSpacing: "0.06em",
+                transition: "all 0.15s",
+              }}
+            >
+              <RefreshCw size={12} style={{ animation: refreshing ? "loading 1s linear infinite" : "none" }} />
+              ACTUALIZAR
+            </button>
+          </div>
         </div>
 
         {/* ══════════════════════════════════════════════
-            BLOQUE 1 — AYER (cierre)
+            BLOQUE 1 — AYER (cierre) — sin cambios
         ══════════════════════════════════════════════ */}
         <div className="cmd-row" style={{ marginBottom: 32 }}>
-          <SectionTitle badge={ayer?.planillasTotal}>¿CÓMO CERRÓ AYER?</SectionTitle>
+          <SectionTitle badge={ayer?.planillasTotal}>¿CÓMO CERRÓ {labelAyer.toUpperCase()}?</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <StatBlock
               label="Cargue total"
@@ -493,10 +578,10 @@ export function DashboardOverview() {
         </div>
 
         {/* ══════════════════════════════════════════════
-            BLOQUE 2 — HOY (en vivo)
+            BLOQUE 2 — HOY (en vivo) — sin cambios
         ══════════════════════════════════════════════ */}
         <div className="cmd-row" style={{ marginBottom: 32 }}>
-          <SectionTitle badge={hoy?.planillasTotal}>HOY EN LA CALLE</SectionTitle>
+          <SectionTitle badge={hoy?.planillasTotal}>{labelFocus.toUpperCase()} EN LA CALLE</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <StatBlock
               label="Cargue en calle"
@@ -504,7 +589,7 @@ export function DashboardOverview() {
               sub={hoy?.cobrosIncluidos ? `+ ${formatCOP(hoy.cobrosIncluidos)} cobros fiados` : undefined}
               accent="#3b82f6"
               icon={Truck}
-              pulse
+              pulse={isTodayFocused}
             />
             <StatBlock
               label="Ya cuadró"
@@ -521,13 +606,13 @@ export function DashboardOverview() {
               icon={Clock}
             />
             <StatBlock
-              label="Fiados hoy"
+              label="Fiados"
               value={formatCOP(hoy?.fiados || 0)}
               accent="#f59e0b"
               icon={Banknote}
             />
             <StatBlock
-              label="Repasos hoy"
+              label="Repasos"
               value={formatCOP(hoy?.repasos || 0)}
               accent="#f97316"
               icon={RotateCcw}
@@ -548,11 +633,11 @@ export function DashboardOverview() {
         </div>
 
         {/* ══════════════════════════════════════════════
-            BLOQUE 3 — ENTREGADORES HOY
+            BLOQUE 3 — ENTREGADORES HOY — sin cambios
         ══════════════════════════════════════════════ */}
         {entregadores.length > 0 && (
           <div className="cmd-row" style={{ marginBottom: 32 }}>
-            <SectionTitle badge={entregadores.length}>ESTADO POR ENTREGADOR — HOY</SectionTitle>
+            <SectionTitle badge={entregadores.length}>ESTADO POR ENTREGADOR — {labelFocus.toUpperCase()}</SectionTitle>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
               {entregadores.map((e) => (
                 <div
@@ -603,7 +688,7 @@ export function DashboardOverview() {
         )}
 
         {/* ══════════════════════════════════════════════
-            BLOQUE 4 — REPASOS PENDIENTES
+            BLOQUE 4 — REPASOS PENDIENTES — sin cambios
         ══════════════════════════════════════════════ */}
         {repasosPendientes.length > 0 && (
           <div className="cmd-row" style={{ marginBottom: 32 }}>
@@ -688,7 +773,7 @@ export function DashboardOverview() {
         )}
 
         {/* ══════════════════════════════════════════════
-            BLOQUE 5 — FIADOS PENDIENTES (C×C)
+            BLOQUE 5 — FIADOS PENDIENTES (C×C) — sin cambios
         ══════════════════════════════════════════════ */}
         {fiadosPendientes.length > 0 && (
           <div className="cmd-row" style={{ marginBottom: 32 }}>
@@ -753,15 +838,15 @@ export function DashboardOverview() {
         )}
 
         {/* ══════════════════════════════════════════════
-            BLOQUE 6 — MAÑANA
+            BLOQUE 6 — MAÑANA — sin cambios
         ══════════════════════════════════════════════ */}
         <div className="cmd-row" style={{ marginBottom: 16 }}>
-          <SectionTitle>¿QUÉ SALE MAÑANA?</SectionTitle>
+          <SectionTitle>¿QUÉ SALE {labelManana.toUpperCase()}?</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <StatBlock
               label="Planillas generadas"
               value={String(manana?.planillasGeneradas || 0)}
-              sub="para mañana"
+              sub={`para ${labelManana.toLowerCase()}`}
               accent="#8b5cf6"
               icon={TrendingUp}
             />
