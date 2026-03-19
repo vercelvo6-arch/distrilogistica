@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
           telefono,
           NULL as barrio
         FROM fiados
-        WHERE id::text = ${pedidoFiadoId}
+        WHERE (id::text = ${pedidoFiadoId} OR pedido_id = ${pedidoFiadoId})
           AND estado != 'pagado_completo'
           AND COALESCE(saldo_pendiente, monto_total) > 0
       `
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
       await sql`
         UPDATE fiados
         SET planilla_id = ${Number(planillaDestinoId)}, updated_at = NOW()
-        WHERE id::text = ${pedidoFiadoId}
+        WHERE (id::text = ${pedidoFiadoId} OR pedido_id = ${pedidoFiadoId})
       `
       console.log('[API asignar-cobro] ✓ planilla_id actualizado en tabla fiados')
     }
