@@ -260,25 +260,23 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         })),
       }))
 
-    setSupervisionSheets(planillasSupervision)
-
     // 2. Cargar SOLO faltantes pendientes
     const faltantesResponse = await fetch("/api/faltantes")
+    let faltantesPendientes: any[] = []
     if (faltantesResponse.ok) {
       const faltantesData = await faltantesResponse.json()
-      
-      const faltantesPendientes = (faltantesData.faltantes || []).filter(
+      faltantesPendientes = (faltantesData.faltantes || []).filter(
         (f: any) => f.estado === 'pendiente'
       )
-      
       console.log('[SUPERVISION] ✓ Datos cargados:', {
         planillas: planillasSupervision.length,
         totalFaltantes: faltantesData.faltantes?.length || 0,
         faltantesPendientes: faltantesPendientes.length
       })
-      
-      setFaltantes(faltantesPendientes)
     }
+
+    setSupervisionSheets(planillasSupervision)
+    setFaltantes(faltantesPendientes)
 
   } catch (err) {
     console.error("[SUPERVISION] ❌ Error:", err)
