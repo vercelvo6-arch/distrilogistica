@@ -27,6 +27,10 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
+    // Limpiar prefijo PLN del ID de planilla (puede venir como "PLN123" o "123")
+    const planillaDestinoIdClean = String(planillaDestinoId).replace(/^PLN/i, '')
+    console.log('[API asignar-cobro] planillaDestinoId original:', planillaDestinoId, '→ limpio:', planillaDestinoIdClean)
+
     // ===================================================
     // PASO 1: Buscar el fiado en AMBAS tablas
     // ===================================================
@@ -96,7 +100,7 @@ export async function POST(request: NextRequest) {
     const planillaDestino = await sql`
       SELECT id, tipo_ruta, entregador, total_cargue, estado, cuadrado_en_caja
       FROM planillas
-      WHERE id = ${planillaDestinoId}
+      WHERE id = ${planillaDestinoIdClean}
         AND (cuadrado_en_caja IS NULL OR cuadrado_en_caja = false)
     `
 
@@ -118,7 +122,7 @@ export async function POST(request: NextRequest) {
     const ultimaSecuencia = await sql`
       SELECT COALESCE(MAX(secuencia), 0) as max_sec
       FROM pedidos
-      WHERE planilla_id = ${planillaDestinoId}
+      WHERE planilla_id = ${planillaDestinoIdClean}
     `
     const nuevaSecuencia = (ultimaSecuencia[0]?.max_sec || 0) + 1
 
@@ -133,7 +137,7 @@ export async function POST(request: NextRequest) {
         created_at, updated_at
       ) VALUES (
         ${cobroId},
-        ${planillaDestinoId},
+        ${planillaDestinoIdClean},
         ${nuevaSecuencia},
         ${fiadoData.cliente + ' (COBRO)'},
         ${fiadoData.direccion || 'Por definir'},
@@ -173,7 +177,7 @@ export async function POST(request: NextRequest) {
     await sql`
       UPDATE planillas
       SET total_cargue = ${nuevoTotalCargue}, updated_at = NOW()
-      WHERE id = ${planillaDestinoId}
+      WHERE id = ${planillaDestinoIdClean}
     `
 
     // ===================================================
@@ -184,7 +188,7 @@ export async function POST(request: NextRequest) {
       console.log('[API asignar-cobro] 📝 Actualizando planilla_id en tabla fiados:', pedidoFiadoId)
       await sql`
         UPDATE fiados
-        SET planilla_id = ${Number(planillaDestinoId)}, updated_at = NOW()
+        SET planilla_id = ${Number(planillaDestinoIdClean)}, updated_at = NOW()
         WHERE (id::text = ${pedidoFiadoId} OR pedido_id = ${pedidoFiadoId})
       `
       console.log('[API asignar-cobro] ✓ planilla_id actualizado en tabla fiados')
