@@ -72,10 +72,15 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   }, [])
 
   useEffect(() => {
-    if (activeTab === "supervision") {
+  if (activeTab === "supervision") {
+    // Pequeño delay para que el TabsContent termine de montarse
+    // antes de disparar el setState masivo (fix React 19 + Radix)
+    const timer = setTimeout(() => {
       loadSupervisionData()
-    }
-  }, [activeTab])
+    }, 50)
+    return () => clearTimeout(timer)
+  }
+}, [activeTab])
 
   async function loadEntregadores() {
     try {
