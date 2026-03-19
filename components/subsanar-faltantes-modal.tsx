@@ -118,7 +118,7 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
     : 0
 
   return (
-    <Dialog open={!!faltante} onOpenChange={onClose}>
+    <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl">Subsanar Faltante</DialogTitle>
