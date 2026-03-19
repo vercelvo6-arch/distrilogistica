@@ -128,6 +128,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   
   // Estado para tracking de cobros de fiados asignados
   const [totalCobrosAsignados, setTotalCobrosAsignados] = useState(0)
+  const [showAbonoCobroModal, setShowAbonoCobroModal] = useState(false)
+  const [selectedCobro, setSelectedCobro] = useState<Order | null>(null)
+  const [montoAbonoCobro, setMontoAbonoCobro] = useState("")
+  const [submittingAbonoCobro, setSubmittingAbonoCobro] = useState(false)
   
 
   useEffect(() => {
@@ -1522,6 +1526,60 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
+  const handleAbonarCobro = async () => {
+  if (!selectedCobro) return
+  const monto = Number(montoAbonoCobro)
+  if (!monto || monto <= 0 || monto > selectedCobro.total) {
+    toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(selectedCobro.total)}`, variant: "destructive" })
+    return
+  }
+  try {
+    setSubmittingAbonoCobro(true)
+    const response = await fetch("/api/fiados/registrar-abono", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pedidoId: selectedCobro.id,
+        montoAbono: monto,
+        metodoPago: "efectivo",
+        observaciones: "Abono registrado desde cobro en planilla",
+      }),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || "Error al registrar abono")
+    toast({ title: "Abono Registrado", description: `Abono de ${formatCOP(monto)} registrado. Saldo pendiente: ${formatCOP(data.saldo_pendiente)}` })
+    await fetch("/api/fiados/marcar-cobro-completado", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cobroId: selectedCobro.id }),
+    })
+    setShowAbonoCobroModal(false)
+    setSelectedCobro(null)
+    setMontoAbonoCobro("")
+    await loadData()
+  } catch (err) {
+    toast({ title: "Error", description: err instanceof Error ? err.message : "Error al registrar abono", variant: "destructive" })
+  } finally {
+    setSubmittingAbonoCobro(false)
+  }
+}
+
+const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
+  try {
+    const response = await fetch("/api/pedidos/eliminar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pedidoId: orderId, planillaId }),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || "Error al eliminar cobro")
+    toast({ title: "Cobro Removido", description: "El cobro fue eliminado. El fiado original sigue pendiente." })
+    await loadData()
+  } catch (err) {
+    toast({ title: "Error", description: err instanceof Error ? err.message : "Error al remover cobro", variant: "destructive" })
+  }
+}
+
   const handleSubmit = async () => {
     if (!selectedPlanilla) return
 
@@ -2605,45 +2663,80 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
                                                 )}
                                               </div>
 
-                                              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
-                                                <Button
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => handleOrderStatusChange(order.id, "fiado")}
-                                                  className="flex-1 sm:flex-none border-orange-300 text-orange-700 hover:bg-orange-50"
-                                                  disabled={route.cuadradoEnCaja}
-                                                >
-                                                  Fiado
-                                                </Button>
-                                                <Button
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => handleOrderStatusChange(order.id, "repaso")}
-                                                  className="flex-1 sm:flex-none border-blue-300 text-blue-700 hover:bg-blue-50"
-                                                  disabled={route.cuadradoEnCaja}
-                                                >
-                                                  Repaso
-                                                </Button>
-                                                <Button
-                                                  variant="destructive"
-                                                  size="sm"
-                                                  onClick={() => handleOrderStatusChange(order.id, "devolucion")}
-                                                  className="flex-1 sm:flex-none"
-                                                  disabled={route.cuadradoEnCaja}
-                                                >
-                                                  Devolución
-                                                </Button>
-                                                <Button
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => handleOpenEliminarPedidoModal(order.id, order.cliente, effectiveTotal, route.id)}
-                                                  className="flex-1 sm:flex-none border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-red-600 hover:border-red-400"
-                                                  disabled={route.cuadradoEnCaja}
-                                                >
-                                                  <Trash2 className="h-4 w-4 mr-1" />
-                                                  Eliminar
-                                                </Button>
-                                              </div>
+                                              {order.esCobro ? (
+                                                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
+                                                  <div className="w-full mb-1 p-2 bg-purple-50 rounded text-xs text-purple-700 font-medium">
+                                                    💰 Cobro de fiado — ¿qué pasó?
+                                                  </div>
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleOrderStatusChange(order.id, "entregado")}
+                                                    className="flex-1 sm:flex-none border-green-400 text-green-700 hover:bg-green-50"
+                                                    disabled={route.cuadradoEnCaja}
+                                                  >
+                                                    ✅ Cobrado (pagó todo)
+                                                  </Button>
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => { setSelectedCobro(order); setMontoAbonoCobro(""); setShowAbonoCobroModal(true) }}
+                                                    className="flex-1 sm:flex-none border-amber-400 text-amber-700 hover:bg-amber-50"
+                                                    disabled={route.cuadradoEnCaja}
+                                                  >
+                                                    💵 Abono parcial
+                                                  </Button>
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleNoPagoCobro(order.id, route.id)}
+                                                    className="flex-1 sm:flex-none border-gray-400 text-gray-600 hover:bg-gray-50"
+                                                    disabled={route.cuadradoEnCaja}
+                                                  >
+                                                    ↩️ No pagó
+                                                  </Button>
+                                                </div>
+                                              ) : (
+                                                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleOrderStatusChange(order.id, "fiado")}
+                                                    className="flex-1 sm:flex-none border-orange-300 text-orange-700 hover:bg-orange-50"
+                                                    disabled={route.cuadradoEnCaja}
+                                                  >
+                                                    Fiado
+                                                  </Button>
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleOrderStatusChange(order.id, "repaso")}
+                                                    className="flex-1 sm:flex-none border-blue-300 text-blue-700 hover:bg-blue-50"
+                                                    disabled={route.cuadradoEnCaja}
+                                                  >
+                                                    Repaso
+                                                  </Button>
+                                                  <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    onClick={() => handleOrderStatusChange(order.id, "devolucion")}
+                                                    className="flex-1 sm:flex-none"
+                                                    disabled={route.cuadradoEnCaja}
+                                                  >
+                                                    Devolución
+                                                  </Button>
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleOpenEliminarPedidoModal(order.id, order.cliente, effectiveTotal, route.id)}
+                                                    className="flex-1 sm:flex-none border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-red-600 hover:border-red-400"
+                                                    disabled={route.cuadradoEnCaja}
+                                                  >
+                                                    <Trash2 className="h-4 w-4 mr-1" />
+                                                    Eliminar
+                                                  </Button>
+                                                </div>
+                                              )}
                                             </div>
                                           )}
                                         </Card>
@@ -3411,6 +3504,59 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             </Button>
             <Button onClick={handleCambiarFechaRuta} disabled={cambiandoFecha}>
               {cambiandoFecha ? "Guardando..." : "Guardar Fecha"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Modal para abono de cobro */}
+      <Dialog open={showAbonoCobroModal} onOpenChange={setShowAbonoCobroModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Registrar Abono de Cobro</DialogTitle>
+            <DialogDescription>
+              {selectedCobro && `Cliente: ${selectedCobro.cliente}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedCobro && (
+              <>
+                <div className="flex justify-between items-center p-3 bg-purple-50 rounded border border-purple-200">
+                  <span className="text-sm text-purple-700">Monto total del cobro:</span>
+                  <span className="font-bold text-lg text-purple-700">{formatCOP(selectedCobro.total)}</span>
+                </div>
+                <div>
+                  <Label htmlFor="montoAbonoCobro">¿Cuánto abonó?</Label>
+                  <Input
+                    id="montoAbonoCobro"
+                    type="number"
+                    min={1}
+                    max={selectedCobro.total}
+                    value={montoAbonoCobro}
+                    onChange={(e) => setMontoAbonoCobro(e.target.value)}
+                    placeholder="0"
+                    autoFocus
+                  />
+                </div>
+                {montoAbonoCobro && Number(montoAbonoCobro) > 0 && (
+                  <div className="flex justify-between items-center p-3 bg-amber-50 rounded border border-amber-200">
+                    <span className="text-sm text-amber-700 font-medium">Saldo que queda:</span>
+                    <span className="font-bold text-lg text-amber-700">
+                      {formatCOP(selectedCobro.total - Number(montoAbonoCobro))}
+                    </span>
+                  </div>
+                )}
+                <p className="text-xs text-gray-500">
+                  El abono se registrará en el fiado original y el cobro quedará procesado.
+                </p>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAbonoCobroModal(false)} disabled={submittingAbonoCobro}>
+              Cancelar
+            </Button>
+            <Button onClick={handleAbonarCobro} disabled={submittingAbonoCobro}>
+              {submittingAbonoCobro ? "Registrando..." : "Confirmar Abono"}
             </Button>
           </DialogFooter>
         </DialogContent>
