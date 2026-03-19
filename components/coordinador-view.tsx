@@ -1306,11 +1306,13 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         </Dialog>
       )}
 
-      <SubsanarFaltantesModal
-        faltante={faltanteParaSubsanar}
-        onClose={() => setFaltanteParaSubsanar(null)}
-        onSubmit={handleSubsanarFaltante}
-      />
+      {faltanteParaSubsanar && (
+  <SubsanarFaltantesModal
+    faltante={faltanteParaSubsanar}
+    onClose={() => setFaltanteParaSubsanar(null)}
+    onSubmit={handleSubsanarFaltante}
+  />
+)}
     </>
   )
 }
