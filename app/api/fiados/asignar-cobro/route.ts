@@ -122,6 +122,10 @@ export async function POST(request: NextRequest) {
     `
     const nuevaSecuencia = (ultimaSecuencia[0]?.max_sec || 0) + 1
 
+    // pedido_fiado_id solo aplica cuando el origen es tabla "pedidos"
+    // Si viene de tabla "fiados", la FK no aplica → NULL
+    const pedidoFiadoIdFK = origenFiado === 'pedidos' ? pedidoFiadoId : null
+
     await sql`
       INSERT INTO pedidos (
         id, planilla_id, secuencia, cliente, direccion, telefono, barrio,
@@ -138,7 +142,7 @@ export async function POST(request: NextRequest) {
         ${saldoPendiente},
         'pendiente',
         true,
-        ${pedidoFiadoId},
+        ${pedidoFiadoIdFK},
         ${'Cobro de fiado pendiente'},
         NOW(),
         NOW()
