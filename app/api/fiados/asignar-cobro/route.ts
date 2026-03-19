@@ -38,16 +38,17 @@ export async function POST(request: NextRequest) {
     const pedidoFiado = await sql`
       SELECT 
         p.id::text as id, 
-        p.cliente, 
-        p.saldo_pendiente,
+        p.cliente,
         p.estado,
         p.direccion,
         p.telefono,
-        p.barrio
+        p.barrio,
+        -- Calcular saldo en lugar de confiar en la columna (puede ser NULL)
+        (p.total - COALESCE(p.monto_pagado, 0)) as saldo_pendiente
       FROM pedidos p
       WHERE p.id = ${pedidoFiadoId} 
         AND p.estado = 'fiado'
-        AND p.saldo_pendiente > 0
+        AND (p.total - COALESCE(p.monto_pagado, 0)) > 0
     `
 
     if (pedidoFiado.length > 0) {
