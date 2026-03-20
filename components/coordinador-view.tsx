@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, startTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
@@ -73,11 +73,12 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
 
   useEffect(() => {
   if (activeTab === "supervision") {
-    // Pequeño delay para que el TabsContent termine de montarse
-    // antes de disparar el setState masivo (fix React 19 + Radix)
+    // ✅ FIX: Delay aumentado a 150ms para que Radix UI termine
+    // de animar la transición del tab antes de disparar setState masivo.
+    // Evita el NotFoundError: 'removeChild' on Node (React 19 + Radix).
     const timer = setTimeout(() => {
       loadSupervisionData()
-    }, 50)
+    }, 150)
     return () => clearTimeout(timer)
   }
 }, [activeTab])
@@ -275,8 +276,14 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       })
     }
 
-    setSupervisionSheets(planillasSupervision)
-    setFaltantes(faltantesPendientes)
+    // ✅ FIX: Agrupar ambos setState dentro de startTransition para que React
+    // los procese en un único ciclo de render no-urgente. Esto evita el error
+    // "NotFoundError: removeChild - node is not a child" causado por dos
+    // re-renders consecutivos mientras Radix UI desmonta el tab anterior.
+    startTransition(() => {
+      setSupervisionSheets(planillasSupervision)
+      setFaltantes(faltantesPendientes)
+    })
 
   } catch (err) {
     console.error("[SUPERVISION] ❌ Error:", err)
