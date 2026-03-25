@@ -483,16 +483,25 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
 
     try {
+      console.log('[COORD] Eliminando planilla:', sheetId)
+      
       const response = await fetch(`/api/planillas/${sheetId}`, {
         method: "DELETE",
       })
 
+      const data = await response.json()
+      console.log('[COORD] Respuesta:', data)
+
       if (!response.ok) {
-        throw new Error("Error al eliminar planilla")
+        throw new Error(data.error || "Error al eliminar planilla")
       }
 
+      alert('✅ Planilla eliminada correctamente')
       await loadPlanillas()
+      
     } catch (err) {
+      console.error('[COORD] Error completo:', err)
+      alert("❌ Error al eliminar planilla: " + (err as Error).message)
       setError("Error al eliminar planilla: " + (err as Error).message)
     }
   }
