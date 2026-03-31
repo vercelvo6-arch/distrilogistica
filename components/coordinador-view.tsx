@@ -485,9 +485,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     try {
       console.log('[COORD] Eliminando planilla:', sheetId)
       
-      const response = await fetch(`/api/planillas/${sheetId}`, {
-        method: "DELETE",
-      })
+      const response = await fetch('/api/planillas/eliminar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planillaId: sheetId })
+   })
 
       const data = await response.json()
       console.log('[COORD] Respuesta:', data)
