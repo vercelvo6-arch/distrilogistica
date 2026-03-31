@@ -104,7 +104,6 @@ export async function POST(request: NextRequest) {
       SET 
         planilla_id = ${planillaDestinoId},
         estado = 'entregado',
-        fecha_entrega = NOW(),
         observaciones = COALESCE(observaciones || ' | ', '') || 
           'REPASO de ruta ' || ${pedido[0].ruta_origen} || 
           ' reasignado el ' || NOW()::date,
