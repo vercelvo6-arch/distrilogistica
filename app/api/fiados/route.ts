@@ -21,8 +21,6 @@ export async function GET(request: NextRequest) {
 
     // ========================================
     // CASO ESPECIAL: filtro por planilla_id
-    // Usado por FiadosAsignadosSection en Caja
-    // Solo consulta tabla "fiados" con planilla_id asignado
     // ========================================
     if (planillaId) {
       console.log('[API fiados] Filtrando por planilla_id:', planillaId)
@@ -54,8 +52,7 @@ export async function GET(request: NextRequest) {
 
     // ========================================
     // CONSULTA 1: Tabla "pedidos" (fiados de planillas diarias)
-    // ✅ CORRECCIÓN: Excluir pedidos de cobro (es_cobro = true)
-    // ✅ CORRECCIÓN: Excluir pedidos que tienen un cobro activo
+    // ✅ SOLUCIÓN DEFINITIVA: LEFT JOIN para excluir pedidos con cobro activo
     // ========================================
     let fiadosPedidos: any[] = []
     
@@ -80,17 +77,17 @@ export async function GET(request: NextRequest) {
             'pedidos' as origen
           FROM pedidos p
           JOIN planillas pl ON p.planilla_id = pl.id
+          LEFT JOIN pedidos cobro ON (
+            cobro.es_cobro = true 
+            AND cobro.estado = 'pendiente'
+            AND LOWER(TRIM(cobro.cliente)) = LOWER(TRIM(p.cliente || ' (COBRO)'))
+          )
           WHERE p.estado IN ('fiado', 'pagado')
             AND COALESCE(p.es_cobro, false) = false
             AND pl.fecha >= ${fechaInicio}
             AND pl.fecha <= ${fechaFin}
             AND pl.entregador = ${entregador}
-            AND NOT EXISTS (
-              SELECT 1 FROM pedidos cobro
-              WHERE cobro.es_cobro = true
-                AND cobro.estado = 'pendiente'
-                AND cobro.cliente ILIKE p.cliente || ' (COBRO)'
-            )
+            AND cobro.id IS NULL
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       } else if (fechaInicio && fechaFin) {
@@ -113,16 +110,16 @@ export async function GET(request: NextRequest) {
             'pedidos' as origen
           FROM pedidos p
           JOIN planillas pl ON p.planilla_id = pl.id
+          LEFT JOIN pedidos cobro ON (
+            cobro.es_cobro = true 
+            AND cobro.estado = 'pendiente'
+            AND LOWER(TRIM(cobro.cliente)) = LOWER(TRIM(p.cliente || ' (COBRO)'))
+          )
           WHERE p.estado IN ('fiado', 'pagado')
             AND COALESCE(p.es_cobro, false) = false
             AND pl.fecha >= ${fechaInicio}
             AND pl.fecha <= ${fechaFin}
-            AND NOT EXISTS (
-              SELECT 1 FROM pedidos cobro
-              WHERE cobro.es_cobro = true
-                AND cobro.estado = 'pendiente'
-                AND cobro.cliente ILIKE p.cliente || ' (COBRO)'
-            )
+            AND cobro.id IS NULL
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       } else if (entregador && entregador !== 'all') {
@@ -145,15 +142,15 @@ export async function GET(request: NextRequest) {
             'pedidos' as origen
           FROM pedidos p
           JOIN planillas pl ON p.planilla_id = pl.id
+          LEFT JOIN pedidos cobro ON (
+            cobro.es_cobro = true 
+            AND cobro.estado = 'pendiente'
+            AND LOWER(TRIM(cobro.cliente)) = LOWER(TRIM(p.cliente || ' (COBRO)'))
+          )
           WHERE p.estado IN ('fiado', 'pagado')
             AND COALESCE(p.es_cobro, false) = false
             AND pl.entregador = ${entregador}
-            AND NOT EXISTS (
-              SELECT 1 FROM pedidos cobro
-              WHERE cobro.es_cobro = true
-                AND cobro.estado = 'pendiente'
-                AND cobro.cliente ILIKE p.cliente || ' (COBRO)'
-            )
+            AND cobro.id IS NULL
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       } else {
@@ -176,14 +173,14 @@ export async function GET(request: NextRequest) {
             'pedidos' as origen
           FROM pedidos p
           JOIN planillas pl ON p.planilla_id = pl.id
+          LEFT JOIN pedidos cobro ON (
+            cobro.es_cobro = true 
+            AND cobro.estado = 'pendiente'
+            AND LOWER(TRIM(cobro.cliente)) = LOWER(TRIM(p.cliente || ' (COBRO)'))
+          )
           WHERE p.estado IN ('fiado', 'pagado')
             AND COALESCE(p.es_cobro, false) = false
-            AND NOT EXISTS (
-              SELECT 1 FROM pedidos cobro
-              WHERE cobro.es_cobro = true
-                AND cobro.estado = 'pendiente'
-                AND cobro.cliente ILIKE p.cliente || ' (COBRO)'
-            )
+            AND cobro.id IS NULL
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       }
@@ -195,7 +192,6 @@ export async function GET(request: NextRequest) {
 
     // ========================================
     // CONSULTA 2: Tabla "fiados" (importados desde CSV)
-    // ✅ CORRECCIÓN: Excluir fiados asignados para cobro
     // ========================================
     let fiadosTabla: any[] = []
     
