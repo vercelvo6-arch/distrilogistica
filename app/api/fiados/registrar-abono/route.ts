@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
         saldo_pendiente = ${nuevoSaldo},
         estado = ${nuevoEstado},
         metodo_pago = ${metodoPago || 'efectivo'},
+        cobrado_por = ${nuevoSaldo === 0 ? session.user?.name || 'Sistema' : null},
         planilla_asignado_id = NULL,
         fecha_asignacion = NULL,
         entregador_asignado = NULL,
