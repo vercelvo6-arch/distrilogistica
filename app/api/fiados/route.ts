@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
     // ========================================
     // CONSULTA 1: Tabla "pedidos" (fiados de planillas diarias)
     // ✅ CORRECCIÓN: Excluir pedidos de cobro (es_cobro = true)
+    // ✅ CORRECCIÓN: Excluir pedidos que tienen un cobro activo
     // ========================================
     let fiadosPedidos: any[] = []
     
@@ -84,6 +85,12 @@ export async function GET(request: NextRequest) {
             AND pl.fecha >= ${fechaInicio}
             AND pl.fecha <= ${fechaFin}
             AND pl.entregador = ${entregador}
+            AND NOT EXISTS (
+              SELECT 1 FROM pedidos cobro
+              WHERE cobro.es_cobro = true
+                AND cobro.estado = 'pendiente'
+                AND cobro.cliente ILIKE p.cliente || ' (COBRO)'
+            )
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       } else if (fechaInicio && fechaFin) {
@@ -110,6 +117,12 @@ export async function GET(request: NextRequest) {
             AND COALESCE(p.es_cobro, false) = false
             AND pl.fecha >= ${fechaInicio}
             AND pl.fecha <= ${fechaFin}
+            AND NOT EXISTS (
+              SELECT 1 FROM pedidos cobro
+              WHERE cobro.es_cobro = true
+                AND cobro.estado = 'pendiente'
+                AND cobro.cliente ILIKE p.cliente || ' (COBRO)'
+            )
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       } else if (entregador && entregador !== 'all') {
@@ -135,6 +148,12 @@ export async function GET(request: NextRequest) {
           WHERE p.estado IN ('fiado', 'pagado')
             AND COALESCE(p.es_cobro, false) = false
             AND pl.entregador = ${entregador}
+            AND NOT EXISTS (
+              SELECT 1 FROM pedidos cobro
+              WHERE cobro.es_cobro = true
+                AND cobro.estado = 'pendiente'
+                AND cobro.cliente ILIKE p.cliente || ' (COBRO)'
+            )
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       } else {
@@ -159,6 +178,12 @@ export async function GET(request: NextRequest) {
           JOIN planillas pl ON p.planilla_id = pl.id
           WHERE p.estado IN ('fiado', 'pagado')
             AND COALESCE(p.es_cobro, false) = false
+            AND NOT EXISTS (
+              SELECT 1 FROM pedidos cobro
+              WHERE cobro.es_cobro = true
+                AND cobro.estado = 'pendiente'
+                AND cobro.cliente ILIKE p.cliente || ' (COBRO)'
+            )
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       }
