@@ -2871,6 +2871,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             {selectedPlanilla && (
               <FiadosAsignadosSection
                 planillaId={selectedPlanilla.id}
+                entregador={selectedPlanilla.entregador}
                 onTotalCobrosChange={setTotalCobrosAsignados}
               />
             )}
