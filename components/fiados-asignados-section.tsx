@@ -1,15 +1,3 @@
-"use client"
-
-/**
- * FiadosAsignadosSection
- * 
- * Componente que se inserta dentro del modal de cuadre de Caja.
- * Muestra los fiados históricos que el Admin asignó a esta planilla (planilla_id = planillaId).
- * Permite registrar abonos directamente desde caja.
- * 
- * NO toca el flujo de pedidos con estado "fiado" — ese es independiente.
- */
-
 import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -35,10 +23,15 @@ interface FiadoAsignado {
 
 interface FiadosAsignadosSectionProps {
   planillaId: string | number
+  entregador?: string  // 🔥 NUEVO - para tracking
   onTotalCobrosChange: (total: number) => void // notifica al padre cuánto se cobró
 }
 
-export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: FiadosAsignadosSectionProps) {
+export function FiadosAsignadosSection({ 
+  planillaId, 
+  entregador,  // 🔥 NUEVO
+  onTotalCobrosChange 
+}: FiadosAsignadosSectionProps) {
   const { toast } = useToast()
   const [fiados, setFiados] = useState<FiadoAsignado[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,20 +47,27 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
   useEffect(() => {
     const total = Object.values(abonos).reduce((sum, val) => sum + (Number(val) || 0), 0)
     onTotalCobrosChange(total)
-  }, [abonos])
+  }, [abonos, onTotalCobrosChange])
 
   async function loadFiadosAsignados() {
     try {
       setLoading(true)
+      console.log('[FIADOS ASIGNADOS] 🔍 Cargando fiados para planilla:', planillaId)
+      
       const res = await fetch(`/api/fiados?planilla_id=${planillaId}`)
       if (!res.ok) throw new Error("Error al cargar fiados asignados")
+      
       const data = await res.json()
+      console.log('[FIADOS ASIGNADOS] 📦 Datos recibidos:', data)
+      
       const fiadosFiltrados = (data.fiados || []).filter(
         (f: FiadoAsignado) => f.estado !== "pagado_completo"
       )
+      
+      console.log('[FIADOS ASIGNADOS] ✅ Fiados pendientes:', fiadosFiltrados.length)
       setFiados(fiadosFiltrados)
     } catch (err) {
-      console.error("Error cargando fiados asignados:", err)
+      console.error('[FIADOS ASIGNADOS] ❌ Error:', err)
       setFiados([])
     } finally {
       setLoading(false)
@@ -78,6 +78,14 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
     const montoStr = abonos[fiado.id] || ""
     const monto = Number(montoStr)
 
+    console.log('[FIADOS ASIGNADOS] 💰 Registrando abono:', {
+      fiado_id: fiado.id,
+      cliente: fiado.cliente,
+      monto,
+      saldo_pendiente: fiado.saldo_pendiente
+    })
+
+    // Validaciones
     if (!monto || monto <= 0) {
       toast({ title: "Error", description: "Ingresa un monto válido", variant: "destructive" })
       return
@@ -95,42 +103,59 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
     try {
       setRegistrando(fiado.id)
 
+      // 🔥 TRACKING: Incluir entregador y planilla
+      const payload = {
+        pedidoId: fiado.id,
+        montoAbono: monto,
+        metodoPago: "efectivo",
+        entregadorCobro: entregador || fiado.entregador,  // 🔥 NUEVO
+        planillaCobro: Number(planillaId),                // 🔥 NUEVO
+        observaciones: `Cobro en ruta - planilla ${planillaId}`,
+      }
+
+      console.log('[FIADOS ASIGNADOS] 📤 Enviando payload:', payload)
+
       const res = await fetch("/api/fiados/registrar-abono", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pedidoId: fiado.id,
-          montoAbono: monto,
-          metodoPago: "efectivo",
-          observaciones: `Cobro en ruta - planilla ${planillaId}`,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Error al registrar abono")
+      
+      console.log('[FIADOS ASIGNADOS] 📥 Respuesta:', data)
 
+      if (!res.ok) {
+        throw new Error(data.error || "Error al registrar abono")
+      }
+
+      // Toast de éxito
       toast({
         title: "✅ Cobro registrado",
-        description: `${formatCOP(monto)} cobrado a ${fiado.cliente}. Saldo: ${formatCOP(data.saldo_pendiente)}`,
+        description: `${formatCOP(monto)} cobrado a ${fiado.cliente}. Saldo: ${formatCOP(data.fiado.saldo_pendiente)}`,
       })
 
-      // Actualizar localmente
+      console.log('[FIADOS ASIGNADOS] ✅ Abono registrado exitosamente')
+
+      // Actualizar estado local
       setFiados((prev) =>
         prev.map((f) =>
           f.id === fiado.id
             ? {
                 ...f,
-                monto_pagado: f.monto_pagado + monto,
-                saldo_pendiente: data.saldo_pendiente,
-                estado: data.saldo_pendiente === 0 ? "pagado_completo" : "pagado_parcial",
+                monto_pagado: data.fiado.monto_pagado,
+                saldo_pendiente: data.fiado.saldo_pendiente,
+                estado: data.fiado.estado,
               }
             : f
         ).filter((f) => f.estado !== "pagado_completo")
       )
 
-      // Limpiar campo
+      // Limpiar campo de abono
       setAbonos((prev) => ({ ...prev, [fiado.id]: "" }))
+
     } catch (err) {
+      console.error('[FIADOS ASIGNADOS] ❌ Error registrando abono:', err)
       toast({
         title: "Error",
         description: err instanceof Error ? err.message : "Error al registrar cobro",
@@ -141,6 +166,7 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
     }
   }
 
+  // Loading state
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
@@ -150,18 +176,23 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
     )
   }
 
-  if (fiados.length === 0) return null
+  // Sin fiados asignados
+  if (fiados.length === 0) {
+    console.log('[FIADOS ASIGNADOS] ℹ️ No hay fiados asignados a esta planilla')
+    return null
+  }
 
+  // Calcular totales
   const totalSaldos = fiados.reduce((s, f) => s + Number(f.saldo_pendiente), 0)
   const totalAbonosIngresados = Object.values(abonos).reduce((s, v) => s + (Number(v) || 0), 0)
 
   return (
     <div className="border rounded-lg overflow-hidden">
-      {/* Header */}
+      {/* Header colapsable */}
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between p-3 bg-amber-50 border-b border-amber-200 text-left"
+        className="w-full flex items-center justify-between p-3 bg-amber-50 border-b border-amber-200 text-left hover:bg-amber-100 transition-colors"
       >
         <div className="flex items-center gap-2">
           <Banknote className="h-4 w-4 text-amber-600" />
@@ -179,6 +210,7 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
         )}
       </button>
 
+      {/* Contenido expandible */}
       {expanded && (
         <div className="divide-y">
           {fiados.map((fiado) => {
@@ -190,7 +222,7 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
             return (
               <div key={fiado.id} className="p-3 bg-white">
                 <div className="flex items-start justify-between gap-4">
-                  {/* Info cliente */}
+                  {/* Información del cliente */}
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{fiado.cliente}</p>
                     {fiado.direccion && (
@@ -211,7 +243,7 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
                     </div>
                   </div>
 
-                  {/* Saldo + campo abono */}
+                  {/* Saldo + campo de abono */}
                   <div className="flex flex-col items-end gap-2 shrink-0">
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground">Saldo pendiente</p>
@@ -234,6 +266,7 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
                             }
                             placeholder="0"
                             className="w-32 h-8 text-sm text-right"
+                            disabled={registrando !== null}
                           />
                           <Button
                             size="sm"
@@ -245,6 +278,7 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
                                 [fiado.id]: fiado.saldo_pendiente.toString(),
                               }))
                             }
+                            disabled={registrando !== null}
                           >
                             Todo
                           </Button>
@@ -253,25 +287,28 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
 
                       <Button
                         size="sm"
-                        disabled={!abonoVal || abonoNum <= 0 || registrando === fiado.id}
+                        disabled={!abonoVal || abonoNum <= 0 || registrando !== null}
                         onClick={() => handleRegistrarAbono(fiado)}
                         className="h-8 text-xs mt-4"
                       >
                         {registrando === fiado.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Cobrando...
+                          </>
                         ) : (
                           "Cobrar"
                         )}
                       </Button>
                     </div>
 
-                    {/* Preview nuevo saldo */}
+                    {/* Preview del nuevo saldo */}
                     {abonoNum > 0 && abonoNum <= fiado.saldo_pendiente && (
                       <div
                         className={`text-xs px-2 py-1 rounded ${
                           esPagoCompleto
-                            ? "bg-green-50 text-green-700"
-                            : "bg-orange-50 text-orange-700"
+                            ? "bg-green-50 text-green-700 border border-green-200"
+                            : "bg-orange-50 text-orange-700 border border-orange-200"
                         }`}
                       >
                         {esPagoCompleto ? "✅ Saldo saldado" : `Nuevo saldo: ${formatCOP(nuevoSaldo)}`}
@@ -283,9 +320,9 @@ export function FiadosAsignadosSection({ planillaId, onTotalCobrosChange }: Fiad
             )
           })}
 
-          {/* Footer resumen */}
+          {/* Footer con resumen de cobros */}
           {totalAbonosIngresados > 0 && (
-            <div className="p-3 bg-amber-50 flex items-center justify-between">
+            <div className="p-3 bg-amber-50 flex items-center justify-between border-t border-amber-200">
               <span className="text-sm font-medium text-amber-800">
                 Total a cobrar hoy:
               </span>
