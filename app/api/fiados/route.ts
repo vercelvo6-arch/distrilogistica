@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const fechaInicio = searchParams.get('fechaInicio')
     const fechaFin = searchParams.get('fechaFin')
     const entregador = searchParams.get('entregador')
-    const planillaId = searchParams.get('planilla_id') // ← NUEVO
+    const planillaId = searchParams.get('planilla_id')
 
     const sql = getDB()
 
@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
 
     // ========================================
     // CONSULTA 1: Tabla "pedidos" (fiados de planillas diarias)
+    // ✅ CORRECCIÓN: Excluir pedidos de cobro (es_cobro = true)
     // ========================================
     let fiadosPedidos: any[] = []
     
@@ -79,6 +80,7 @@ export async function GET(request: NextRequest) {
           FROM pedidos p
           JOIN planillas pl ON p.planilla_id = pl.id
           WHERE p.estado IN ('fiado', 'pagado')
+            AND COALESCE(p.es_cobro, false) = false
             AND pl.fecha >= ${fechaInicio}
             AND pl.fecha <= ${fechaFin}
             AND pl.entregador = ${entregador}
@@ -105,6 +107,7 @@ export async function GET(request: NextRequest) {
           FROM pedidos p
           JOIN planillas pl ON p.planilla_id = pl.id
           WHERE p.estado IN ('fiado', 'pagado')
+            AND COALESCE(p.es_cobro, false) = false
             AND pl.fecha >= ${fechaInicio}
             AND pl.fecha <= ${fechaFin}
           ORDER BY pl.fecha DESC, p.cliente ASC
@@ -130,6 +133,7 @@ export async function GET(request: NextRequest) {
           FROM pedidos p
           JOIN planillas pl ON p.planilla_id = pl.id
           WHERE p.estado IN ('fiado', 'pagado')
+            AND COALESCE(p.es_cobro, false) = false
             AND pl.entregador = ${entregador}
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
@@ -154,6 +158,7 @@ export async function GET(request: NextRequest) {
           FROM pedidos p
           JOIN planillas pl ON p.planilla_id = pl.id
           WHERE p.estado IN ('fiado', 'pagado')
+            AND COALESCE(p.es_cobro, false) = false
           ORDER BY pl.fecha DESC, p.cliente ASC
         `
       }
@@ -165,6 +170,7 @@ export async function GET(request: NextRequest) {
 
     // ========================================
     // CONSULTA 2: Tabla "fiados" (importados desde CSV)
+    // ✅ CORRECCIÓN: Excluir fiados asignados para cobro
     // ========================================
     let fiadosTabla: any[] = []
     
@@ -191,6 +197,8 @@ export async function GET(request: NextRequest) {
           WHERE f.fecha_fiado >= ${fechaInicio}::date
             AND f.fecha_fiado <= ${fechaFin}::date
             AND f.entregador = ${entregador}
+            AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
+            AND f.estado IN ('pendiente', 'abono_parcial')
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       } else if (fechaInicio && fechaFin) {
@@ -214,6 +222,8 @@ export async function GET(request: NextRequest) {
           FROM fiados f
           WHERE f.fecha_fiado >= ${fechaInicio}::date
             AND f.fecha_fiado <= ${fechaFin}::date
+            AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
+            AND f.estado IN ('pendiente', 'abono_parcial')
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       } else if (entregador && entregador !== 'all') {
@@ -236,6 +246,8 @@ export async function GET(request: NextRequest) {
             'fiados' as origen
           FROM fiados f
           WHERE f.entregador = ${entregador}
+            AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
+            AND f.estado IN ('pendiente', 'abono_parcial')
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       } else {
@@ -257,6 +269,8 @@ export async function GET(request: NextRequest) {
             f.planilla_id::text as planilla_id,
             'fiados' as origen
           FROM fiados f
+          WHERE (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
+            AND f.estado IN ('pendiente', 'abono_parcial')
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       }
@@ -329,6 +343,8 @@ export async function GET(request: NextRequest) {
       entregador,
       ...data
     }))
+
+    console.log('[API fiados] ✅ Total fiados devueltos:', fiadosConAbonos.length)
 
     return NextResponse.json({ fiados: fiadosConAbonos, resumen })
 
