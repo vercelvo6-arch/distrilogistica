@@ -232,6 +232,11 @@ export async function GET() {
         pe.estado as pedido_estado,
         pe.observaciones as pedido_observaciones,
         pe.entregado_en,
+        pe.es_cobro,
+        pe.monto_pagado,
+        pe.saldo_pendiente,
+        pe.descuento,
+        pe.motivo_descuento,
         pp.codigo,
         pp.nombre,
         pp.categoria,
@@ -303,11 +308,11 @@ export async function GET() {
             observaciones: row.pedido_observaciones,
             entregado_en: row.entregado_en,
             productos: [],
-            descuento: 0,
-            motivo_descuento: null,
-            monto_pagado: 0,
-            saldo_pendiente: 0,
-            es_cobro: false
+            descuento: row.descuento || 0,
+            motivo_descuento: row.motivo_descuento || null,
+            monto_pagado: row.monto_pagado || 0,
+            saldo_pendiente: row.saldo_pendiente || 0,
+            es_cobro: row.es_cobro || false
           };
           planilla.pedidos.push(pedido);
         }
