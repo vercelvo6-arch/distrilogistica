@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
         saldo_pendiente = 0,
         fecha_pago_completo = NOW(),
         metodo_pago = 'efectivo',
+        cobrado_por = ${session.user?.name || 'Sistema'},
         planilla_asignado_id = NULL,
         fecha_asignacion = NULL,
         entregador_asignado = NULL,
