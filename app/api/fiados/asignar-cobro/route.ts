@@ -35,41 +35,15 @@ export async function POST(request: NextRequest) {
     const sql = getDB()
 
     // ===================================================
-    // LIMPIAR Y EXTRAER ID NUMÉRICO DE LA PLANILLA
+    // USAR EL ID COMO STRING (sin conversión a número)
     // ===================================================
-    let planillaIdStr = String(planillaDestinoId).trim()
+    const planillaId = String(planillaDestinoId).trim()
 
-    // Remover prefijo PLN si existe
-    if (planillaIdStr.toUpperCase().startsWith('PLN')) {
-      planillaIdStr = planillaIdStr.substring(3)
-    }
-
-    // Si tiene formato "17/488340319914D", extraer solo "17"
-    if (planillaIdStr.includes('/')) {
-      planillaIdStr = planillaIdStr.split('/')[0]
-    }
-
-    // Convertir a número
-    const planillaId = parseInt(planillaIdStr, 10)
-
-    console.log('[ASIGNAR COBRO] 🔍 ID procesado:', {
+    console.log('[ASIGNAR COBRO] 🔍 Planilla ID a buscar:', {
       original: planillaDestinoId,
-      limpio: planillaIdStr,
-      numero: planillaId,
-      valido: !isNaN(planillaId) && planillaId > 0
+      limpio: planillaId,
+      tipo: typeof planillaId
     })
-
-    if (isNaN(planillaId) || planillaId <= 0) {
-      return NextResponse.json(
-        { 
-          error: 'ID de planilla inválido', 
-          recibido: planillaDestinoId,
-          procesado: planillaIdStr,
-          mensaje: 'El ID de la planilla debe ser un número válido'
-        },
-        { status: 400 }
-      )
-    }
 
     // ===================================================
     // PASO 1: Buscar el fiado en AMBAS tablas
@@ -157,7 +131,7 @@ export async function POST(request: NextRequest) {
       const planillasExistentes = await sql`
         SELECT id, tipo_ruta, entregador, fecha 
         FROM planillas 
-        ORDER BY id DESC 
+        ORDER BY fecha DESC 
         LIMIT 10
       `
       console.error('[ASIGNAR COBRO] Planillas recientes:', planillasExistentes)
@@ -268,7 +242,7 @@ export async function POST(request: NextRequest) {
       await sql`
         UPDATE fiados
         SET 
-          planilla_asignado_id = ${planillaId},
+          planilla_asignado_id = ${planillaId}::text,
           fecha_asignacion = NOW(),
           entregador_asignado = ${planillaDestino[0].entregador},
           updated_at = NOW()
