@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { RefreshCw, Calendar, Search, ArrowRight } from "lucide-react"
@@ -66,8 +66,16 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
   const [planillaDestinoId, setPlanillaDestinoId] = useState<string>("")
   const [asignando, setAsignando] = useState(false)
 
+  // ✅ FIX: Agregar ref para detectar si el componente está montado
+  const isMounted = useRef(true)
+
   useEffect(() => {
     loadData()
+    
+    // ✅ Cleanup: marcar componente como desmontado
+    return () => {
+      isMounted.current = false
+    }
   }, [])
 
   async function loadData() {
@@ -76,13 +84,17 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
       await Promise.all([loadRepasos(), loadPlanillasDisponibles()])
     } catch (err) {
       console.error("Error loading data:", err)
-      toast({
-        title: "Error",
-        description: "No se pudieron cargar los datos",
-        variant: "destructive",
-      })
+      if (isMounted.current) {
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los datos",
+          variant: "destructive",
+        })
+      }
     } finally {
-      setLoading(false)
+      if (isMounted.current) {
+        setLoading(false)
+      }
     }
   }
 
@@ -92,7 +104,9 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
       if (!response.ok) throw new Error("Error al cargar repasos")
 
       const data = await response.json()
-      setRepasos(data.repasos || [])
+      if (isMounted.current) {
+        setRepasos(data.repasos || [])
+      }
     } catch (err) {
       console.error("Error loading repasos:", err)
       throw err
@@ -101,16 +115,13 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
 
   async function loadPlanillasDisponibles() {
     try {
-      // ✅ TRAER TODAS las planillas sin filtro de estado
       const response = await fetch("/api/planillas")
       if (!response.ok) throw new Error("Error al cargar planillas")
 
       const data = await response.json()
       
-      // ✅ NUEVO FILTRO: Solo excluir planillas ya cuadradas en caja
       const planillasFuturas = (data.planillas || [])
         .sort((a: any, b: any) => {
-          // Ordenar por fecha (más recientes primero)
           return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
         })
         .map((p: any) => ({
@@ -122,7 +133,9 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
           total_cargue: Number(p.total_cargue) || 0,
         }))
 
-      setPlanillasDisponibles(planillasFuturas)
+      if (isMounted.current) {
+        setPlanillasDisponibles(planillasFuturas)
+      }
     } catch (err) {
       console.error("Error loading planillas:", err)
       throw err
@@ -131,7 +144,7 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
 
   function openAsignarModal(repaso: RepasosPedido) {
     setSelectedRepaso(repaso)
-    setPlanillaDestinoId("") // ✅ RESETEAR a string vacío
+    setPlanillaDestinoId("")
     setShowAsignarModal(true)
   }
 
@@ -148,10 +161,9 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
     try {
       setAsignando(true)
 
-      // ✅ DEBUG: Ver qué se está enviando
       const payload = {
         pedidoId: selectedRepaso.id,
-        planillaDestinoId: planillaDestinoId, // ✅ Enviar como string, el backend lo convertirá
+        planillaDestinoId: planillaDestinoId,
       }
       
       console.log('🔍 Enviando payload:', payload)
@@ -170,24 +182,33 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
         throw new Error(data.error || "Error al asignar repaso")
       }
 
-      toast({
-        title: "✅ Repaso Asignado",
-        description: `Pedido asignado exitosamente a la planilla ${data.planilla.tipo_ruta}`,
-      })
+      // ✅ Solo mostrar toast si el componente está montado
+      if (isMounted.current) {
+        toast({
+          title: "✅ Repaso Asignado",
+          description: `Repaso asignado exitosamente. El monto se sumó al cargue de la planilla.`,
+        })
 
-      setShowAsignarModal(false)
-      setSelectedRepaso(null)
-      setPlanillaDestinoId("")
-      await loadData()
+        setShowAsignarModal(false)
+        setSelectedRepaso(null)
+        setPlanillaDestinoId("")
+        
+        // ✅ Recargar datos solo si el componente está montado
+        await loadData()
+      }
     } catch (error) {
       console.error("Error asignando repaso:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Error al asignar repaso",
-        variant: "destructive",
-      })
+      if (isMounted.current) {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Error al asignar repaso",
+          variant: "destructive",
+        })
+      }
     } finally {
-      setAsignando(false)
+      if (isMounted.current) {
+        setAsignando(false)
+      }
     }
   }
 
@@ -365,11 +386,6 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
                   )}
                 </SelectContent>
               </Select>
-              
-              {/* ✅ DEBUG: Mostrar valor actual */}
-              <p className="text-xs text-muted-foreground mt-2">
-                Planilla seleccionada: {planillaDestinoId || 'Ninguna'}
-              </p>
             </div>
 
             {planillaDestinoId && (
