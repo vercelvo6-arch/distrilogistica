@@ -159,67 +159,60 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  console.log('🔵 [FIADOS] handleFileChange EJECUTADO')
-  console.log('🔵 [FIADOS] Evento:', e)
-  console.log('🔵 [FIADOS] e.target:', e.target)
-  console.log('🔵 [FIADOS] e.target.files:', e.target.files)
-  
-  const file = e.target.files?.[0]
-  console.log('🔵 [FIADOS] Archivo extraído:', file)
-  
-  if (!file) {
-    console.log('❌ [FIADOS] NO HAY ARCHIVO')
-    return
-  }
-
-  console.log('✅ [FIADOS] Archivo detectado:', {
-    nombre: file.name,
-    tipo: file.type,
-    tamaño: file.size
-  })
-
-  try {
-    setImportando(true)
-    console.log('📤 [FIADOS] Creando FormData...')
+    console.log('🔵 [FIADOS] handleFileChange EJECUTADO')
     
-    const formData = new FormData()
-    formData.append('file', file)
-    console.log('📤 [FIADOS] FormData creado, enviando...')
-
-    const response = await fetch('/api/fiados/importar', {
-      method: 'POST',
-      body: formData
-    })
-
-    console.log('📥 [FIADOS] Respuesta status:', response.status)
-    const data = await response.json()
-    console.log('📥 [FIADOS] Data recibida:', data)
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Error al importar')
+    const file = e.target.files?.[0]
+    
+    if (!file) {
+      console.log('❌ [FIADOS] NO HAY ARCHIVO')
+      return
     }
 
-    toast({
-      title: "Importación Exitosa",
-      description: data.mensaje,
+    console.log('✅ [FIADOS] Archivo detectado:', {
+      nombre: file.name,
+      tipo: file.type,
+      tamaño: file.size
     })
 
-    await loadFiados()
-    
-  } catch (error) {
-    console.error('❌ [FIADOS] ERROR:', error)
-    toast({
-      title: "Error",
-      description: error instanceof Error ? error.message : "Error al importar fiados",
-      variant: "destructive",
-    })
-  } finally {
-    setImportando(false)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+    try {
+      setImportando(true)
+      
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/fiados/importar', {
+        method: 'POST',
+        body: formData
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al importar')
+      }
+
+      toast({
+        title: "Importación Exitosa",
+        description: data.mensaje,
+      })
+
+      await loadFiados()
+      
+    } catch (error) {
+      console.error('❌ [FIADOS] ERROR:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al importar fiados",
+        variant: "destructive",
+      })
+    } finally {
+      setImportando(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
   }
-}
+
   const loadPlanillasDisponibles = async () => {
     try {
       const response = await fetch("/api/planillas")
@@ -232,7 +225,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
           return new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
         })
         .map((p: any) => ({
-          id: p.id,
+          id: String(p.id),
           tipo_ruta: p.tipo_ruta,
           fecha: p.fecha,
           entregador: p.entregador,
@@ -240,6 +233,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
           total_cargue: Number(p.total_cargue) || 0,
         }))
 
+      console.log('[FIADOS] Planillas disponibles:', planillas)
       setPlanillasDisponibles(planillas)
     } catch (err) {
       console.error("Error loading planillas:", err)
@@ -266,24 +260,32 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     try {
       setAsignandoCobro(true)
 
-      console.log('🔍 DATOS A ENVIAR:', {
-        pedidoFiadoId: selectedFiadoParaCobro.id,
-        planillaDestinoId: planillaCobroId,
-        selectedFiadoCompleto: selectedFiadoParaCobro
-       })
+      // ✅ LIMPIAR Y VALIDAR EL ID
+      const planillaIdLimpio = String(planillaCobroId).trim()
+      
+      console.log('🔍 [FRONTEND] Asignando cobro:', {
+        fiado_id: selectedFiadoParaCobro.id,
+        fiado_cliente: selectedFiadoParaCobro.cliente,
+        fiado_monto: selectedFiadoParaCobro.saldo_pendiente,
+        planilla_id_original: planillaCobroId,
+        planilla_id_limpio: planillaIdLimpio,
+        tipo_planilla_id: typeof planillaIdLimpio
+      })
       
       const response = await fetch("/api/fiados/asignar-cobro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pedidoFiadoId: selectedFiadoParaCobro.id,
-          planillaDestinoId: planillaCobroId,
+          planillaDestinoId: planillaIdLimpio,
         }),
       })
 
       const data = await response.json()
+      console.log('📥 [FRONTEND] Respuesta del servidor:', data)
 
       if (!response.ok) {
+        console.error('❌ [FRONTEND] Error en respuesta:', data)
         throw new Error(data.error || "Error al asignar cobro")
       }
 
@@ -297,7 +299,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       setPlanillaCobroId("")
       await loadFiados()
     } catch (error) {
-      console.error("Error asignando cobro:", error)
+      console.error("❌ [FRONTEND] Error completo:", error)
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Error al asignar cobro",
@@ -829,7 +831,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
               <Select 
                 value={planillaCobroId} 
                 onValueChange={(value) => {
-                  console.log('✅ Planilla seleccionada:', value)
+                  console.log('✅ [SELECT] Planilla seleccionada:', value, typeof value)
                   setPlanillaCobroId(value)
                 }}
               >
