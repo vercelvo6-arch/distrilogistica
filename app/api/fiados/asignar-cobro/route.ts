@@ -18,6 +18,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { pedidoFiadoId, planillaDestinoId } = body
 
+    console.log('[ASIGNAR COBRO] 📨 Request recibido:', {
+      pedidoFiadoId,
+      planillaDestinoId,
+      tipo_pedido: typeof pedidoFiadoId,
+      tipo_planilla: typeof planillaDestinoId
+    })
+
     if (!pedidoFiadoId || !planillaDestinoId) {
       return NextResponse.json(
         { error: 'Datos incompletos: pedidoFiadoId y planillaDestinoId son requeridos' },
@@ -27,9 +34,42 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // Limpiar prefijo PLN del ID de planilla
-    const planillaDestinoIdClean = String(planillaDestinoId).replace(/^PLN/i, '')
-    console.log('[ASIGNAR COBRO] Planilla destino:', planillaDestinoIdClean)
+    // ===================================================
+    // LIMPIAR Y EXTRAER ID NUMÉRICO DE LA PLANILLA
+    // ===================================================
+    let planillaIdStr = String(planillaDestinoId).trim()
+
+    // Remover prefijo PLN si existe
+    if (planillaIdStr.toUpperCase().startsWith('PLN')) {
+      planillaIdStr = planillaIdStr.substring(3)
+    }
+
+    // Si tiene formato "17/488340319914D", extraer solo "17"
+    if (planillaIdStr.includes('/')) {
+      planillaIdStr = planillaIdStr.split('/')[0]
+    }
+
+    // Convertir a número
+    const planillaId = parseInt(planillaIdStr, 10)
+
+    console.log('[ASIGNAR COBRO] 🔍 ID procesado:', {
+      original: planillaDestinoId,
+      limpio: planillaIdStr,
+      numero: planillaId,
+      valido: !isNaN(planillaId) && planillaId > 0
+    })
+
+    if (isNaN(planillaId) || planillaId <= 0) {
+      return NextResponse.json(
+        { 
+          error: 'ID de planilla inválido', 
+          recibido: planillaDestinoId,
+          procesado: planillaIdStr,
+          mensaje: 'El ID de la planilla debe ser un número válido'
+        },
+        { status: 400 }
+      )
+    }
 
     // ===================================================
     // PASO 1: Buscar el fiado en AMBAS tablas
@@ -93,22 +133,57 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('[ASIGNAR COBRO] ✓ Fiado válido:', {
+      cliente: fiadoData.cliente,
+      saldo: fiadoData.saldo_pendiente,
+      origen: origenFiado
+    })
+
     // ===================================================
     // PASO 2: Verificar planilla destino
     // ===================================================
+    console.log('[ASIGNAR COBRO] 🔍 Buscando planilla ID:', planillaId)
+
     const planillaDestino = await sql`
       SELECT id, tipo_ruta, entregador, total_cargue, estado, cuadrado_en_caja
       FROM planillas
-      WHERE id = ${planillaDestinoIdClean}
-        AND (cuadrado_en_caja IS NULL OR cuadrado_en_caja = false)
+      WHERE id = ${planillaId}
     `
 
     if (planillaDestino.length === 0) {
+      console.error('[ASIGNAR COBRO] ❌ Planilla no encontrada. ID buscado:', planillaId)
+      
+      // DEBUG: Mostrar qué planillas existen
+      const planillasExistentes = await sql`
+        SELECT id, tipo_ruta, entregador, fecha 
+        FROM planillas 
+        ORDER BY id DESC 
+        LIMIT 10
+      `
+      console.error('[ASIGNAR COBRO] Planillas recientes:', planillasExistentes)
+      
       return NextResponse.json(
-        { error: 'Planilla destino no encontrada o ya fue cuadrada en caja' },
+        { 
+          error: 'Planilla destino no encontrada',
+          id_buscado: planillaId,
+          debug: {
+            planillas_recientes: planillasExistentes.map(p => ({ 
+              id: p.id, 
+              ruta: p.tipo_ruta, 
+              entregador: p.entregador 
+            }))
+          }
+        },
         { status: 404 }
       )
     }
+
+    console.log('[ASIGNAR COBRO] ✓ Planilla encontrada:', {
+      id: planillaDestino[0].id,
+      ruta: planillaDestino[0].tipo_ruta,
+      entregador: planillaDestino[0].entregador,
+      cuadrada: planillaDestino[0].cuadrado_en_caja
+    })
 
     const saldoPendiente = Number(fiadoData.saldo_pendiente)
     const totalCargueActual = Number(planillaDestino[0].total_cargue) || 0
@@ -121,7 +196,7 @@ export async function POST(request: NextRequest) {
     const ultimaSecuencia = await sql`
       SELECT COALESCE(MAX(secuencia), 0) as max_sec
       FROM pedidos
-      WHERE planilla_id = ${planillaDestinoIdClean}
+      WHERE planilla_id = ${planillaId}
     `
     const nuevaSecuencia = (ultimaSecuencia[0]?.max_sec || 0) + 1
 
@@ -134,7 +209,7 @@ export async function POST(request: NextRequest) {
         created_at, updated_at
       ) VALUES (
         ${cobroId},
-        ${planillaDestinoIdClean},
+        ${planillaId},
         ${nuevaSecuencia},
         ${fiadoData.cliente + ' (COBRO)'},
         ${fiadoData.direccion || 'Por definir'},
@@ -176,7 +251,7 @@ export async function POST(request: NextRequest) {
     await sql`
       UPDATE planillas
       SET total_cargue = ${nuevoTotalCargue}, updated_at = NOW()
-      WHERE id = ${planillaDestinoIdClean}
+      WHERE id = ${planillaId}
     `
 
     console.log('[ASIGNAR COBRO] ✅ Cargue actualizado:', {
@@ -185,7 +260,7 @@ export async function POST(request: NextRequest) {
     })
 
     // ===================================================
-    // PASO 5: 🔥 ACTUALIZAR TABLA FIADOS con tracking
+    // PASO 5: ACTUALIZAR TABLA FIADOS con tracking
     // ===================================================
     if (origenFiado === 'fiados') {
       console.log('[ASIGNAR COBRO] 📝 Actualizando tabla fiados con tracking...')
@@ -193,7 +268,7 @@ export async function POST(request: NextRequest) {
       await sql`
         UPDATE fiados
         SET 
-          planilla_asignado_id = ${Number(planillaDestinoIdClean)},
+          planilla_asignado_id = ${planillaId},
           fecha_asignacion = NOW(),
           entregador_asignado = ${planillaDestino[0].entregador},
           updated_at = NOW()
@@ -201,12 +276,12 @@ export async function POST(request: NextRequest) {
       `
       
       console.log('[ASIGNAR COBRO] ✅ Fiado marcado como asignado a:', {
-        planilla: planillaDestinoIdClean,
+        planilla: planillaId,
         entregador: planillaDestino[0].entregador
       })
     }
 
-    console.log('[ASIGNAR COBRO] 🎉 ÉXITO')
+    console.log('[ASIGNAR COBRO] 🎉 ÉXITO COMPLETO')
     console.log('[ASIGNAR COBRO] ===== FIN =====\n')
 
     return NextResponse.json({
