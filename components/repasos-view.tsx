@@ -3,18 +3,9 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { RefreshCw, Calendar, Search, ArrowRight, X } from "lucide-react"
+import { RefreshCw, ArrowRight, X } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import { useToast } from "@/hooks/use-toast"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 interface RepasosPedido {
   id: string
@@ -330,10 +321,15 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
         )}
       </Card>
 
-      {/* ✅ MODAL SIMPLE SIN RADIX DIALOG */}
+      {/* ✅ MODAL COMPLETAMENTE CUSTOM - SIN RADIX */}
       {showAsignarModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl p-6">
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal()
+          }}
+        >
+          <Card className="w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-xl font-bold">Asignar Repaso a Planilla</h2>
@@ -348,35 +344,23 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
 
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="planillaDestino">Planilla de Destino</Label>
-                <Select 
-                  value={planillaDestinoId} 
-                  onValueChange={setPlanillaDestinoId}
+                <label className="block text-sm font-medium mb-2">
+                  Planilla de Destino
+                </label>
+                
+                {/* ✅ SELECT NATIVO - SIN RADIX */}
+                <select
+                  value={planillaDestinoId}
+                  onChange={(e) => setPlanillaDestinoId(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md bg-background"
                 >
-                  <SelectTrigger id="planillaDestino">
-                    <SelectValue placeholder="Selecciona una planilla" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {planillasDisponibles.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">
-                        No hay planillas disponibles
-                      </div>
-                    ) : (
-                      planillasDisponibles.map((planilla) => (
-                        <SelectItem key={planilla.id} value={planilla.id.toString()}>
-                          <div className="flex items-center justify-between w-full gap-4">
-                            <span className="font-medium">
-                              Ruta {planilla.tipo_ruta} - {planilla.entregador}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(planilla.fecha).toLocaleDateString("es-CO")}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                  <option value="">Selecciona una planilla</option>
+                  {planillasDisponibles.map((planilla) => (
+                    <option key={planilla.id} value={planilla.id.toString()}>
+                      Ruta {planilla.tipo_ruta} - {planilla.entregador} - {new Date(planilla.fecha).toLocaleDateString("es-CO")}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {planillaDestinoId && (
