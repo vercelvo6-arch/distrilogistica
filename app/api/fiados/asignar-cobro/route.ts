@@ -3,7 +3,7 @@ import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 
 export async function POST(request: NextRequest) {
-  console.log('[API asignar-cobro] ===== INICIO =====')
+  console.log('\n💰 [ASIGNAR COBRO] ===== INICIO =====')
   
   try {
     const session = await getSession()
@@ -27,9 +27,9 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // Limpiar prefijo PLN del ID de planilla (puede venir como "PLN123" o "123")
+    // Limpiar prefijo PLN del ID de planilla
     const planillaDestinoIdClean = String(planillaDestinoId).replace(/^PLN/i, '')
-    console.log('[API asignar-cobro] planillaDestinoId original:', planillaDestinoId, '→ limpio:', planillaDestinoIdClean)
+    console.log('[ASIGNAR COBRO] Planilla destino:', planillaDestinoIdClean)
 
     // ===================================================
     // PASO 1: Buscar el fiado en AMBAS tablas
@@ -37,8 +37,9 @@ export async function POST(request: NextRequest) {
     let fiadoData: any = null
     let origenFiado: 'pedidos' | 'fiados' = 'pedidos'
 
+    console.log('[ASIGNAR COBRO] 🔍 Buscando fiado:', pedidoFiadoId)
+
     // Intentar primero en tabla "pedidos"
-    console.log('[API asignar-cobro] 🔍 Buscando en tabla pedidos:', pedidoFiadoId)
     const pedidoFiado = await sql`
       SELECT 
         p.id::text as id, 
@@ -47,7 +48,6 @@ export async function POST(request: NextRequest) {
         p.direccion,
         p.telefono,
         p.barrio,
-        -- Calcular saldo en lugar de confiar en la columna (puede ser NULL)
         (p.total - COALESCE(p.monto_pagado, 0)) as saldo_pendiente
       FROM pedidos p
       WHERE p.id = ${pedidoFiadoId} 
@@ -58,12 +58,11 @@ export async function POST(request: NextRequest) {
     if (pedidoFiado.length > 0) {
       fiadoData = pedidoFiado[0]
       origenFiado = 'pedidos'
-      console.log('[API asignar-cobro] ✓ Fiado encontrado en tabla pedidos')
+      console.log('[ASIGNAR COBRO] ✓ Fiado encontrado en tabla pedidos')
     } else {
       // Buscar en tabla "fiados" (importados desde CSV)
-      console.log('[API asignar-cobro] 🔍 No encontrado en pedidos, buscando en tabla fiados:', pedidoFiadoId)
+      console.log('[ASIGNAR COBRO] 🔍 Buscando en tabla fiados')
       
-      // El ID puede venir como número o como string
       const fiadoTabla = await sql`
         SELECT 
           id::text as id,
@@ -82,12 +81,12 @@ export async function POST(request: NextRequest) {
       if (fiadoTabla.length > 0) {
         fiadoData = fiadoTabla[0]
         origenFiado = 'fiados'
-        console.log('[API asignar-cobro] ✓ Fiado encontrado en tabla fiados')
+        console.log('[ASIGNAR COBRO] ✓ Fiado encontrado en tabla fiados')
       }
     }
 
     if (!fiadoData) {
-      console.error('[API asignar-cobro] ❌ Fiado no encontrado en ninguna tabla:', pedidoFiadoId)
+      console.error('[ASIGNAR COBRO] ❌ Fiado no encontrado')
       return NextResponse.json(
         { error: 'Fiado no encontrado o sin saldo pendiente' },
         { status: 404 }
@@ -126,8 +125,6 @@ export async function POST(request: NextRequest) {
     `
     const nuevaSecuencia = (ultimaSecuencia[0]?.max_sec || 0) + 1
 
-    // pedido_fiado_id solo aplica cuando el origen es tabla "pedidos"
-    // Si viene de tabla "fiados", la FK no aplica → NULL
     const pedidoFiadoIdFK = origenFiado === 'pedidos' ? pedidoFiadoId : null
 
     await sql`
@@ -147,7 +144,7 @@ export async function POST(request: NextRequest) {
         'pendiente',
         true,
         ${pedidoFiadoIdFK},
-        ${'Cobro de fiado pendiente'},
+        ${'Cobro de fiado pendiente - Origen: ' + origenFiado},
         NOW(),
         NOW()
       )
@@ -169,6 +166,8 @@ export async function POST(request: NextRequest) {
       )
     `
 
+    console.log('[ASIGNAR COBRO] ✅ Pedido de cobro creado:', cobroId)
+
     // ===================================================
     // PASO 4: Actualizar total_cargue de la planilla
     // ===================================================
@@ -180,23 +179,35 @@ export async function POST(request: NextRequest) {
       WHERE id = ${planillaDestinoIdClean}
     `
 
+    console.log('[ASIGNAR COBRO] ✅ Cargue actualizado:', {
+      anterior: totalCargueActual,
+      nuevo: nuevoTotalCargue
+    })
+
     // ===================================================
-    // PASO 5: Si el fiado viene de tabla "fiados",
-    // actualizar planilla_id para que aparezca en FiadosAsignadosSection
+    // PASO 5: 🔥 ACTUALIZAR TABLA FIADOS con tracking
     // ===================================================
     if (origenFiado === 'fiados') {
-      console.log('[API asignar-cobro] 📝 Actualizando planilla_id en tabla fiados:', pedidoFiadoId)
+      console.log('[ASIGNAR COBRO] 📝 Actualizando tabla fiados con tracking...')
+      
       await sql`
         UPDATE fiados
-        SET planilla_id = ${Number(planillaDestinoIdClean)}, updated_at = NOW()
+        SET 
+          planilla_asignado_id = ${Number(planillaDestinoIdClean)},
+          fecha_asignacion = NOW(),
+          entregador_asignado = ${planillaDestino[0].entregador},
+          updated_at = NOW()
         WHERE (id::text = ${pedidoFiadoId} OR pedido_id = ${pedidoFiadoId})
       `
-      console.log('[API asignar-cobro] ✓ planilla_id actualizado en tabla fiados')
+      
+      console.log('[ASIGNAR COBRO] ✅ Fiado marcado como asignado a:', {
+        planilla: planillaDestinoIdClean,
+        entregador: planillaDestino[0].entregador
+      })
     }
 
-    console.log('[API asignar-cobro] ✅ ÉXITO:', {
-      cobroId, origen: origenFiado, saldoPendiente, nuevoTotalCargue
-    })
+    console.log('[ASIGNAR COBRO] 🎉 ÉXITO')
+    console.log('[ASIGNAR COBRO] ===== FIN =====\n')
 
     return NextResponse.json({
       success: true,
@@ -217,7 +228,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[API asignar-cobro] ❌ ERROR FATAL:', error)
+    console.error('[ASIGNAR COBRO] ❌ ERROR FATAL:', error)
     return NextResponse.json(
       { 
         error: 'Error al asignar cobro',
