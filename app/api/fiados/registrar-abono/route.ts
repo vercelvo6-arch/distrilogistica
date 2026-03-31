@@ -1,202 +1,333 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
-import { handleDBError } from '@/lib/db-helpers'
 
 export async function POST(request: NextRequest) {
+  console.log('\n💵 [REGISTRAR ABONO] ===== INICIO =====')
+  
   try {
     const session = await getSession()
+    
     if (!session?.user) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    if (!['caja', 'administrador', 'coordinador'].includes(session.user.rol)) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
-    }
-
     const body = await request.json()
-    const { pedidoId, montoAbono, metodoPago, observaciones, usuarioId } = body
+    console.log('[REGISTRAR ABONO] 📥 Body completo:', JSON.stringify(body, null, 2))
+    
+    const { 
+      pedidoId, 
+      montoAbono, 
+      metodoPago, 
+      observaciones,
+      entregadorCobro,  // 🔥 NUEVO - quién cobró
+      planillaCobro     // 🔥 NUEVO - en qué planilla se cobró
+    } = body
 
-    console.log('[REGISTRAR ABONO] Request recibido:', { pedidoId, montoAbono, metodoPago })
-
+    // ===================================================
+    // VALIDACIONES BÁSICAS
+    // ===================================================
     if (!pedidoId) {
+      console.error('[REGISTRAR ABONO] ❌ pedidoId faltante')
       return NextResponse.json(
         { error: 'pedidoId es requerido' },
         { status: 400 }
       )
     }
 
-    if (!montoAbono || montoAbono <= 0) {
+    if (!montoAbono || Number(montoAbono) <= 0) {
+      console.error('[REGISTRAR ABONO] ❌ montoAbono inválido:', montoAbono)
       return NextResponse.json(
-        { error: 'Monto de abono invalido' },
+        { error: 'montoAbono debe ser mayor a 0' },
         { status: 400 }
       )
     }
 
     const sql = getDB()
 
-    console.log('[REGISTRAR ABONO] Buscando fiado:', pedidoId)
-
-    let pedidoEncontrado: any = null
-    let origenTabla: 'pedidos' | 'fiados' = 'pedidos'
-
-    // 1. Buscar en tabla pedidos
-    const pedidosResult = await sql`
+    // ===================================================
+    // BUSCAR EL FIADO
+    // ===================================================
+    console.log('[REGISTRAR ABONO] 🔍 Buscando fiado:', pedidoId)
+    
+    const fiado = await sql`
       SELECT 
-        id::text as id,
-        total,
-        COALESCE(monto_pagado, 0) as monto_pagado,
-        (total - COALESCE(monto_pagado, 0)) as saldo_pendiente,
-        estado
-      FROM pedidos
-      WHERE id::text = ${pedidoId}
-        AND estado IN ('fiado', 'pagado', 'parcial')
+        id,
+        cliente,
+        monto_total,
+        monto_pagado,
+        saldo_pendiente,
+        estado,
+        direccion,
+        telefono,
+        entregador,
+        ruta
+      FROM fiados
+      WHERE id = ${pedidoId}
     `
 
-    console.log('[REGISTRAR ABONO] Resultado busqueda en pedidos:', pedidosResult)
-
-    if (pedidosResult.length > 0) {
-      pedidoEncontrado = pedidosResult[0]
-      origenTabla = 'pedidos'
-      console.log('[REGISTRAR ABONO] Encontrado en tabla pedidos:', pedidoEncontrado)
-    } else {
-      console.log('[REGISTRAR ABONO] No encontrado en pedidos, buscando en tabla fiados...')
-      
-      const fiadosResult = await sql`
-        SELECT 
-          COALESCE(pedido_id, id::text) as id,
-          monto_total as total,
-          COALESCE(monto_pagado, 0) as monto_pagado,
-          (monto_total - COALESCE(monto_pagado, 0)) as saldo_pendiente,
-          estado
-        FROM fiados
-        WHERE COALESCE(pedido_id, id::text) = ${pedidoId}
-      `
-
-      console.log('[REGISTRAR ABONO] Resultado busqueda en fiados:', fiadosResult)
-
-      if (fiadosResult.length > 0) {
-        pedidoEncontrado = fiadosResult[0]
-        origenTabla = 'fiados'
-        console.log('[REGISTRAR ABONO] Encontrado en tabla fiados:', pedidoEncontrado)
-      }
-    }
-
-    if (!pedidoEncontrado) {
-      console.log('[REGISTRAR ABONO] Fiado no encontrado en ninguna tabla:', pedidoId)
+    if (fiado.length === 0) {
+      console.error('[REGISTRAR ABONO] ❌ Fiado no encontrado:', pedidoId)
       return NextResponse.json(
         { error: 'Fiado no encontrado' },
         { status: 404 }
       )
     }
 
-    const totalPedido = Number(pedidoEncontrado.total)
-    const montoPagadoActual = Number(pedidoEncontrado.monto_pagado || 0)
-    const saldoActual = Number(pedidoEncontrado.saldo_pendiente)
-
-    console.log('[REGISTRAR ABONO] Estado actual:', {
-      origen: origenTabla,
-      total: totalPedido,
-      pagado: montoPagadoActual,
-      saldo: saldoActual,
-      abonoNuevo: montoAbono
+    const fiadoData = fiado[0]
+    console.log('[REGISTRAR ABONO] ✅ Fiado encontrado:', {
+      cliente: fiadoData.cliente,
+      saldo_pendiente: fiadoData.saldo_pendiente,
+      estado: fiadoData.estado
     })
 
-    if (montoAbono > saldoActual) {
-      console.log('[REGISTRAR ABONO] Abono mayor al saldo')
+    // ===================================================
+    // VALIDAR QUE NO ESTÉ YA PAGADO
+    // ===================================================
+    if (fiadoData.estado === 'pagado_completo') {
+      console.error('[REGISTRAR ABONO] ❌ Fiado ya está pagado completamente')
+      return NextResponse.json(
+        { error: 'Este fiado ya fue pagado completamente' },
+        { status: 400 }
+      )
+    }
+
+    const saldoActual = Number(fiadoData.saldo_pendiente) || 0
+    const monto = Number(montoAbono)
+
+    // ===================================================
+    // VALIDAR QUE EL ABONO NO EXCEDA EL SALDO
+    // ===================================================
+    if (monto > saldoActual) {
+      console.error('[REGISTRAR ABONO] ❌ El abono excede el saldo pendiente:', {
+        abono: monto,
+        saldo: saldoActual
+      })
       return NextResponse.json(
         { 
-          error: `El abono no puede ser mayor al saldo pendiente`,
-          detalles: {
-            total: totalPedido,
-            pagado: montoPagadoActual,
-            saldo: saldoActual,
-            abono: montoAbono
-          }
+          error: `El abono (${monto}) no puede ser mayor al saldo pendiente (${saldoActual})`,
+          saldo_pendiente: saldoActual,
+          abono_intentado: monto
         },
         { status: 400 }
       )
     }
 
-    const nuevoMontoPagado = montoPagadoActual + montoAbono
-    const nuevoSaldo = totalPedido - nuevoMontoPagado
-    const nuevoEstado = nuevoSaldo === 0 ? 'pagado' : (nuevoSaldo < totalPedido ? 'parcial' : 'fiado')
+    // ===================================================
+    // CALCULAR NUEVOS VALORES
+    // ===================================================
+    const montoPagadoActual = Number(fiadoData.monto_pagado) || 0
+    const nuevoMontoPagado = montoPagadoActual + monto
+    const nuevoSaldo = saldoActual - monto
+    const nuevoEstado = nuevoSaldo === 0 ? 'pagado_completo' : 'pagado_parcial'
 
-    console.log('[REGISTRAR ABONO] Valores calculados:', {
-      nuevoMontoPagado,
-      nuevoSaldo,
-      nuevoEstado
+    console.log('[REGISTRAR ABONO] 📊 Cálculos:', {
+      saldo_actual: saldoActual,
+      abono: monto,
+      monto_pagado_actual: montoPagadoActual,
+      nuevo_monto_pagado: nuevoMontoPagado,
+      nuevo_saldo: nuevoSaldo,
+      nuevo_estado: nuevoEstado
     })
 
-    console.log('[REGISTRAR ABONO] Insertando abono en abonos_fiados...')
-    await sql`
+    // ===================================================
+    // REGISTRAR ABONO EN TABLA abonos_fiados
+    // 🔥 CON TRACKING DE QUIÉN COBRÓ Y EN QUÉ PLANILLA
+    // ===================================================
+    console.log('[REGISTRAR ABONO] 💾 Registrando abono con tracking...')
+    
+    const abonoRegistrado = await sql`
       INSERT INTO abonos_fiados (
-        pedido_id,
-        monto_abono,
+        fiado_id,
+        monto,
         metodo_pago,
+        fecha_abono,
+        entregador_cobro,
+        planilla_cobro_id,
         observaciones,
-        registrado_por,
-        origen_tabla
+        created_at
       ) VALUES (
         ${pedidoId},
-        ${montoAbono},
+        ${monto},
         ${metodoPago || 'efectivo'},
+        NOW(),
+        ${entregadorCobro || null},
+        ${planillaCobro || null},
         ${observaciones || null},
-        ${usuarioId || session.user.id},
-        ${origenTabla}
+        NOW()
       )
+      RETURNING id, fecha_abono
     `
-    console.log('[REGISTRAR ABONO] Abono insertado en abonos_fiados')
 
-    if (origenTabla === 'pedidos') {
-      console.log('[REGISTRAR ABONO] Actualizando tabla pedidos...')
-      const updatePedidos = await sql`
-        UPDATE pedidos
-        SET 
-          monto_pagado = ${nuevoMontoPagado},
-          saldo_pendiente = ${nuevoSaldo},
-          estado = ${nuevoEstado},
-          updated_at = NOW()
-        WHERE id::text = ${pedidoId}
-        RETURNING id
+    console.log('[REGISTRAR ABONO] ✅ Abono registrado con ID:', abonoRegistrado[0].id)
+    console.log('[REGISTRAR ABONO]   Entregador que cobró:', entregadorCobro || 'No especificado')
+    console.log('[REGISTRAR ABONO]   Planilla donde se cobró:', planillaCobro || 'No especificada')
+
+    // ===================================================
+    // ACTUALIZAR TABLA FIADOS
+    // ===================================================
+    console.log('[REGISTRAR ABONO] 📝 Actualizando fiado...')
+    
+    await sql`
+      UPDATE fiados
+      SET 
+        monto_pagado = ${nuevoMontoPagado},
+        saldo_pendiente = ${nuevoSaldo},
+        estado = ${nuevoEstado},
+        ultima_actualizacion = NOW(),
+        updated_at = NOW()
+      WHERE id = ${pedidoId}
+    `
+
+    console.log('[REGISTRAR ABONO] ✅ Fiado actualizado:', {
+      nuevo_monto_pagado: nuevoMontoPagado,
+      nuevo_saldo: nuevoSaldo,
+      nuevo_estado: nuevoEstado
+    })
+
+    // ===================================================
+    // SI ESTÁ PAGADO COMPLETAMENTE, VERIFICAR SI HAY 
+    // PEDIDO DE COBRO ASOCIADO Y MARCARLO COMO ENTREGADO
+    // ===================================================
+    if (nuevoEstado === 'pagado_completo') {
+      console.log('[REGISTRAR ABONO] 🔍 Fiado pagado completamente, buscando pedidos de cobro asociados...')
+      
+      const pedidosCobro = await sql`
+        SELECT id, planilla_id, estado
+        FROM pedidos
+        WHERE es_cobro = true
+          AND (
+            pedido_fiado_id = ${pedidoId}
+            OR observaciones LIKE '%' || ${pedidoId} || '%'
+          )
+          AND estado != 'entregado'
       `
-      console.log('[REGISTRAR ABONO] Tabla pedidos actualizada:', updatePedidos)
-    } else {
-      console.log('[REGISTRAR ABONO] Actualizando tabla fiados...')
-      const updateFiados = await sql`
-        UPDATE fiados
-        SET 
-          monto_pagado = ${nuevoMontoPagado},
-          saldo_pendiente = ${nuevoSaldo},
-          estado = ${nuevoEstado === 'pagado' ? 'pagado' : 'pendiente'},
-          updated_at = NOW()
-        WHERE COALESCE(pedido_id, id::text) = ${pedidoId}
-        RETURNING id
-      `
-      console.log('[REGISTRAR ABONO] Tabla fiados actualizada:', updateFiados)
+
+      if (pedidosCobro.length > 0) {
+        console.log('[REGISTRAR ABONO] 📝 Marcando pedidos de cobro como entregados:', pedidosCobro.length)
+        
+        for (const pedidoCobro of pedidosCobro) {
+          await sql`
+            UPDATE pedidos
+            SET 
+              estado = 'entregado',
+              fecha_entrega = NOW(),
+              updated_at = NOW()
+            WHERE id = ${pedidoCobro.id}
+          `
+          
+          console.log('[REGISTRAR ABONO] ✅ Pedido de cobro marcado como entregado:', pedidoCobro.id)
+        }
+      } else {
+        console.log('[REGISTRAR ABONO] ℹ️ No hay pedidos de cobro pendientes asociados')
+      }
     }
 
-    console.log('[REGISTRAR ABONO] Abono registrado exitosamente')
+    // ===================================================
+    // RESPUESTA EXITOSA
+    // ===================================================
+    const mensaje = nuevoSaldo === 0 
+      ? '✅ ¡Fiado pagado completamente!' 
+      : `✅ Abono registrado. Saldo pendiente: $${nuevoSaldo.toLocaleString()}`
+
+    console.log('[REGISTRAR ABONO] 🎉 ÉXITO:', mensaje)
+    console.log('[REGISTRAR ABONO] ===== FIN =====\n')
 
     return NextResponse.json({
       success: true,
-      mensaje: nuevoSaldo === 0 
-        ? 'Abono registrado - Cuenta saldada completamente' 
-        : 'Abono registrado exitosamente',
-      pedido: {
+      mensaje: mensaje,
+      fiado: {
         id: pedidoId,
-        total: totalPedido,
+        cliente: fiadoData.cliente,
+        monto_total: Number(fiadoData.monto_total),
         monto_pagado: nuevoMontoPagado,
         saldo_pendiente: nuevoSaldo,
-        estado: nuevoEstado,
-        origen: origenTabla
+        estado: nuevoEstado
       },
-      monto_pagado: nuevoMontoPagado,
-      saldo_pendiente: nuevoSaldo
+      abono: {
+        id: abonoRegistrado[0].id,
+        monto: monto,
+        metodo_pago: metodoPago || 'efectivo',
+        fecha: abonoRegistrado[0].fecha_abono,
+        entregador_cobro: entregadorCobro || null,
+        planilla_cobro: planillaCobro || null
+      }
     })
 
   } catch (error) {
-    console.error('[REGISTRAR ABONO] ERROR:', error)
-    return handleDBError(error, 'REGISTRAR ABONO')
+    console.error('[REGISTRAR ABONO] ❌ ERROR FATAL:', error)
+    console.error('[REGISTRAR ABONO] Stack trace:', error instanceof Error ? error.stack : 'No stack')
+    
+    return NextResponse.json(
+      { 
+        error: 'Error al registrar abono',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
+  }
+}
+
+// ===================================================
+// ENDPOINT GET - OBTENER HISTORIAL DE ABONOS
+// ===================================================
+export async function GET(request: NextRequest) {
+  console.log('\n📋 [HISTORIAL ABONOS] ===== INICIO =====')
+  
+  try {
+    const session = await getSession()
+    
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const fiadoId = searchParams.get('fiado_id')
+
+    if (!fiadoId) {
+      return NextResponse.json(
+        { error: 'fiado_id es requerido' },
+        { status: 400 }
+      )
+    }
+
+    const sql = getDB()
+
+    console.log('[HISTORIAL ABONOS] 🔍 Buscando abonos para fiado:', fiadoId)
+
+    const abonos = await sql`
+      SELECT 
+        a.id,
+        a.monto,
+        a.metodo_pago,
+        a.fecha_abono,
+        a.entregador_cobro,
+        a.planilla_cobro_id,
+        a.observaciones,
+        a.created_at
+      FROM abonos_fiados a
+      WHERE a.fiado_id = ${fiadoId}
+      ORDER BY a.fecha_abono DESC
+    `
+
+    console.log('[HISTORIAL ABONOS] ✅ Abonos encontrados:', abonos.length)
+    console.log('[HISTORIAL ABONOS] ===== FIN =====\n')
+
+    return NextResponse.json({
+      success: true,
+      fiado_id: fiadoId,
+      total_abonos: abonos.length,
+      abonos: abonos
+    })
+
+  } catch (error) {
+    console.error('[HISTORIAL ABONOS] ❌ ERROR:', error)
+    return NextResponse.json(
+      { 
+        error: 'Error al obtener historial de abonos',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
   }
 }
