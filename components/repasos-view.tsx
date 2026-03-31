@@ -3,19 +3,11 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { RefreshCw, Calendar, Search, ArrowRight } from "lucide-react"
+import { RefreshCw, Calendar, Search, ArrowRight, X } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -66,13 +58,11 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
   const [planillaDestinoId, setPlanillaDestinoId] = useState<string>("")
   const [asignando, setAsignando] = useState(false)
 
-  // ✅ FIX: Agregar ref para detectar si el componente está montado
   const isMounted = useRef(true)
 
   useEffect(() => {
     loadData()
     
-    // ✅ Cleanup: marcar componente como desmontado
     return () => {
       isMounted.current = false
     }
@@ -148,6 +138,12 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
     setShowAsignarModal(true)
   }
 
+  function closeModal() {
+    setShowAsignarModal(false)
+    setSelectedRepaso(null)
+    setPlanillaDestinoId("")
+  }
+
   async function handleAsignarRepaso() {
     if (!selectedRepaso || !planillaDestinoId) {
       toast({
@@ -182,18 +178,13 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
         throw new Error(data.error || "Error al asignar repaso")
       }
 
-      // ✅ Solo mostrar toast si el componente está montado
       if (isMounted.current) {
         toast({
           title: "✅ Repaso Asignado",
           description: `Repaso asignado exitosamente. El monto se sumó al cargue de la planilla.`,
         })
 
-        setShowAsignarModal(false)
-        setSelectedRepaso(null)
-        setPlanillaDestinoId("")
-        
-        // ✅ Recargar datos solo si el componente está montado
+        closeModal()
         await loadData()
       }
     } catch (error) {
@@ -241,7 +232,6 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
           </Button>
         </div>
 
-        {/* RESUMEN */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Card className="p-4 bg-blue-50 border-blue-200">
             <p className="text-sm text-blue-700 mb-1">Total Repasos</p>
@@ -257,7 +247,6 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
           </Card>
         </div>
 
-        {/* LISTA DE REPASOS */}
         {repasos.length === 0 ? (
           <Card className="p-8 text-center">
             <RefreshCw className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -309,7 +298,6 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
                       </div>
                     )}
 
-                    {/* Productos */}
                     <details className="text-sm">
                       <summary className="cursor-pointer text-blue-600 font-medium mb-2">
                         Ver productos ({repaso.productos.length})
@@ -342,82 +330,83 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
         )}
       </Card>
 
-      {/* MODAL PARA ASIGNAR REPASO */}
-      <Dialog open={showAsignarModal} onOpenChange={setShowAsignarModal}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Asignar Repaso a Planilla</DialogTitle>
-            <DialogDescription>
-              Cliente: {selectedRepaso?.cliente} - Total: {formatCOP(selectedRepaso?.total || 0)}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="planillaDestino">Planilla de Destino</Label>
-              <Select 
-                value={planillaDestinoId} 
-                onValueChange={(value) => {
-                  console.log('✅ Select cambió a:', value)
-                  setPlanillaDestinoId(value)
-                }}
-              >
-                <SelectTrigger id="planillaDestino">
-                  <SelectValue placeholder="Selecciona una planilla" />
-                </SelectTrigger>
-                <SelectContent>
-                  {planillasDisponibles.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      No hay planillas disponibles
-                    </div>
-                  ) : (
-                    planillasDisponibles.map((planilla) => (
-                      <SelectItem key={planilla.id} value={planilla.id.toString()}>
-                        <div className="flex items-center justify-between w-full gap-4">
-                          <span className="font-medium">
-                            Ruta {planilla.tipo_ruta} - {planilla.entregador}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(planilla.fecha).toLocaleDateString("es-CO")}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+      {/* ✅ MODAL SIMPLE SIN RADIX DIALOG */}
+      {showAsignarModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-bold">Asignar Repaso a Planilla</h2>
+                <p className="text-sm text-muted-foreground">
+                  Cliente: {selectedRepaso?.cliente} - Total: {formatCOP(selectedRepaso?.total || 0)}
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={closeModal}>
+                <X className="h-4 w-4" />
+              </Button>
             </div>
 
-            {planillaDestinoId && (
-              <Card className="p-4 bg-green-50 border-green-200">
-                <p className="text-sm font-medium text-green-900 mb-2">
-                  ✓ El repaso será agregado a esta planilla
-                </p>
-                <p className="text-xs text-green-700">
-                  El total del pedido ({formatCOP(selectedRepaso?.total || 0)}) se sumará al
-                  total_cargue de la planilla destino
-                </p>
-              </Card>
-            )}
-          </div>
+            <div className="space-y-4 py-4">
+              <div>
+                <Label htmlFor="planillaDestino">Planilla de Destino</Label>
+                <Select 
+                  value={planillaDestinoId} 
+                  onValueChange={setPlanillaDestinoId}
+                >
+                  <SelectTrigger id="planillaDestino">
+                    <SelectValue placeholder="Selecciona una planilla" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {planillasDisponibles.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        No hay planillas disponibles
+                      </div>
+                    ) : (
+                      planillasDisponibles.map((planilla) => (
+                        <SelectItem key={planilla.id} value={planilla.id.toString()}>
+                          <div className="flex items-center justify-between w-full gap-4">
+                            <span className="font-medium">
+                              Ruta {planilla.tipo_ruta} - {planilla.entregador}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(planilla.fecha).toLocaleDateString("es-CO")}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowAsignarModal(false)
-                setPlanillaDestinoId("")
-              }}
-              disabled={asignando}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleAsignarRepaso} disabled={asignando || !planillaDestinoId}>
-              {asignando ? "Asignando..." : "Confirmar Asignación"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {planillaDestinoId && (
+                <Card className="p-4 bg-green-50 border-green-200">
+                  <p className="text-sm font-medium text-green-900 mb-2">
+                    ✓ El repaso será agregado a esta planilla
+                  </p>
+                  <p className="text-xs text-green-700">
+                    El total del pedido ({formatCOP(selectedRepaso?.total || 0)}) se sumará al
+                    total_cargue de la planilla destino
+                  </p>
+                </Card>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={closeModal}
+                disabled={asignando}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleAsignarRepaso} disabled={asignando || !planillaDestinoId}>
+                {asignando ? "Asignando..." : "Confirmar Asignación"}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </>
   )
 }
