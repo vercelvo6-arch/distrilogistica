@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FaltantesHistorialView } from "@/components/faltantes-historial-view"
 
@@ -61,11 +61,9 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     
     const data = await response.json()
 
-    // Validar que data sea un array
     let planillasArray = data
     
     if (!Array.isArray(data)) {
-      
       if (data.planillas && Array.isArray(data.planillas)) {
         planillasArray = data.planillas
       } else if (data.data && Array.isArray(data.data)) {
@@ -77,7 +75,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       }
     }
 
-    // <CHANGE> Obtener fecha LOCAL en lugar de UTC
     const ahora = new Date()
     const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
 
@@ -101,7 +98,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       }
     })
 
-    // ... existing code ...
     const planillas: RouteSheet[] = planillasHoy.map((p: any) => ({
       id: p.id,
       ruta: p.tipo_ruta,
@@ -193,6 +189,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     setLoading(false)
   }
 }
+
   const pendingSheets = routeSheets.filter(
     (s) => s.entregador && (s.estado === "pendiente" || s.estado === "alistando"),
   )
@@ -299,14 +296,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
       const faltante = editingProduct.product.cantidadTotal - disponible
 
-      console.log('🔍 DEBUG - Guardando estado:', {
-        codigo: editingProduct.product.codigo,
-        estadoSeleccionado,
-        disponible,
-        faltante,
-        planilla_id: sheetForEntregador.id
-      })
-
       const saveResponse = await fetch('/api/faltantes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -331,8 +320,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         const errorData = await saveResponse.json()
         throw new Error(errorData.error || 'Error al guardar estado')
       }
-
-      console.log('✅ Estado guardado correctamente en BD')
 
       const updatedSheets = routeSheets.map(sheet => {
         if (sheet.entregador === editingProduct.entregador) {
@@ -360,7 +347,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       })
 
       setRouteSheets(updatedSheets)
-
       setEditingProduct(null)
       setDisponibleInput("")
       setEstadoSeleccionado("completo")
@@ -390,7 +376,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
   const handleCompletePreparation = async (entregador: string) => {
     try {
-      const sheetsToUpdate = routeSheets.filter((s) => s.entregador === entregador && s.estado === "alistando")
+      const sheetsToUpdate = routeSheets.filter((s) => s.entregador === entregador && (s.estado === "alistando" || s.estado === "pendiente"))
 
       for (const sheet of sheetsToUpdate) {
         await updatePlanillaEstado(sheet.id, "alistado", user.id)
@@ -519,19 +505,19 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 mb-6">
-  <TabsTrigger value="alistamiento" className="text-sm md:text-base">
-    <Package className="h-4 w-4 mr-2" />
-    Alistamiento
-  </TabsTrigger>
-  <TabsTrigger value="programadas" className="text-sm md:text-base">
-    <Calendar className="h-4 w-4 mr-2" />
-    Programadas ({rutasProgramadas.length})
-  </TabsTrigger>
-  <TabsTrigger value="novedades" className="text-sm md:text-base">
-    <FileText className="h-4 w-4 mr-2" />
-    Novedades
-  </TabsTrigger>
-</TabsList>
+            <TabsTrigger value="alistamiento" className="text-sm md:text-base">
+              <Package className="h-4 w-4 mr-2" />
+              Alistamiento
+            </TabsTrigger>
+            <TabsTrigger value="programadas" className="text-sm md:text-base">
+              <Calendar className="h-4 w-4 mr-2" />
+              Programadas ({rutasProgramadas.length})
+            </TabsTrigger>
+            <TabsTrigger value="novedades" className="text-sm md:text-base">
+              <FileText className="h-4 w-4 mr-2" />
+              Novedades
+            </TabsTrigger>
+          </TabsList>
 
           <TabsContent value="alistamiento">
             {pendingSheets.length === 0 ? (
@@ -550,8 +536,11 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                   const totalRoutes = sheets.length
                   const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
                   const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
+
+                  // ✅ FIX: allPending solo si TODAS son pendiente
+                  // allReady si AL MENOS UNA está alistando (estado mixto también muestra Completar)
                   const allPending = sheets.every((s) => s.estado === "pendiente")
-                  const allReady = sheets.every((s) => s.estado === "alistando")
+                  const allReady = sheets.some((s) => s.estado === "alistando")
                   
                   const totalCompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'completo').length
                   const totalIncompletos = consolidatedProducts.filter(p => p.estadoAlistamiento === 'incompleto').length
@@ -636,6 +625,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                                 </Button>
                               </>
                             )}
+                            {/* ✅ FIX: Botón Completar aparece si hay al menos una planilla en "alistando" */}
                             {allReady && (
                               <Button
                                 size="sm"
@@ -650,154 +640,152 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                         </div>
                       </div>
                       {isExpanded && (
-  <div className="p-3 md:p-5">
-    {/* ✅ COMENTARIOS SIMPLES AL INICIO */}
-    {(() => {
-      const comentarios = sheets
-        .flatMap(s => s.orders)
-        .map(o => o.comentarios)
-        .filter(c => c && c.trim() !== '')
-      
-      if (comentarios.length > 0) {
-        return (
-          <div className="mb-4 bg-amber-50 border-l-4 border-amber-500 rounded p-3">
-            <h4 className="font-bold text-sm text-amber-900 mb-2">📝 Notas de Alistamiento</h4>
-            <ul className="space-y-1.5">
-              {comentarios.map((c, i) => (
-                <li key={i} className="text-sm text-gray-700 flex gap-2">
-                  <span className="text-amber-600">•</span>
-                  <span>{c}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )
-      }
-      return null
-    })()}
+                        <div className="p-3 md:p-5">
+                          {(() => {
+                            const comentarios = sheets
+                              .flatMap(s => s.orders)
+                              .map(o => o.comentarios)
+                              .filter(c => c && c.trim() !== '')
+                            
+                            if (comentarios.length > 0) {
+                              return (
+                                <div className="mb-4 bg-amber-50 border-l-4 border-amber-500 rounded p-3">
+                                  <h4 className="font-bold text-sm text-amber-900 mb-2">📝 Notas de Alistamiento</h4>
+                                  <ul className="space-y-1.5">
+                                    {comentarios.map((c, i) => (
+                                      <li key={i} className="text-sm text-gray-700 flex gap-2">
+                                        <span className="text-amber-600">•</span>
+                                        <span>{c}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )
+                            }
+                            return null
+                          })()}
 
-    {/* TABLA DE PRODUCTOS */}
-    <div className="mb-4 md:mb-6">
-      <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 md:p-4 mb-4">
-        <h3 className="font-bold text-base md:text-lg mb-1 text-green-800 flex items-center gap-2">
-          <Package className="h-4 w-4 md:h-5 md:w-5" />
-          Lista de Productos Consolidados
-        </h3>
-        <p className="text-xs md:text-sm text-green-700 mb-4">
-          Registre el estado de alistamiento de cada producto
-        </p>
-      </div>
-      <div className="overflow-x-auto border rounded-lg">
-        <table className="w-full text-xs md:text-sm">
-          <thead className="bg-muted">
-            <tr>
-              <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
-              <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
-              <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
-              <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold hidden md:table-cell">Precio Unit.</th>
-              <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Solicitado</th>
-              <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
-              <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {consolidatedProducts.map((product) => {
-              const estadoInfo = getEstadoInfo(product.estadoAlistamiento)
-              return (
-                <tr key={product.codigo} className="border-b hover:bg-muted/50">
-                  <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
-                  <td className="py-2 md:py-3 px-2 md:px-4">
-                    {product.descripcion}
-                    {product.observacionesFaltante && (
-                      <p className="text-xs text-orange-600 mt-1">📝 {product.observacionesFaltante}</p>
-                    )}
-                  </td>
-                  <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                      {product.categoria}
-                    </span>
-                  </td>
-                  <td className="text-right py-2 md:py-3 px-2 md:px-4 hidden md:table-cell font-medium">
-                    {formatCOP(product.valorUnidad)}
-                  </td>
-                  <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
-                    {product.cantidadTotal}
-                  </td>
-                  <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                    <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${estadoInfo.color}`}>
-                      {estadoInfo.icon} {estadoInfo.label}
-                    </span>
-                  </td>
-                  <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenEditDialog(entregador, product)}
-                      className="text-xs"
-                    >
-                      <Edit className="h-3 w-3 mr-1" />
-                      {product.estadoAlistamiento === 'pendiente' ? 'Registrar' : 'Editar'}
-                    </Button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-)}
+                          <div className="mb-4 md:mb-6">
+                            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 md:p-4 mb-4">
+                              <h3 className="font-bold text-base md:text-lg mb-1 text-green-800 flex items-center gap-2">
+                                <Package className="h-4 w-4 md:h-5 md:w-5" />
+                                Lista de Productos Consolidados
+                              </h3>
+                              <p className="text-xs md:text-sm text-green-700 mb-4">
+                                Registre el estado de alistamiento de cada producto
+                              </p>
+                            </div>
+                            <div className="overflow-x-auto border rounded-lg">
+                              <table className="w-full text-xs md:text-sm">
+                                <thead className="bg-muted">
+                                  <tr>
+                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Código</th>
+                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold">Descripción</th>
+                                    <th className="text-left py-2 md:py-3 px-2 md:px-4 font-semibold hidden sm:table-cell">Categoría</th>
+                                    <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold hidden md:table-cell">Precio Unit.</th>
+                                    <th className="text-right py-2 md:py-3 px-2 md:px-4 font-semibold">Solicitado</th>
+                                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Estado</th>
+                                    <th className="text-center py-2 md:py-3 px-2 md:px-4 font-semibold">Acción</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {consolidatedProducts.map((product) => {
+                                    const estadoInfo = getEstadoInfo(product.estadoAlistamiento)
+                                    return (
+                                      <tr key={product.codigo} className="border-b hover:bg-muted/50">
+                                        <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4">
+                                          {product.descripcion}
+                                          {product.observacionesFaltante && (
+                                            <p className="text-xs text-orange-600 mt-1">📝 {product.observacionesFaltante}</p>
+                                          )}
+                                        </td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
+                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                            {product.categoria}
+                                          </span>
+                                        </td>
+                                        <td className="text-right py-2 md:py-3 px-2 md:px-4 hidden md:table-cell font-medium">
+                                          {formatCOP(product.valorUnidad)}
+                                        </td>
+                                        <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
+                                          {product.cantidadTotal}
+                                        </td>
+                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                          <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${estadoInfo.color}`}>
+                                            {estadoInfo.icon} {estadoInfo.label}
+                                          </span>
+                                        </td>
+                                        <td className="text-center py-2 md:py-3 px-2 md:px-4">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleOpenEditDialog(entregador, product)}
+                                            className="text-xs"
+                                          >
+                                            <Edit className="h-3 w-3 mr-1" />
+                                            {product.estadoAlistamiento === 'pendiente' ? 'Registrar' : 'Editar'}
+                                          </Button>
+                                        </td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </Card>
-                    )
-                    })}
-                </div>
-              )}
+                  )
+                })}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="programadas">
-  {rutasProgramadas.length === 0 ? (
-    <Card className="p-8 md:p-12 text-center">
-      <Calendar className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
-      <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas programadas</h3>
-      <p className="text-sm md:text-base text-muted-foreground">
-        Las rutas con fecha de alistamiento futura aparecerán aquí
-      </p>
-    </Card>
-  ) : (
-    <div className="space-y-3">
-      {rutasProgramadas.map((sheet) => {
-        const fechaAlistamiento = sheet.fecha_alistamiento 
-          ? sheet.fecha_alistamiento.split('T')[0].split('-').reverse().join('/')
-          : 'Sin fecha'
-        
-        return (
-          <Card key={sheet.id} className="p-4 border-l-4 border-l-blue-500 bg-blue-50/50">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <Calendar className="h-4 w-4 text-blue-600" />
-                  <p className="font-bold text-blue-900">
-                    Ruta {sheet.ruta} - {sheet.entregador}
-                  </p>
-                </div>
-                <p className="text-sm text-blue-700">
-                  📅 Programada para: <span className="font-semibold">{fechaAlistamiento}</span>
+            {rutasProgramadas.length === 0 ? (
+              <Card className="p-8 md:p-12 text-center">
+                <Calendar className="h-12 w-12 md:h-16 md:w-16 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-base md:text-lg font-semibold mb-2">No hay rutas programadas</h3>
+                <p className="text-sm md:text-base text-muted-foreground">
+                  Las rutas con fecha de alistamiento futura aparecerán aquí
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
-                </p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {rutasProgramadas.map((sheet) => {
+                  const fechaAlistamiento = sheet.fecha_alistamiento 
+                    ? sheet.fecha_alistamiento.split('T')[0].split('-').reverse().join('/')
+                    : 'Sin fecha'
+                  
+                  return (
+                    <Card key={sheet.id} className="p-4 border-l-4 border-l-blue-500 bg-blue-50/50">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Calendar className="h-4 w-4 text-blue-600" />
+                            <p className="font-bold text-blue-900">
+                              Ruta {sheet.ruta} - {sheet.entregador}
+                            </p>
+                          </div>
+                          <p className="text-sm text-blue-700">
+                            📅 Programada para: <span className="font-semibold">{fechaAlistamiento}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
+                          </p>
+                        </div>
+                        <span className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full font-medium">
+                          Programada
+                        </span>
+                      </div>
+                    </Card>
+                  )
+                })}
               </div>
-              <span className="text-xs px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full font-medium">
-                Programada
-              </span>
-            </div>
-          </Card>
-        )
-      })}
-    </div>
-  )}
-</TabsContent>
+            )}
+          </TabsContent>
 
           <TabsContent value="novedades">
             <FaltantesHistorialView userId={user.id} userRole="alistador" />
@@ -805,10 +793,14 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         </Tabs>
       </main>
 
+      {/* ✅ FIX: DialogDescription agregado para eliminar warnings de accesibilidad */}
       <Dialog open={!!editingProduct} onOpenChange={() => !saving && setEditingProduct(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Estado de Alistamiento</DialogTitle>
+            <DialogDescription>
+              Registre la cantidad disponible y el estado del producto seleccionado.
+            </DialogDescription>
           </DialogHeader>
           
           {editingProduct && (
