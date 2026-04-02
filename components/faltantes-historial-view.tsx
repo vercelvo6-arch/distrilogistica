@@ -8,7 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Download, Filter, AlertTriangle, CheckCircle, Package, X } from "lucide-react"
 import type { Faltante } from "@/lib/types"
 
-export function FaltantesHistorialView() {
+interface FaltantesHistorialViewProps {
+  userId?: string
+  userRole?: string
+}
+
+export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialViewProps) {
   const [faltantes, setFaltantes] = useState<Faltante[]>([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
@@ -34,6 +39,8 @@ export function FaltantesHistorialView() {
       if (filterFechaInicio) params.append("fecha_inicio", filterFechaInicio)
       if (filterFechaFin) params.append("fecha_fin", filterFechaFin)
       if (filterCodigo) params.append("codigo", filterCodigo)
+      if (userId) params.append("userId", userId)
+      if (userRole) params.append("userRole", userRole)
 
       const url = `/api/faltantes?${params.toString()}`
       console.log('🔍 Cargando faltantes desde:', url)
