@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { RefreshCw, ArrowRight, X } from "lucide-react"
+import { RefreshCw, ArrowRight, X, Trash2 } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import { useToast } from "@/hooks/use-toast"
 
@@ -46,8 +46,10 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
   const [loading, setLoading] = useState(true)
   const [selectedRepaso, setSelectedRepaso] = useState<RepasosPedido | null>(null)
   const [showAsignarModal, setShowAsignarModal] = useState(false)
+  const [showEliminarModal, setShowEliminarModal] = useState(false)
   const [planillaDestinoId, setPlanillaDestinoId] = useState<string>("")
   const [asignando, setAsignando] = useState(false)
+  const [eliminando, setEliminando] = useState(false)
 
   const isMounted = useRef(true)
 
@@ -129,8 +131,14 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
     setShowAsignarModal(true)
   }
 
+  function openEliminarModal(repaso: RepasosPedido) {
+    setSelectedRepaso(repaso)
+    setShowEliminarModal(true)
+  }
+
   function closeModal() {
     setShowAsignarModal(false)
+    setShowEliminarModal(false)
     setSelectedRepaso(null)
     setPlanillaDestinoId("")
   }
@@ -190,6 +198,49 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
     } finally {
       if (isMounted.current) {
         setAsignando(false)
+      }
+    }
+  }
+
+  async function handleEliminarRepaso() {
+    if (!selectedRepaso) return
+
+    try {
+      setEliminando(true)
+
+      const response = await fetch("/api/repasos/eliminar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pedidoId: selectedRepaso.id }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al eliminar repaso")
+      }
+
+      if (isMounted.current) {
+        toast({
+          title: "🗑️ Repaso Eliminado",
+          description: `El repaso de ${selectedRepaso.cliente} fue eliminado correctamente.`,
+        })
+
+        closeModal()
+        await loadData()
+      }
+    } catch (error) {
+      console.error("Error eliminando repaso:", error)
+      if (isMounted.current) {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Error al eliminar repaso",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      if (isMounted.current) {
+        setEliminando(false)
       }
     }
   }
@@ -306,14 +357,24 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
                     </details>
                   </div>
 
-                  <Button
-                    onClick={() => openAsignarModal(repaso)}
-                    className="ml-4"
-                    size="sm"
-                  >
-                    <ArrowRight className="h-4 w-4 mr-2" />
-                    Asignar a Ruta
-                  </Button>
+                  <div className="ml-4 flex flex-col gap-2">
+                    <Button
+                      onClick={() => openAsignarModal(repaso)}
+                      size="sm"
+                    >
+                      <ArrowRight className="h-4 w-4 mr-2" />
+                      Asignar a Ruta
+                    </Button>
+                    <Button
+                      onClick={() => openEliminarModal(repaso)}
+                      variant="outline"
+                      size="sm"
+                      className="border-red-300 text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Eliminar
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))}
@@ -321,7 +382,7 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
         )}
       </Card>
 
-      {/* ✅ MODAL COMPLETAMENTE CUSTOM - SIN RADIX */}
+      {/* MODAL ASIGNAR REPASO */}
       {showAsignarModal && (
         <div 
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
@@ -348,7 +409,6 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
                   Planilla de Destino
                 </label>
                 
-                {/* ✅ SELECT NATIVO - SIN RADIX */}
                 <select
                   value={planillaDestinoId}
                   onChange={(e) => setPlanillaDestinoId(e.target.value)}
@@ -386,6 +446,66 @@ export function RepassosView({ onLogout, userRole }: RepassosViewProps) {
               </Button>
               <Button onClick={handleAsignarRepaso} disabled={asignando || !planillaDestinoId}>
                 {asignando ? "Asignando..." : "Confirmar Asignación"}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* MODAL ELIMINAR REPASO */}
+      {showEliminarModal && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal()
+          }}
+        >
+          <Card className="w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-red-600">Eliminar Repaso</h2>
+              <Button variant="ghost" size="icon" onClick={closeModal}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-red-50 border border-red-200 rounded">
+                <p className="font-medium text-red-800 mb-2">
+                  Cliente: {selectedRepaso?.cliente}
+                </p>
+                <p className="text-sm text-red-700">
+                  Total: {formatCOP(selectedRepaso?.total || 0)}
+                </p>
+                <p className="text-sm text-red-700">
+                  Productos: {selectedRepaso?.productos.length}
+                </p>
+              </div>
+
+              <p className="text-sm text-gray-600">
+                ⚠️ Esta acción es <strong>irreversible</strong>. El repaso será eliminado permanentemente
+                y el cargue de la planilla será actualizado automáticamente.
+              </p>
+
+              <p className="text-xs text-gray-500">
+                Solo elimina repasos si fueron creados por error. Si el pedido debe ser entregado,
+                usa "Asignar a Ruta" en su lugar.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={closeModal}
+                disabled={eliminando}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleEliminarRepaso} 
+                disabled={eliminando}
+              >
+                {eliminando ? "Eliminando..." : "Eliminar Repaso"}
               </Button>
             </div>
           </Card>
