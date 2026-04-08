@@ -1530,11 +1530,17 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   if (!selectedCobro) return
   const monto = Number(montoAbonoCobro)
   if (!monto || monto <= 0 || monto > selectedCobro.total) {
-    toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(selectedCobro.total)}`, variant: "destructive" })
+    toast({ 
+      title: "Error", 
+      description: `El monto debe estar entre $1 y ${formatCOP(selectedCobro.total)}`, 
+      variant: "destructive" 
+    })
     return
   }
+  
   try {
     setSubmittingAbonoCobro(true)
+    
     const response = await fetch("/api/fiados/registrar-abono", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1545,20 +1551,42 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         observaciones: "Abono registrado desde cobro en planilla",
       }),
     })
+    
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || "Error al registrar abono")
-    toast({ title: "Abono Registrado", description: `Abono de ${formatCOP(monto)} registrado. Saldo pendiente: ${formatCOP(data.saldo_pendiente)}` })
+    
+    toast({ 
+      title: "Abono Registrado", 
+      description: `Abono de ${formatCOP(monto)} registrado. Saldo pendiente: ${formatCOP(data.saldo_pendiente)}` 
+    })
+    
     await fetch("/api/fiados/marcar-cobro-completado", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cobroId: selectedCobro.id }),
     })
+    
+    // ✅ ACTUALIZAR EL EFECTIVO RECIBIDO AUTOMÁTICAMENTE
+    const efectivoActual = Number(formData.efectivoRecibido) || 0
+    const ajuste = monto - selectedCobro.total
+    const nuevoEfectivo = efectivoActual + ajuste
+    
+    setFormData(prev => ({
+      ...prev,
+      efectivoRecibido: nuevoEfectivo.toString()
+    }))
+    
     setShowAbonoCobroModal(false)
     setSelectedCobro(null)
     setMontoAbonoCobro("")
+    
     await loadData()
   } catch (err) {
-    toast({ title: "Error", description: err instanceof Error ? err.message : "Error al registrar abono", variant: "destructive" })
+    toast({ 
+      title: "Error", 
+      description: err instanceof Error ? err.message : "Error al registrar abono", 
+      variant: "destructive" 
+    })
   } finally {
     setSubmittingAbonoCobro(false)
   }
