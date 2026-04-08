@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
           monto_pagado = ${nuevoMontoPagado},
           saldo_pendiente = ${nuevoSaldo},
           estado = ${nuevoEstado},
-          cobrado_por = ${session.user?.name || 'Sistema'},
+          cobrado_por = ${session.user?.id || null},
           planilla_asignado_id = NULL,
           fecha_asignacion = NULL,
           entregador_asignado = NULL,
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
         NOW(),
         ${metodoPago || 'efectivo'},
         ${observaciones || 'Abono registrado desde cobro en planilla'},
-        ${session.user?.name || 'Sistema'},
+        ${session.user?.id},
         NOW()
       )
     `;
