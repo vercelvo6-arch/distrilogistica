@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     // 6️⃣ Registrar el abono en el historial
     await sql`
       INSERT INTO abonos_fiados (
-        fiado_id,
+        pedido_id,
         monto_abono,
         fecha_abono,
         metodo_pago,
