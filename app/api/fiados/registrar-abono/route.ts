@@ -90,21 +90,39 @@ export async function POST(request: NextRequest) {
     });
 
     // 5️⃣ Actualizar el fiado original
-    await sql`
-      UPDATE fiados
-      SET
-        monto_pagado = ${nuevoMontoPagado},
-        saldo_pendiente = ${nuevoSaldo},
-        estado = ${nuevoEstado},
-        metodo_pago = ${metodoPago || 'efectivo'},
-        cobrado_por = ${nuevoSaldo === 0 ? session.user?.name || 'Sistema' : null},
-        planilla_asignado_id = NULL,
-        fecha_asignacion = NULL,
-        entregador_asignado = NULL,
-        fecha_pago_completo = ${nuevoSaldo === 0 ? sql`NOW()` : null},
-        updated_at = NOW()
-      WHERE id = ${fiadoOriginal.id}
-    `;
+    if (nuevoSaldo === 0) {
+      // Pago completo
+      await sql`
+        UPDATE fiados
+        SET
+          monto_pagado = ${nuevoMontoPagado},
+          saldo_pendiente = ${nuevoSaldo},
+          estado = ${nuevoEstado},
+          metodo_pago = ${metodoPago || 'efectivo'},
+          cobrado_por = ${session.user?.name || 'Sistema'},
+          planilla_asignado_id = NULL,
+          fecha_asignacion = NULL,
+          entregador_asignado = NULL,
+          fecha_pago_completo = NOW(),
+          updated_at = NOW()
+        WHERE id = ${fiadoOriginal.id}
+      `
+    } else {
+      // Abono parcial
+      await sql`
+        UPDATE fiados
+        SET
+          monto_pagado = ${nuevoMontoPagado},
+          saldo_pendiente = ${nuevoSaldo},
+          estado = ${nuevoEstado},
+          metodo_pago = ${metodoPago || 'efectivo'},
+          planilla_asignado_id = NULL,
+          fecha_asignacion = NULL,
+          entregador_asignado = NULL,
+          updated_at = NOW()
+        WHERE id = ${fiadoOriginal.id}
+      `
+    }
 
     console.log('[REGISTRAR ABONO] ✅ Fiado actualizado');
 
