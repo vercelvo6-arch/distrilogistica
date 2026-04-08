@@ -57,7 +57,6 @@ export async function POST(request: NextRequest) {
       FROM fiados f
       WHERE f.cliente ILIKE ${clienteSinCobro}
         AND f.estado IN ('pendiente', 'abono_parcial')
-        AND f.planilla_asignado_id IS NOT NULL
       ORDER BY f.created_at DESC
       LIMIT 1
     `;
