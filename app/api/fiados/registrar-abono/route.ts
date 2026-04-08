@@ -70,7 +70,15 @@ export async function POST(request: NextRequest) {
     console.log('[REGISTRAR ABONO] Fiado encontrado:', fiadoOriginal.id);
 
     // 3️⃣ Validar que el abono no exceda el saldo pendiente
-    if (montoAbono > fiadoOriginal.saldo_pendiente) {
+    console.log('[REGISTRAR ABONO] Validando monto:', {
+      montoAbono,
+      saldoPendiente: fiadoOriginal.saldo_pendiente,
+      tipo_abono: typeof montoAbono,
+      tipo_saldo: typeof fiadoOriginal.saldo_pendiente
+    });
+
+    if (Number(montoAbono) > Number(fiadoOriginal.saldo_pendiente)) {
+      console.log('[REGISTRAR ABONO] ❌ Abono excede saldo');
       return NextResponse.json({ 
         error: `El abono ($${montoAbono}) no puede ser mayor al saldo pendiente ($${fiadoOriginal.saldo_pendiente})` 
       }, { status: 400 });
