@@ -2904,92 +2904,81 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               />
             )}
 
-            // ============================================
-// REEMPLAZAR EL RESUMEN FINAL DEL MODAL (línea ~3100-3150)
-// En el modal donde dice "Resumen de la Ruta"
-// ============================================
+            {selectedPlanilla && (
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-2">Resumen de la Ruta:</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-gray-500">Cargue</span>
+                    <p className="font-semibold">{formatCOP(selectedPlanilla.montoCargue || 0)}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Entregado</span>
+                    <p className="font-semibold text-green-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).entregado)}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Fiado</span>
+                    <p className="font-semibold text-orange-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).fiado)}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Devoluciones</span>
+                    <p className="font-semibold text-red-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).devoluciones)}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Repasos (del día)</span>
+                    <p className="font-semibold text-blue-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).repasos)}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Agotados</span>
+                    <p className="font-semibold text-gray-600">
+                      {formatCOP(calculateRouteTotals(selectedPlanilla).agotados)}
+                    </p>
+                  </div>
+                  {totalCobrosAsignados > 0 && (
+                    <div>
+                      <span className="text-gray-500">Cobros Fiados</span>
+                      <p className="font-semibold text-amber-600">+ {formatCOP(totalCobrosAsignados)}</p>
+                    </div>
+                  )}
 
-{selectedPlanilla && (
-  <div className="border-t pt-4">
-    <p className="text-sm font-medium mb-2">Resumen de la Ruta:</p>
-    <div className="grid grid-cols-2 gap-2 text-sm">
-      <div>
-        <span className="text-gray-500">Cargue</span>
-        <p className="font-semibold">{formatCOP(selectedPlanilla.montoCargue || 0)}</p>
-      </div>
-      <div>
-        <span className="text-gray-500">Entregado</span>
-        <p className="font-semibold text-green-600">
-          {formatCOP(calculateRouteTotals(selectedPlanilla).entregado)}
-        </p>
-      </div>
-      <div>
-        <span className="text-gray-500">Fiado</span>
-        <p className="font-semibold text-orange-600">
-          {formatCOP(calculateRouteTotals(selectedPlanilla).fiado)}
-        </p>
-      </div>
-      <div>
-        <span className="text-gray-500">Devoluciones</span>
-        <p className="font-semibold text-red-600">
-          {formatCOP(calculateRouteTotals(selectedPlanilla).devoluciones)}
-        </p>
-      </div>
-      <div>
-        <span className="text-gray-500">Repasos (del día)</span>
-        <p className="font-semibold text-blue-600">
-          {formatCOP(calculateRouteTotals(selectedPlanilla).repasos)}
-        </p>
-      </div>
-      <div>
-        <span className="text-gray-500">Agotados</span>
-        <p className="font-semibold text-gray-600">
-          {formatCOP(calculateRouteTotals(selectedPlanilla).agotados)}
-        </p>
-      </div>
-      {totalCobrosAsignados > 0 && (
-        <div>
-          <span className="text-gray-500">Cobros Fiados</span>
-          <p className="font-semibold text-amber-600">+ {formatCOP(totalCobrosAsignados)}</p>
-        </div>
-      )}
+                  <div className="col-span-2 border-t pt-2 mt-2">
+                    <span className="text-gray-500">Efectivo Esperado</span>
+                    {(() => {
+                      const totals = calculateRouteTotals(selectedPlanilla)
+                      const efectivoEsperado = totals.entregado + totalCobrosAsignados
+                      
+                      return (
+                        <p className="font-bold text-lg text-green-600">
+                          {formatCOP(efectivoEsperado)}
+                        </p>
+                      )
+                    })()}
+                  </div>
 
-      <div className="col-span-2 border-t pt-2 mt-2">
-        <span className="text-gray-500">Efectivo Esperado</span>
-        {(() => {
-          const totals = calculateRouteTotals(selectedPlanilla)
-          const cargue = selectedPlanilla?.montoCargue || 0
-          
-          // ✅ CORRECCIÓN: El efectivo esperado es el ENTREGADO (que ya incluye los repasos asignados)
-          // NO se resta "repasos" porque esos son solo los del día que van al admin
-          const efectivoEsperado = totals.entregado + totalCobrosAsignados
-          
-          return (
-            <p className="font-bold text-lg text-green-600">
-              {formatCOP(efectivoEsperado)}
-            </p>
-          )
-        })()}
-      </div>
-
-      <div className="col-span-2">
-        <span className="text-gray-500">Diferencia</span>
-        {(() => {
-          const totals = calculateRouteTotals(selectedPlanilla)
-          const efectivoEsperado = totals.entregado + totalCobrosAsignados
-          const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
-          const diferencia = Math.round((totalRecibido - efectivoEsperado) * 100) / 100
-          return (
-            <p className={`font-semibold ${diferencia !== 0 ? "text-red-600" : "text-green-600"}`}>
-              {formatCOP(diferencia)}
-            </p>
-          )
-        })()}
-      </div>
-    </div>
-  </div>
-)}
-               
+                  <div className="col-span-2">
+                    <span className="text-gray-500">Diferencia</span>
+                    {(() => {
+                      const totals = calculateRouteTotals(selectedPlanilla)
+                      const efectivoEsperado = totals.entregado + totalCobrosAsignados
+                      const totalRecibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
+                      const diferencia = Math.round((totalRecibido - efectivoEsperado) * 100) / 100
+                      return (
+                        <p className={`font-semibold ${diferencia !== 0 ? "text-red-600" : "text-green-600"}`}>
+                          {formatCOP(diferencia)}
+                        </p>
+                      )
+                    })()}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
