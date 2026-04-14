@@ -2989,9 +2989,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
     </div>
   </div>
 )}
-                  </div>
-                </div>
-              </div>
+               
             )}
           </div>
 
