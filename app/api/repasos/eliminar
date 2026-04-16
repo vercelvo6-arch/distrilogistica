@@ -12,8 +12,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
     
-    if (!['administrador'].includes(session.user.rol)) {
-      return NextResponse.json({ error: 'No autorizado. Solo administradores pueden eliminar repasos.' }, { status: 403 })
+    if (!['caja', 'administrador'].includes(session.user.rol)) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
     const body = await request.json()
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     const sql = getDB()
 
     // =============================================
-    // PASO A: Verificar que el pedido existe y es un repaso
+    // PASO 1: Verificar que el pedido existe y es un repaso
     // =============================================
     console.log('[ELIMINAR REPASO] 🔍 Buscando pedido:', pedidoId)
     
@@ -44,92 +44,86 @@ export async function POST(request: NextRequest) {
         p.planilla_id,
         p.cliente
       FROM pedidos p
-      WHERE p.id = ${pedidoId} AND p.estado = 'repaso'
+      WHERE p.id = ${pedidoId}
     `
 
     if (pedido.length === 0) {
-      console.error('[ELIMINAR REPASO] ❌ Pedido no encontrado o no es un repaso')
+      console.error('[ELIMINAR REPASO] ❌ Pedido no encontrado')
       return NextResponse.json(
-        { error: 'Pedido no encontrado o no es un repaso' },
+        { error: 'Pedido no encontrado' },
         { status: 404 }
       )
     }
 
+    const pedidoData = pedido[0]
+    const totalPedido = Number(pedidoData.total) || 0
+    const planillaId = pedidoData.planilla_id
+
     console.log('[ELIMINAR REPASO] ✅ Pedido encontrado:', {
-      cliente: pedido[0].cliente,
-      total: pedido[0].total,
-      planillaId: pedido[0].planilla_id
+      cliente: pedidoData.cliente,
+      total: totalPedido,
+      estado: pedidoData.estado,
+      planilla_id: planillaId
     })
 
-    const totalPedido = Number(pedido[0].total)
-    const planillaId = pedido[0].planilla_id
-
     // =============================================
-    // PASO B: Eliminar productos del pedido
+    // PASO 2: Eliminar productos del pedido
     // =============================================
     console.log('[ELIMINAR REPASO] 🗑️ Eliminando productos del pedido...')
     
     await sql`
-      DELETE FROM pedido_productos
+      DELETE FROM pedido_productos 
       WHERE pedido_id = ${pedidoId}
     `
 
-    console.log('[ELIMINAR REPASO] ✅ Productos eliminados')
-
     // =============================================
-    // PASO C: Eliminar el pedido
+    // PASO 3: Eliminar el pedido
     // =============================================
     console.log('[ELIMINAR REPASO] 🗑️ Eliminando pedido...')
     
     await sql`
-      DELETE FROM pedidos
+      DELETE FROM pedidos 
       WHERE id = ${pedidoId}
     `
 
-    console.log('[ELIMINAR REPASO] ✅ Pedido eliminado')
-
     // =============================================
-    // PASO D: Actualizar total_cargue de la planilla (RESTAR)
+    // PASO 4: Si el pedido estaba asignado a una planilla, restar del total_cargue
     // =============================================
     if (planillaId) {
-      console.log('[ELIMINAR REPASO] 📝 Actualizando cargue de planilla...')
+      console.log('[ELIMINAR REPASO] 📝 Actualizando total_cargue de planilla:', planillaId)
       
-      const planillaActual = await sql`
-        SELECT total_cargue FROM planillas WHERE id = ${planillaId}
+      await sql`
+        UPDATE planillas
+        SET 
+          total_cargue = total_cargue - ${totalPedido},
+          updated_at = NOW()
+        WHERE id = ${planillaId}
       `
-
-      if (planillaActual.length > 0) {
-        const cargueActual = Number(planillaActual[0].total_cargue) || 0
-        const nuevoCargue = cargueActual - totalPedido
-
-        console.log('[ELIMINAR REPASO]   Cargue actual:', cargueActual)
-        console.log('[ELIMINAR REPASO]   - Repaso:', totalPedido)
-        console.log('[ELIMINAR REPASO]   = Nuevo cargue:', nuevoCargue)
-
-        await sql`
-          UPDATE planillas
-          SET 
-            total_cargue = ${nuevoCargue},
-            updated_at = NOW()
-          WHERE id = ${planillaId}
-        `
-
-        console.log('[ELIMINAR REPASO] ✅ Cargue actualizado correctamente')
-      }
+      
+      console.log('[ELIMINAR REPASO] ✅ Total_cargue actualizado (restado:', totalPedido, ')')
     }
+
+    // =============================================
+    // PASO 5: Eliminar registro de la tabla repasos (si existe)
+    // =============================================
+    console.log('[ELIMINAR REPASO] 🗑️ Eliminando de tabla repasos...')
+    
+    await sql`
+      DELETE FROM repasos 
+      WHERE pedido_id = ${pedidoId}
+    `
 
     // =============================================
     // RESPUESTA EXITOSA
     // =============================================
     const resultado = {
       success: true,
-      mensaje: '✅ Repaso eliminado correctamente',
+      mensaje: '✅ Repaso eliminado exitosamente',
       detalles: {
-        pedidoEliminado: {
-          id: pedidoId,
-          cliente: pedido[0].cliente,
-          total: totalPedido,
-        }
+        pedido_id: pedidoId,
+        cliente: pedidoData.cliente,
+        total_eliminado: totalPedido,
+        planilla_actualizada: planillaId || null
       }
     }
 
