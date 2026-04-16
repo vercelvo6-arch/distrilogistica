@@ -98,6 +98,84 @@ export async function POST(request: NextRequest) {
     const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
     const recepcionId = `REC${timestamp}${random}`
 
+    // ✅ PASO 1: GUARDAR FIADOS Y REPASOS ANTES DEL CUADRE
+    console.log('[API recibir-efectivo] 📝 Guardando pedidos con estado especial...')
+    
+    const pedidosConEstadoEspecial = await sql`
+      SELECT id, estado, total, cliente, monto_pagado, saldo_pendiente
+      FROM pedidos
+      WHERE planilla_id = ${planillaId}
+        AND estado IN ('fiado', 'repaso')
+    `
+
+    for (const pedido of pedidosConEstadoEspecial) {
+      if (pedido.estado === 'fiado') {
+        // Guardar fiado
+        const yaExisteFiado = await sql`
+          SELECT id FROM fiados WHERE pedido_id = ${pedido.id}
+        `
+        
+        if (yaExisteFiado.length === 0) {
+          await sql`
+            INSERT INTO fiados (
+              pedido_id,
+              cliente,
+              monto_total,
+              monto_pagado,
+              saldo_pendiente,
+              estado,
+              fecha_fiado,
+              entregador,
+              ruta
+            ) VALUES (
+              ${pedido.id},
+              ${pedido.cliente},
+              ${pedido.total},
+              ${pedido.monto_pagado || 0},
+              ${pedido.saldo_pendiente || pedido.total},
+              ${pedido.saldo_pendiente > 0 ? 'pendiente' : 'pagado_completo'},
+              ${planilla[0].fecha},
+              ${planilla[0].entregador},
+              ${planilla[0].tipo_ruta}
+            )
+          `
+          console.log('[API recibir-efectivo] ✓ Fiado guardado:', pedido.cliente)
+        }
+      } else if (pedido.estado === 'repaso') {
+        // Guardar repaso
+        const yaExisteRepaso = await sql`
+          SELECT id FROM repasos WHERE pedido_id = ${pedido.id}
+        `
+        
+        if (yaExisteRepaso.length === 0) {
+          await sql`
+            INSERT INTO repasos (
+              pedido_id,
+              cliente,
+              total,
+              estado,
+              fecha_repaso,
+              entregador_origen,
+              ruta_origen,
+              planilla_origen_id
+            ) VALUES (
+              ${pedido.id},
+              ${pedido.cliente},
+              ${pedido.total},
+              'pendiente',
+              ${planilla[0].fecha},
+              ${planilla[0].entregador},
+              ${planilla[0].tipo_ruta},
+              ${planillaId}
+            )
+          `
+          console.log('[API recibir-efectivo] ✓ Repaso guardado:', pedido.cliente)
+        }
+      }
+    }
+
+    console.log('[API recibir-efectivo] ✅ Pedidos especiales guardados')
+
     const recepcion = await sql`
       INSERT INTO recepciones_caja (
         id,
