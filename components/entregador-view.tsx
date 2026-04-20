@@ -54,6 +54,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [selectedOrderForNovedades, setSelectedOrderForNovedades] = useState<Order | null>(null)
   const [selectedPlanillaId, setSelectedPlanillaId] = useState<number>(0)
 
+  // ✅ NUEVO: Estado para novedades
+  const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, any[]>>({})
+
   const entregador = user.nombre
 
   useEffect(() => {
@@ -118,6 +121,16 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       }))
 
       setRouteSheets(planillas)
+
+      // ✅ NUEVO: Cargar novedades para cada planilla
+      const novedadesMap: Record<number, any[]> = {}
+      const promesas = planillas.map(async (planilla) => {
+        const novedades = await loadNovedadesPlanilla(planilla.id)
+        novedadesMap[planilla.id] = novedades
+      })
+      await Promise.all(promesas)
+      setNovedadesPorPlanilla(novedadesMap)
+      console.log('[ENTREGADOR] Novedades cargadas:', novedadesMap)
     } catch (err) {
       console.error("[ENTREGADOR] Error loading planillas:", err)
       toast({
@@ -182,6 +195,19 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         description: "No se pudo cargar el historial",
         variant: "destructive",
       })
+    }
+  }
+
+  // ✅ NUEVO: Función para cargar novedades
+  async function loadNovedadesPlanilla(planillaId: number) {
+    try {
+      const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
+      const data = await response.json()
+      console.log(`[ENTREGADOR] Novedades cargadas para planilla ${planillaId}:`, data.novedades)
+      return data.novedades || []
+    } catch (err) {
+      console.error('[ENTREGADOR] Error loading novedades:', err)
+      return []
     }
   }
 
@@ -314,6 +340,32 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         if (order.descuento) {
           entregado -= Number(order.descuento)
         }
+      }
+    })
+
+    // ✅ NUEVO: Sumar novedades validadas
+    const novedades = novedadesPorPlanilla[route.id] || []
+
+    novedades.forEach((novedad) => {
+      if (!novedad.validado) return // Solo validadas
+
+      const monto = Number(novedad.monto_novedad) || 0
+
+      switch (novedad.tipo_novedad) {
+        case "agotado":
+          agotados += monto
+          break
+        case "devolucion":
+          devoluciones += monto
+          break
+        case "fiado_parcial":
+          const montoPagado = Number(novedad.monto_pagado) || 0
+          fiado += (monto - montoPagado)
+          entregado += montoPagado
+          break
+        case "error_facturacion":
+          erroresFacturacion += monto
+          break
       }
     })
 
@@ -933,6 +985,19 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                           <div className="flex-1">
                                             <div className="flex items-center gap-2">
                                               <p className="font-medium text-sm">{order.cliente}</p>
+
+                                              {/* ✅ NUEVO: Badge de novedades */}
+                                              {(() => {
+                                                const novedadesDelPedido = (novedadesPorPlanilla[route.id] || []).filter(
+                                                  (n) => n.pedido_id === order.id
+                                                )
+                                                return novedadesDelPedido.length > 0 ? (
+                                                  <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-300">
+                                                    ⚠️ {novedadesDelPedido.length}
+                                                  </Badge>
+                                                ) : null
+                                              })()}
+
                                               <Badge
                                                 variant="outline"
                                                 className={
