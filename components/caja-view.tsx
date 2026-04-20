@@ -50,6 +50,16 @@ interface NuevoProducto {
   subtotal: number
 }
 
+// ✅ NUEVO: Interface para novedades de pedido
+interface NovedadPedido {
+  id: string
+  pedido_id: string
+  tipo_novedad: string
+  monto_novedad: number
+  monto_pagado: number
+  validado: boolean
+}
+
 export function CajaView({ onLogout, user }: CajaViewProps) {
   const { toast } = useToast()
   const [filterEntregador, setFilterEntregador] = useState("all")
@@ -60,6 +70,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [recepciones, setRecepciones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+
+  // ✅ NUEVO: Estado para novedades por planilla
+  const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, NovedadPedido[]>>({})
 
   const [showModal, setShowModal] = useState(false)
   const [selectedPlanilla, setSelectedPlanilla] = useState<RouteSheet | null>(null)
@@ -146,6 +159,20 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }, [selectedView])
 
+  // ✅ NUEVO: Función para cargar novedades de una planilla
+  async function loadNovedadesPlanilla(planillaId: number): Promise<NovedadPedido[]> {
+    try {
+      const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
+      if (!response.ok) return []
+      
+      const data = await response.json()
+      return data.novedades || []
+    } catch (error) {
+      console.error("[CAJA] Error cargando novedades:", error)
+      return []
+    }
+  }
+
   async function loadData() {
     try {
       const response = await fetch("/api/planillas")
@@ -198,6 +225,16 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }))
 
       setRouteSheets(planillas)
+
+      // ✅ NUEVO: Cargar novedades de cada planilla en paralelo para mejor rendimiento
+      const novedadesMap: Record<number, NovedadPedido[]> = {}
+      const promesas = planillas.map(async (planilla) => {
+        const novedades = await loadNovedadesPlanilla(planilla.id)
+        novedadesMap[planilla.id] = novedades
+      })
+      await Promise.all(promesas)
+      setNovedadesPorPlanilla(novedadesMap)
+
     } catch (err) {
       console.error("[CAJA] Error loading planillas:", err)
       toast({
@@ -329,6 +366,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     return Math.round(effectiveTotal * 100) / 100
   }
 
+  // ✅ MODIFICADO: calculateRouteTotals ahora incluye novedades de la tabla novedades_pedido
   const calculateRouteTotals = (route: RouteSheet | null) => {
     if (!route || !Array.isArray(route.orders)) {
       return {
@@ -425,6 +463,33 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         if (order.descuento) {
           entregado -= Number(order.descuento)
         }
+      }
+    })
+
+    // ✅ NUEVO: Sumar novedades de la tabla novedades_pedido
+    const novedades = novedadesPorPlanilla[route.id] || []
+    
+    novedades.forEach((novedad) => {
+      if (!novedad.validado) return // Solo contar novedades validadas
+
+      const monto = Number(novedad.monto_novedad) || 0
+
+      switch (novedad.tipo_novedad) {
+        case "agotado":
+          agotados += monto
+          break
+        case "devolucion":
+          devoluciones += monto
+          break
+        case "fiado_parcial":
+          const montoPagadoNov = Number(novedad.monto_pagado) || 0
+          const saldoNov = monto - montoPagadoNov
+          fiado += saldoNov
+          entregado += montoPagadoNov
+          break
+        case "error_facturacion":
+          erroresFacturacion += monto
+          break
       }
     })
 
@@ -2491,8 +2556,8 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                           {isExpanded && Array.isArray(order.items) && (
                                             <div className="mt-3 pt-3 border-t">
                                               <p className="text-xs text-gray-500 mb-2">
-                                                Ajustes manuales: Edita "Cant. Entregada" para entregas
-                                                parciales. Para promociones con precios especiales, ajusta el "Subtotal"
+                                                Ajustes manuales: Edita &quot;Cant. Entregada&quot; para entregas
+                                                parciales. Para promociones con precios especiales, ajusta el &quot;Subtotal&quot;
                                                 directamente.
                                               </p>
 
@@ -3390,7 +3455,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 )}
 
                 <p className="text-xs text-gray-500">
-                  Nota: El pedido se marcará como "Fiado" y se registrará el monto pagado.
+                  Nota: El pedido se marcará como &quot;Fiado&quot; y se registrará el monto pagado.
                   El saldo pendiente quedará como cuenta por cobrar.
                 </p>
               </>
