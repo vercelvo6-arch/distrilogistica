@@ -30,6 +30,8 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
+import { CardNovedadesInteractivo } from "@/components/novedades/card-novedades-interactivo-caja"
+import { BadgeNovedades } from "@/components/novedades/badge-novedades-lista"
 import { ComisionesView } from "@/components/comisiones-view"
 import { CuadreEditModal } from "@/components/cuadre-edit-modal"
 import { FiadosAsignadosSection } from "@/components/fiados-asignados-section"
@@ -2125,6 +2127,42 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                     <p className="font-bold text-purple-700">{formatCOP(totalDescuentos)}</p>
                   </div>
                 </div>
+
+                {/* Cards interactivos de novedades por planilla */}
+                {filteredRoutes.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold mb-3 text-gray-700">Novedades por Tipo (Clicables)</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {filteredRoutes.map((route) => (
+                        <div key={route.id} className="space-y-2">
+                          <p className="text-xs text-gray-500 font-medium">Ruta {route.ruta}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <CardNovedadesInteractivo
+                              planillaId={route.id}
+                              tipo="agotado"
+                              onNovedadActualizada={() => loadData()}
+                            />
+                            <CardNovedadesInteractivo
+                              planillaId={route.id}
+                              tipo="devolucion"
+                              onNovedadActualizada={() => loadData()}
+                            />
+                            <CardNovedadesInteractivo
+                              planillaId={route.id}
+                              tipo="fiado_parcial"
+                              onNovedadActualizada={() => loadData()}
+                            />
+                            <CardNovedadesInteractivo
+                              planillaId={route.id}
+                              tipo="error_facturacion"
+                              onNovedadActualizada={() => loadData()}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Card>
 
               <Card className="p-6">
@@ -2337,10 +2375,11 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                         <Card key={order.id} className="p-3 bg-gray-50">
                                           <div className="flex justify-between items-start">
                                             <div className="flex-1">
-                                              <div className="flex items-center gap-2">
+                                               <div className="flex items-center gap-2 flex-wrap">
                                                 <p className="font-medium text-sm">
                                                   {order.cliente}
                                                 </p>
+                                                 <BadgeNovedades pedidoId={order.id} />
                                                 {order.esCobro ? (
                                                   <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-300">
                                                     COBRO
