@@ -54,19 +54,28 @@ export function CardNovedadesInteractivo({
   async function loadResumen() {
     try {
       const response = await fetch(`/api/novedades/resumen/${planillaId}`)
-      if (!response.ok) return
+      if (!response.ok) {
+        console.error("[CardNovedades] Error en respuesta:", response.status)
+        setLoading(false)
+        return
+      }
 
       const data = await response.json()
+      console.log("[CardNovedades] Data recibida:", data)
+      
       const resumenTipo = data.resumen[tipo]
+      console.log(`[CardNovedades] Resumen ${tipo}:`, resumenTipo)
+      
       setResumen(resumenTipo)
 
       // Filtrar novedades pendientes de este tipo
       const novedadesFiltradas = (data.novedadesPendientes || []).filter(
         (n: Novedad) => n.tipo_novedad === tipo
       )
+      console.log(`[CardNovedades] Novedades filtradas ${tipo}:`, novedadesFiltradas.length)
       setNovedades(novedadesFiltradas)
     } catch (error) {
-      console.error("Error cargando resumen:", error)
+      console.error("[CardNovedades] Error cargando resumen:", error)
     } finally {
       setLoading(false)
     }
@@ -151,7 +160,10 @@ export function CardNovedadesInteractivo({
     }
   }
 
-  if (loading || !resumen || resumen.total === 0) return null
+  // CAMBIO CRÍTICO: Mostrar card si hay cantidad > 0, NO si total > 0
+  if (loading) return null
+  if (!resumen) return null
+  if (resumen.cantidad === 0) return null  // ← CAMBIO AQUÍ
 
   return (
     <>
