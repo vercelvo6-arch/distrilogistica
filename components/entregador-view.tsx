@@ -50,7 +50,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [montoPagadoFiado, setMontoPagadoFiado] = useState("")
   const [totalEfectivoFiado, setTotalEfectivoFiado] = useState(0)
 
-  // Estado para modal de novedades
+  // Estados para modal de novedades
   const [selectedOrderForNovedades, setSelectedOrderForNovedades] = useState<Order | null>(null)
   const [selectedPlanillaId, setSelectedPlanillaId] = useState<number>(0)
 
@@ -979,8 +979,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                           </Button>
                                         </div>
 
-                                        {isExpanded && (
-                                          <div className="mt-3 pt-3 border-t space-y-3">
+                                        {isExpanded && Array.isArray(order.items) && (
+                                          <div className="mt-3 pt-3 border-t space-y-4">
                                             {/* Botón gestionar novedades */}
                                             <Button
                                               variant="outline"
@@ -993,6 +993,243 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                             >
                                               📋 Gestionar Novedades
                                             </Button>
+
+                                            {/* Tabla de productos */}
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-2">
+                                                Productos del pedido: Edita "Cant. Entregada" para entregas parciales. Para promociones, ajusta el "Subtotal" directamente.
+                                              </p>
+
+                                              <div className="overflow-x-auto">
+                                                <table className="w-full text-xs">
+                                                  <thead>
+                                                    <tr className="border-b">
+                                                      <th className="text-left py-1 px-1 w-16">Dev.</th>
+                                                      <th className="text-left py-1 px-1">Código</th>
+                                                      <th className="text-left py-1 px-1">Descripción</th>
+                                                      <th className="text-center py-1 px-1">Cant. Original</th>
+                                                      <th className="text-center py-1 px-1">Cant. Entregada</th>
+                                                      <th className="text-right py-1 px-1">Subtotal</th>
+                                                      <th className="text-center py-1 px-1">Estado</th>
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody>
+                                                    {order.items.map((item, idx) => {
+                                                      if (!item) return null
+
+                                                      const cantidadEntregada =
+                                                        Number(item.cantidadEntregada) || Number(item.cantidad) || 0
+                                                      const subtotalCalculado =
+                                                        cantidadEntregada * (Number(item.valorUnidad) || 0)
+                                                      const subtotalFinal =
+                                                        item.subtotalAjustado !== null &&
+                                                        item.subtotalAjustado !== undefined
+                                                          ? Number(item.subtotalAjustado)
+                                                          : subtotalCalculado
+                                                      const estadoProducto = item.estadoProducto || "normal"
+                                                      const tieneAjusteManual =
+                                                        item.subtotalAjustado !== null &&
+                                                        item.subtotalAjustado !== undefined
+
+                                                      return (
+                                                        <tr key={idx} className={`border-b ${item.devuelto || item.motivoAjuste === 'devuelto' ? "bg-red-50" : item.motivoAjuste === 'error_facturacion' ? "bg-orange-50" : ""}`}>
+                                                          <td className="py-1 px-1">
+                                                            <Select
+                                                              value={item.motivoAjuste || "normal"}
+                                                              onValueChange={(value) => handleMotivoAjusteChange(order.id, item.codigo, value === "normal" ? "" : value)}
+                                                            >
+                                                              <SelectTrigger className="h-6 w-14 text-xs">
+                                                                <SelectValue placeholder="—" />
+                                                              </SelectTrigger>
+                                                              <SelectContent>
+                                                                <SelectItem value="normal">Normal</SelectItem>
+                                                                <SelectItem value="devuelto">Devolución</SelectItem>
+                                                                <SelectItem value="error_facturacion">Error Fact.</SelectItem>
+                                                              </SelectContent>
+                                                            </Select>
+                                                          </td>
+                                                          <td className="py-1 px-1">{item.codigo}</td>
+                                                          <td className="py-1 px-1">{item.descripcion}</td>
+                                                          <td className="text-center py-1 px-1">{item.cantidad}</td>
+                                                          <td className="text-center py-1 px-1">
+                                                            {!item.devuelto ? (
+                                                              <Input
+                                                                type="number"
+                                                                defaultValue={cantidadEntregada}
+                                                                min={0}
+                                                                max={item.cantidad}
+                                                                onBlur={(e) => {
+                                                                  const newCant = Number.parseInt(e.target.value) || 0
+                                                                  if (newCant !== cantidadEntregada) {
+                                                                    handleCantidadChange(
+                                                                      order.id,
+                                                                      item.codigo,
+                                                                      newCant,
+                                                                      item.cantidad,
+                                                                    )
+                                                                  }
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                  if (e.key === "Enter") {
+                                                                    e.currentTarget.blur()
+                                                                  }
+                                                                }}
+                                                                className="w-16 px-2 py-1 border rounded text-center"
+                                                              />
+                                                            ) : (
+                                                              <span>{cantidadEntregada}</span>
+                                                            )}
+                                                          </td>
+                                                          <td className="text-right py-1 px-1">
+                                                            {!item.devuelto ? (
+                                                              <div className="flex flex-col items-end gap-1">
+                                                                <Input
+                                                                  type="number"
+                                                                  defaultValue={subtotalFinal}
+                                                                  min={0}
+                                                                  onBlur={(e) => {
+                                                                    const newSubtotal =
+                                                                      Number.parseFloat(e.target.value) || 0
+                                                                    if (newSubtotal !== subtotalFinal) {
+                                                                      handleSubtotalChange(
+                                                                        order.id,
+                                                                        item.codigo,
+                                                                        newSubtotal,
+                                                                      )
+                                                                    }
+                                                                  }}
+                                                                  onKeyDown={(e) => {
+                                                                    if (e.key === "Enter") {
+                                                                      e.currentTarget.blur()
+                                                                    }
+                                                                  }}
+                                                                  placeholder={formatCOP(subtotalFinal)}
+                                                                  className={`w-28 px-2 py-1 border rounded text-right font-medium ${
+                                                                    tieneAjusteManual
+                                                                      ? "border-orange-400 bg-orange-50"
+                                                                      : ""
+                                                                  }`}
+                                                                />
+                                                                <span className="text-[10px] text-gray-400">
+                                                                  {formatCOP(subtotalFinal)}
+                                                                </span>
+                                                                {tieneAjusteManual && (
+                                                                  <Badge variant="outline" className="text-[10px] bg-orange-100">
+                                                                    Ajustado
+                                                                  </Badge>
+                                                                )}
+                                                              </div>
+                                                            ) : (
+                                                              <div className="flex flex-col items-end gap-1">
+                                                                <span className="font-medium">
+                                                                  {formatCOP(subtotalFinal)}
+                                                                </span>
+                                                                {tieneAjusteManual && (
+                                                                  <Badge variant="outline" className="text-[10px] bg-orange-100">
+                                                                    Ajustado
+                                                                  </Badge>
+                                                                )}
+                                                              </div>
+                                                            )}
+                                                          </td>
+                                                          <td className="text-center py-1 px-1">
+                                                            {estadoProducto === "agotado" && (
+                                                              <Badge variant="outline" className="text-[10px] bg-gray-100">
+                                                                Agotado
+                                                              </Badge>
+                                                            )}
+                                                            {estadoProducto === "parcial" && (
+                                                              <Badge variant="outline" className="text-[10px] bg-yellow-100">
+                                                                Parcial
+                                                              </Badge>
+                                                            )}
+                                                            {estadoProducto === "normal" && !item.devuelto && (
+                                                              <Badge variant="outline" className="text-[10px] bg-green-100">
+                                                                Normal
+                                                              </Badge>
+                                                            )}
+                                                            {item.devuelto && (
+                                                              <Badge variant="outline" className="text-[10px] bg-red-100">
+                                                                Devuelto
+                                                              </Badge>
+                                                            )}
+                                                          </td>
+                                                        </tr>
+                                                      )
+                                                    })}
+                                                  </tbody>
+                                                </table>
+                                              </div>
+
+                                              <div className="flex justify-end mt-2 pt-2 border-t">
+                                                <span className="font-medium text-sm">Total:</span>
+                                                <span className="font-bold text-sm ml-2">
+                                                  {formatCOP(effectiveTotal)}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            {/* Descuentos */}
+                                            <div className="pt-3 border-t">
+                                              <div className="flex items-center gap-2 mb-2">
+                                                <span className="text-xs font-medium text-gray-600">
+                                                  Descuento (Opcional)
+                                                </span>
+                                              </div>
+
+                                              <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                  <Label className="text-xs text-gray-500">
+                                                    Monto del Descuento
+                                                  </Label>
+                                                  <Input
+                                                    type="number"
+                                                    min={0}
+                                                    max={effectiveTotal}
+                                                    defaultValue={order.descuento || ""}
+                                                    placeholder="0"
+                                                    onBlur={(e) => {
+                                                      const descuento = Number(e.target.value) || 0
+                                                      if (descuento > effectiveTotal) {
+                                                        toast({
+                                                          title: "Error",
+                                                          description: `El descuento no puede ser mayor al total (${formatCOP(effectiveTotal)})`,
+                                                          variant: "destructive",
+                                                        })
+                                                        e.target.value = "0"
+                                                        return
+                                                      }
+                                                      handleDescuentoChange(order.id, descuento)
+                                                    }}
+                                                    className="mt-1"
+                                                  />
+                                                </div>
+
+                                                <div>
+                                                  <Label className="text-xs text-gray-500">
+                                                    Motivo del Descuento
+                                                  </Label>
+                                                  <Input
+                                                    type="text"
+                                                    defaultValue={order.motivoDescuento || ""}
+                                                    placeholder="Ej: Promoción, avería..."
+                                                    onBlur={(e) => handleMotivoDescuentoChange(order.id, e.target.value)}
+                                                    className="mt-1"
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              {order.descuento && Number(order.descuento) > 0 && (
+                                                <div className="mt-2 p-2 bg-purple-50 rounded flex justify-between items-center">
+                                                  <span className="text-xs text-purple-600 font-medium">
+                                                    Total con Descuento:
+                                                  </span>
+                                                  <span className="font-bold text-purple-700">
+                                                    {formatCOP(effectiveTotal - (Number(order.descuento) || 0))}
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
 
                                             {/* Botones de estado */}
                                             <div className="flex flex-wrap gap-2">
@@ -1140,4 +1377,3 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     </>
   )
 }
-
