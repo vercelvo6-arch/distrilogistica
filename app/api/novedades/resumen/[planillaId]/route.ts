@@ -20,53 +20,70 @@ export async function GET(
     }
 
     const planillaId = params.planillaId;
-    console.log("[API novedades/resumen] Obteniendo resumen de planilla:", planillaId);
+    console.log("[API novedades/resumen] ===== INICIO =====");
+    console.log("[API novedades/resumen] Planilla ID:", planillaId);
 
     const sql = getDB();
 
-    // Obtener todas las novedades de la planilla agrupadas por tipo
-    const resumen = await sql`
+    // PASO 1: Obtener TODAS las novedades de la planilla
+    const todasLasNovedades = await sql`
       SELECT 
-        n.tipo_novedad,
-        n.validado,
-        COUNT(DISTINCT n.id) as cantidad_novedades,
-        COUNT(DISTINCT n.pedido_id) as clientes_afectados,
-        SUM(n.monto_novedad) as total_monto,
-        SUM(CASE WHEN n.tipo_novedad = 'fiado_parcial' THEN n.monto_pagado ELSE 0 END) as total_pagado_fiados
+        n.*,
+        p.cliente
       FROM novedades_pedido n
       JOIN pedidos p ON n.pedido_id = p.id
       WHERE p.planilla_id = ${planillaId}
-      GROUP BY n.tipo_novedad, n.validado
-      ORDER BY n.tipo_novedad
+      ORDER BY n.created_at DESC
     `;
 
-    // Agrupar por tipo y separar validadas/pendientes
+    console.log("[API novedades/resumen] Total novedades encontradas:", todasLasNovedades.length);
+    console.log("[API novedades/resumen] Novedades:", JSON.stringify(todasLasNovedades, null, 2));
+
+    // PASO 2: Agrupar manualmente por tipo y estado
     const resumenPorTipo: Record<string, any> = {
-      agotado: { total: 0, validadas: 0, pendientes: 0, clientes: 0, cantidad: 0 },
-      devolucion: { total: 0, validadas: 0, pendientes: 0, clientes: 0, cantidad: 0 },
-      fiado_parcial: { total: 0, validadas: 0, pendientes: 0, clientes: 0, cantidad: 0, pagado: 0 },
-      error_facturacion: { total: 0, validadas: 0, pendientes: 0, clientes: 0, cantidad: 0 },
+      agotado: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
+      devolucion: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
+      fiado_parcial: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0, pagado: 0 },
+      error_facturacion: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
     };
 
-    for (const row of resumen) {
-      const tipo = row.tipo_novedad;
+    // Procesar cada novedad
+    for (const novedad of todasLasNovedades) {
+      const tipo = novedad.tipo_novedad;
       if (!resumenPorTipo[tipo]) continue;
 
-      if (row.validado) {
-        resumenPorTipo[tipo].validadas = Number(row.total_monto || 0);
-        resumenPorTipo[tipo].clientes = Number(row.clientes_afectados || 0);
-        resumenPorTipo[tipo].cantidad = Number(row.cantidad_novedades || 0);
+      const monto = Number(novedad.monto_novedad || 0);
+      
+      // Contar clientes únicos
+      resumenPorTipo[tipo].clientes.add(novedad.pedido_id);
+      
+      // Contar cantidad de novedades
+      resumenPorTipo[tipo].cantidad++;
+
+      if (novedad.validado) {
+        resumenPorTipo[tipo].validadas += monto;
         
         if (tipo === 'fiado_parcial') {
-          resumenPorTipo[tipo].pagado = Number(row.total_pagado_fiados || 0);
+          resumenPorTipo[tipo].pagado += Number(novedad.monto_pagado || 0);
         }
       } else {
-        resumenPorTipo[tipo].pendientes = Number(row.total_monto || 0);
+        resumenPorTipo[tipo].pendientes += monto;
       }
 
-      resumenPorTipo[tipo].total = 
-        resumenPorTipo[tipo].validadas + resumenPorTipo[tipo].pendientes;
+      resumenPorTipo[tipo].total = resumenPorTipo[tipo].validadas + resumenPorTipo[tipo].pendientes;
     }
+
+    // Convertir Sets a números
+    Object.keys(resumenPorTipo).forEach(tipo => {
+      resumenPorTipo[tipo].clientes = resumenPorTipo[tipo].clientes.size;
+    });
+
+    console.log("[API novedades/resumen] Resumen calculado:", JSON.stringify(resumenPorTipo, null, 2));
+
+    // PASO 3: Obtener novedades pendientes
+    const novedadesPendientes = todasLasNovedades.filter(n => !n.validado);
+
+    console.log("[API novedades/resumen] Novedades pendientes:", novedadesPendientes.length);
 
     // Calcular totales generales
     const totalNovedades = Object.values(resumenPorTipo).reduce(
@@ -79,20 +96,7 @@ export async function GET(
       0
     );
 
-    // Obtener listado detallado de novedades pendientes
-    const novedadesPendientes = await sql`
-      SELECT 
-        n.*,
-        p.cliente,
-        p.total as total_pedido
-      FROM novedades_pedido n
-      JOIN pedidos p ON n.pedido_id = p.id
-      WHERE p.planilla_id = ${planillaId}
-        AND n.validado = false
-      ORDER BY n.created_at DESC
-    `;
-
-    console.log("[API novedades/resumen] ✅ Resumen calculado:", {
+    console.log("[API novedades/resumen] ✅ Totales:", {
       totalNovedades,
       totalPendientes,
       agotados: resumenPorTipo.agotado.total,
@@ -100,6 +104,7 @@ export async function GET(
       fiados: resumenPorTipo.fiado_parcial.total,
       errores: resumenPorTipo.error_facturacion.total,
     });
+    console.log("[API novedades/resumen] ===== FIN =====");
 
     return NextResponse.json({
       resumen: resumenPorTipo,
