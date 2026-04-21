@@ -95,7 +95,19 @@ export async function POST(request: NextRequest) {
 
     // =============================================
     // PASO C: Reasignar pedido a nueva planilla
-    // CRÍTICO: Estado = 'entregado' para que NO aparezca en alistamiento
+    // 
+    // ✅ FIX CRÍTICO: estado = 'pendiente' (NO 'entregado' ni 'repaso')
+    //
+    // RAZÓN: El pedido debe llegar como un pedido NORMAL a la planilla
+    // destino para que:
+    //   1. El entregador lo vea como pedido pendiente de entregar
+    //   2. Caja lo cuente como parte del cargue a recibir en efectivo
+    //   3. El dinero quede registrado correctamente al cuadrar caja
+    //
+    // Si llega como 'repaso' → caja lo resta del cargue y el entregador
+    //   se queda con el dinero sin rendir cuentas. ← BUG ANTERIOR
+    // Si llega como 'entregado' → caja asume que ya se cobró sin que
+    //   el entregador haya rendido cuentas. ← TAMBIÉN INCORRECTO
     // =============================================
     console.log('[ASIGNAR REPASO] 📝 Actualizando pedido...')
     
@@ -103,7 +115,7 @@ export async function POST(request: NextRequest) {
       UPDATE pedidos
       SET 
         planilla_id = ${planillaDestinoId},
-        estado = 'entregado',
+        estado = 'pendiente',
         observaciones = COALESCE(observaciones || ' | ', '') || 
           'REPASO de ruta ' || ${pedido[0].ruta_origen} || 
           ' reasignado el ' || NOW()::date,
@@ -111,69 +123,113 @@ export async function POST(request: NextRequest) {
       WHERE id = ${pedidoId}
     `
 
-    console.log('[ASIGNAR REPASO] ✅ Pedido reasignado con estado "entregado"')
+    console.log('[ASIGNAR REPASO] ✅ Pedido reasignado con estado "pendiente"')
 
     // =============================================
-    // PASO D: Marcar productos como "ya_en_ruta"
-    // CRÍTICO: Para que alistador NO los vuelva a entregar
+    // PASO D: Resetear productos a estado 'pendiente'
+    //
+    // ✅ FIX: Los productos deben quedar 'pendiente' (NO 'ya_en_ruta')
+    // para que el entregador los vea en su planilla y deba rendir el dinero
     // =============================================
-    console.log('[ASIGNAR REPASO] 📝 Marcando productos como "ya_en_ruta"...')
+    console.log('[ASIGNAR REPASO] 📝 Reseteando productos a pendiente...')
     
     const productosActualizados = await sql`
       UPDATE pedido_productos
       SET 
-        estado_alistamiento = 'ya_en_ruta',
+        estado_alistamiento = 'pendiente',
         observaciones = COALESCE(observaciones || ' | ', '') || 
-          'REPASO - Mercancía ya en poder del entregador',
+          'REPASO - Mercancía reasignada desde ruta ' || ${pedido[0].ruta_origen},
         updated_at = NOW()
       WHERE pedido_id = ${pedidoId}
       RETURNING id, codigo, nombre
     `
 
-    console.log('[ASIGNAR REPASO] ✅ Productos marcados:', productosActualizados.length)
+    console.log('[ASIGNAR REPASO] ✅ Productos reseteados a pendiente:', productosActualizados.length)
 
     // =============================================
-    // PASO E: Actualizar total_cargue de planilla destino
+    // PASO E: Actualizar total_cargue de planilla ORIGEN
+    // Recalcular correctamente sin el pedido que se movió
     // =============================================
-    const nuevoTotalCargue = totalCargueActual + totalPedido
-    
-    console.log('[ASIGNAR REPASO] 📝 Actualizando cargue de planilla destino...')
-    console.log('[ASIGNAR REPASO]   Cargue anterior:', totalCargueActual)
-    console.log('[ASIGNAR REPASO]   + Repaso:', totalPedido)
-    console.log('[ASIGNAR REPASO]   = Nuevo cargue:', nuevoTotalCargue)
-    
+    const planillaOrigenId = pedido[0].planilla_id
+
+    const totalesOrigen = await sql`
+      SELECT 
+        COALESCE(SUM(total), 0) as total_cargue,
+        COALESCE(SUM(CASE WHEN estado = 'entregado' THEN total ELSE 0 END), 0) as total_entregado,
+        COALESCE(SUM(CASE WHEN estado = 'fiado' THEN total ELSE 0 END), 0) as total_fiado,
+        COALESCE(SUM(CASE WHEN estado = 'repaso' THEN total ELSE 0 END), 0) as total_repaso,
+        COALESCE(SUM(CASE WHEN estado = 'devolucion' THEN total ELSE 0 END), 0) as total_devolucion
+      FROM pedidos
+      WHERE planilla_id = ${planillaOrigenId}
+    `
+
     await sql`
       UPDATE planillas
       SET 
-        total_cargue = ${nuevoTotalCargue},
+        total_cargue = ${totalesOrigen[0].total_cargue},
+        total_entregado = ${totalesOrigen[0].total_entregado},
+        total_fiado = ${totalesOrigen[0].total_fiado},
+        total_repaso = ${totalesOrigen[0].total_repaso},
+        total_devolucion = ${totalesOrigen[0].total_devolucion},
+        updated_at = NOW()
+      WHERE id = ${planillaOrigenId}
+    `
+
+    console.log('[ASIGNAR REPASO] ✅ Totales de planilla ORIGEN recalculados')
+
+    // =============================================
+    // PASO F: Actualizar total_cargue de planilla DESTINO
+    // Recalcular correctamente incluyendo el nuevo pedido
+    // =============================================
+    const totalesDestino = await sql`
+      SELECT 
+        COALESCE(SUM(total), 0) as total_cargue,
+        COALESCE(SUM(CASE WHEN estado = 'entregado' THEN total ELSE 0 END), 0) as total_entregado,
+        COALESCE(SUM(CASE WHEN estado = 'fiado' THEN total ELSE 0 END), 0) as total_fiado,
+        COALESCE(SUM(CASE WHEN estado = 'repaso' THEN total ELSE 0 END), 0) as total_repaso,
+        COALESCE(SUM(CASE WHEN estado = 'devolucion' THEN total ELSE 0 END), 0) as total_devolucion
+      FROM pedidos
+      WHERE planilla_id = ${planillaDestinoId}
+    `
+
+    await sql`
+      UPDATE planillas
+      SET 
+        total_cargue = ${totalesDestino[0].total_cargue},
+        total_entregado = ${totalesDestino[0].total_entregado},
+        total_fiado = ${totalesDestino[0].total_fiado},
+        total_repaso = ${totalesDestino[0].total_repaso},
+        total_devolucion = ${totalesDestino[0].total_devolucion},
         updated_at = NOW()
       WHERE id = ${planillaDestinoId}
     `
 
-    console.log('[ASIGNAR REPASO] ✅ Cargue actualizado correctamente')
+    console.log('[ASIGNAR REPASO] ✅ Totales de planilla DESTINO recalculados')
+    console.log('[ASIGNAR REPASO]   Nuevo cargue destino:', totalesDestino[0].total_cargue)
 
     // =============================================
     // RESPUESTA EXITOSA
     // =============================================
     const resultado = {
       success: true,
-      mensaje: '✅ Repaso asignado. La mercancía ya está en poder del entregador.',
+      mensaje: '✅ Repaso asignado correctamente. El pedido aparecerá como pendiente en la planilla destino.',
       detalles: {
         pedido: {
           id: pedidoId,
           cliente: pedido[0].cliente,
           total: totalPedido,
           origen: pedido[0].ruta_origen,
-          entregador_origen: pedido[0].entregador_origen
+          entregador_origen: pedido[0].entregador_origen,
+          nuevo_estado: 'pendiente'
         },
         planilla_destino: {
           id: planillaDestino[0].id,
           tipo_ruta: planillaDestino[0].tipo_ruta,
           entregador: planillaDestino[0].entregador,
           total_cargue_anterior: totalCargueActual,
-          total_cargue_nuevo: nuevoTotalCargue
+          total_cargue_nuevo: Number(totalesDestino[0].total_cargue)
         },
-        productos_marcados: productosActualizados.length
+        productos_actualizados: productosActualizados.length
       }
     }
 
