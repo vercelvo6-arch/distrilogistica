@@ -52,7 +52,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   // Estados para modal de novedades
   const [selectedOrderForNovedades, setSelectedOrderForNovedades] = useState<Order | null>(null)
-  const [selectedPlanillaId, setSelectedPlanillaId] = useState<number>(0)
+  const [selectedPlanillaId, setSelectedPlanillaId] = useState<string>("")
 
   // ✅ Estado para novedades
   const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, any[]>>({})
@@ -1389,14 +1389,16 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       </Dialog>
 
       {/* Modal de Novedades */}
-      {selectedOrderForNovedades && selectedPlanillaId > 0 && (
+      {selectedOrderForNovedades && selectedPlanillaId !== "" && (
         <ModalNovedadesEntregador
           order={selectedOrderForNovedades}
           planillaId={selectedPlanillaId}
           onClose={() => {
             setSelectedOrderForNovedades(null)
+            setSelectedPlanillaId("")
             loadData()
           }}
+          onNovedadCreada={() => loadData()}
         />
       )}
     </>
