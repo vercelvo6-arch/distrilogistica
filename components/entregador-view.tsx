@@ -54,7 +54,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [selectedOrderForNovedades, setSelectedOrderForNovedades] = useState<Order | null>(null)
   const [selectedPlanillaId, setSelectedPlanillaId] = useState<number>(0)
 
-  // ✅ NUEVO: Estado para novedades
+  // ✅ Estado para novedades
   const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, any[]>>({})
 
   const entregador = user.nombre
@@ -69,6 +69,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
   }, [selectedView])
 
+  // ✅ OPTIMIZADO: Una única petición para todas las novedades del entregador
   async function loadData() {
     try {
       const response = await fetch("/api/planillas")
@@ -122,15 +123,37 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
       setRouteSheets(planillas)
 
-      // ✅ NUEVO: Cargar novedades para cada planilla
-      const novedadesMap: Record<number, any[]> = {}
-      const promesas = planillas.map(async (planilla) => {
-        const novedades = await loadNovedadesPlanilla(planilla.id)
-        novedadesMap[planilla.id] = novedades
-      })
-      await Promise.all(promesas)
-      setNovedadesPorPlanilla(novedadesMap)
-      console.log('[ENTREGADOR] Novedades cargadas:', novedadesMap)
+      // ✅ FIX: Solo cargar novedades de las planillas del entregador actual
+      // Una sola petición en vez de 150+
+      const misPlanilas = planillas.filter(
+        (p) => p.entregador === entregador &&
+               (p.estado === 'alistado' || p.estado === 'completado') &&
+               !p.cuadradoEnCaja
+      )
+
+      if (misPlanilas.length > 0) {
+        const ids = misPlanilas.map((p) => p.id).join(",")
+        const novedadesResponse = await fetch(`/api/novedades?planillaIds=${ids}`)
+        
+        if (novedadesResponse.ok) {
+          const novedadesData = await novedadesResponse.json()
+          const todasLasNovedades = novedadesData.novedades || []
+
+          // Agrupar por planilla_id para acceso rápido
+          const novedadesMap: Record<number, any[]> = {}
+          todasLasNovedades.forEach((n: any) => {
+            const pid = n.planilla_id
+            if (!novedadesMap[pid]) novedadesMap[pid] = []
+            novedadesMap[pid].push(n)
+          })
+
+          setNovedadesPorPlanilla(novedadesMap)
+          console.log('[ENTREGADOR] Novedades cargadas en 1 petición:', todasLasNovedades.length)
+        }
+      } else {
+        setNovedadesPorPlanilla({})
+      }
+
     } catch (err) {
       console.error("[ENTREGADOR] Error loading planillas:", err)
       toast({
@@ -195,19 +218,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         description: "No se pudo cargar el historial",
         variant: "destructive",
       })
-    }
-  }
-
-  // ✅ NUEVO: Función para cargar novedades
-  async function loadNovedadesPlanilla(planillaId: number) {
-    try {
-      const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
-      const data = await response.json()
-      console.log(`[ENTREGADOR] Novedades cargadas para planilla ${planillaId}:`, data.novedades)
-      return data.novedades || []
-    } catch (err) {
-      console.error('[ENTREGADOR] Error loading novedades:', err)
-      return []
     }
   }
 
@@ -343,11 +353,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       }
     })
 
-    // ✅ NUEVO: Sumar novedades validadas
+    // ✅ Sumar novedades validadas
     const novedades = novedadesPorPlanilla[route.id] || []
 
     novedades.forEach((novedad) => {
-      if (!novedad.validado) return // Solo validadas
+      if (!novedad.validado) return
 
       const monto = Number(novedad.monto_novedad) || 0
 
@@ -986,7 +996,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                             <div className="flex items-center gap-2">
                                               <p className="font-medium text-sm">{order.cliente}</p>
 
-                                              {/* ✅ NUEVO: Badge de novedades */}
+                                              {/* Badge de novedades */}
                                               {(() => {
                                                 const novedadesDelPedido = (novedadesPorPlanilla[route.id] || []).filter(
                                                   (n) => n.pedido_id === order.id
@@ -1283,53 +1293,27 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                                   />
                                                 </div>
                                               </div>
-
-                                              {order.descuento && Number(order.descuento) > 0 && (
-                                                <div className="mt-2 p-2 bg-purple-50 rounded flex justify-between items-center">
-                                                  <span className="text-xs text-purple-600 font-medium">
-                                                    Total con Descuento:
-                                                  </span>
-                                                  <span className="font-bold text-purple-700">
-                                                    {formatCOP(effectiveTotal - (Number(order.descuento) || 0))}
-                                                  </span>
-                                                </div>
-                                              )}
                                             </div>
 
-                                            {/* Botones de estado */}
-                                            <div className="flex flex-wrap gap-2">
-                                              <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleOrderStatusChange(order.id, "fiado")}
-                                                className="flex-1 sm:flex-none border-orange-300 text-orange-700 hover:bg-orange-50"
+                                            {/* Estado del Pedido */}
+                                            <div className="pt-3 border-t">
+                                              <Label className="text-xs text-gray-600 block mb-2">
+                                                Estado del Pedido
+                                              </Label>
+                                              <Select
+                                                value={order.estado}
+                                                onValueChange={(value) => handleOrderStatusChange(order.id, value as Order["estado"])}
                                               >
-                                                Fiado
-                                              </Button>
-                                              <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleOrderStatusChange(order.id, "repaso")}
-                                                className="flex-1 sm:flex-none border-blue-300 text-blue-700 hover:bg-blue-50"
-                                              >
-                                                Repaso
-                                              </Button>
-                                              <Button
-                                                variant="destructive"
-                                                size="sm"
-                                                onClick={() => handleOrderStatusChange(order.id, "devolucion")}
-                                                className="flex-1 sm:flex-none"
-                                              >
-                                                Devolución
-                                              </Button>
-                                              <Button
-                                                variant="default"
-                                                size="sm"
-                                                onClick={() => handleOrderStatusChange(order.id, "entregado")}
-                                                className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700"
-                                              >
-                                                Entregado
-                                              </Button>
+                                                <SelectTrigger className="text-sm">
+                                                  <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="entregado">Entregado</SelectItem>
+                                                  <SelectItem value="fiado">Fiado</SelectItem>
+                                                  <SelectItem value="repaso">Repaso</SelectItem>
+                                                  <SelectItem value="devolucion">Devolución</SelectItem>
+                                                </SelectContent>
+                                              </Select>
                                             </div>
                                           </div>
                                         )}
@@ -1351,90 +1335,66 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         </main>
       </div>
 
-      {/* Modal para Fiado Parcial */}
+      {/* Modal de Fiado */}
       <Dialog open={showFiadoModal} onOpenChange={setShowFiadoModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Registrar Pago Parcial (Fiado)</DialogTitle>
+            <DialogTitle>Registrar Fiado</DialogTitle>
             <DialogDescription>
               {selectedOrderForFiado && `Cliente: ${selectedOrderForFiado.cliente}`}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            {selectedOrderForFiado && (
-              <>
-                <div className="flex justify-between items-center p-3 bg-gray-100 rounded">
-                  <span className="text-sm text-gray-600">Total Efectivo del Pedido:</span>
-                  <span className="font-bold text-lg">{formatCOP(totalEfectivoFiado)}</span>
-                </div>
+            <div>
+              <Label className="text-sm font-medium">Total del Pedido</Label>
+              <p className="text-lg font-bold text-gray-900">
+                {formatCOP(totalEfectivoFiado)}
+              </p>
+            </div>
 
-                {totalEfectivoFiado !== selectedOrderForFiado.total && (
-                  <div className="text-xs text-gray-500 p-2 bg-yellow-50 rounded border border-yellow-200">
-                    <p>
-                      <strong>Nota:</strong> El total original de la factura era {formatCOP(selectedOrderForFiado.total)}.
-                    </p>
-                    <p>
-                      Se ajustó a {formatCOP(totalEfectivoFiado)} considerando productos devueltos, agotados o con errores de facturación.
-                    </p>
-                  </div>
-                )}
+            <div>
+              <Label htmlFor="montoPagado" className="text-sm font-medium">
+                Monto Pagado
+              </Label>
+              <Input
+                id="montoPagado"
+                type="number"
+                min={0}
+                max={totalEfectivoFiado}
+                value={montoPagadoFiado}
+                onChange={(e) => setMontoPagadoFiado(e.target.value)}
+                placeholder="0"
+                className="mt-1"
+              />
+            </div>
 
-                <div>
-                  <Label htmlFor="montoPagadoFiado">¿Cuánto pagó?</Label>
-                  <Input
-                    id="montoPagadoFiado"
-                    type="number"
-                    min={0}
-                    max={totalEfectivoFiado}
-                    value={montoPagadoFiado}
-                    onChange={(e) => setMontoPagadoFiado(e.target.value)}
-                    placeholder="0"
-                    className="col-span-1"
-                    autoFocus
-                  />
-                </div>
-
-                {montoPagadoFiado && (
-                  <div className="flex justify-between items-center p-3 bg-orange-50 rounded border border-orange-200">
-                    <span className="text-sm text-orange-700 font-medium">Saldo Pendiente:</span>
-                    <span className="font-bold text-lg text-orange-700">
-                      {formatCOP(totalEfectivoFiado - Number(montoPagadoFiado))}
-                    </span>
-                  </div>
-                )}
-
-                <p className="text-xs text-gray-500">
-                  Nota: El pedido se marcará como "Fiado" y se registrará el monto pagado.
-                  El saldo pendiente quedará como cuenta por cobrar.
-                </p>
-              </>
-            )}
+            <div className="p-3 bg-blue-50 rounded">
+              <p className="text-xs text-blue-600 font-medium">Saldo Pendiente:</p>
+              <p className="text-lg font-bold text-blue-700">
+                {formatCOP(Math.max(0, totalEfectivoFiado - (Number(montoPagadoFiado) || 0)))}
+              </p>
+            </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowFiadoModal(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSubmitFiado}>
-              Guardar Fiado
+            <Button onClick={handleSubmitFiado} className="bg-blue-600 hover:bg-blue-700">
+              Registrar Fiado
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Modal de Novedades */}
-      {selectedOrderForNovedades && (
+      {selectedOrderForNovedades && selectedPlanillaId > 0 && (
         <ModalNovedadesEntregador
           order={selectedOrderForNovedades}
           planillaId={selectedPlanillaId}
           onClose={() => {
             setSelectedOrderForNovedades(null)
-            setSelectedPlanillaId(0)
-          }}
-          onNovedadCreada={() => {
-            setSelectedOrderForNovedades(null)
-            setSelectedPlanillaId(0)
             loadData()
           }}
         />
