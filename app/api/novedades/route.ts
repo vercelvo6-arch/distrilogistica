@@ -5,6 +5,13 @@ import { handleDBError } from "@/lib/db-helpers";
 
 export const dynamic = "force-dynamic";
 
+// ✅ FIX: PostgreSQL retorna boolean como 't'/'f' con el driver Neon
+const esVerdadero = (val: any): boolean => val === true || val === 't';
+
+function normalizarNovedades(novedades: any[]) {
+  return novedades.map(n => ({ ...n, validado: esVerdadero(n.validado) }));
+}
+
 // =====================================================
 // GET: Obtener novedades
 // =====================================================
@@ -18,7 +25,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const pedidoId = searchParams.get("pedidoId");
     const planillaId = searchParams.get("planillaId");
-    // ✅ NUEVO: soporte para múltiples planillas separadas por coma
     const planillaIds = searchParams.get("planillaIds");
 
     const sql = getDB();
@@ -34,7 +40,7 @@ export async function GET(request: NextRequest) {
         WHERE n.pedido_id = ${pedidoId}
         ORDER BY n.created_at DESC
       `;
-      return NextResponse.json({ novedades });
+      return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
     if (planillaId) {
@@ -49,12 +55,11 @@ export async function GET(request: NextRequest) {
         WHERE p.planilla_id = ${planillaId}
         ORDER BY n.created_at DESC
       `;
-      return NextResponse.json({ novedades });
+      return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
-    // ✅ NUEVO: múltiples planillas en UNA sola query
     if (planillaIds) {
-      const ids = planillaIds.split(",").map((id) => id.trim()).filter(Boolean)
+      const ids = planillaIds.split(",").map((id) => id.trim()).filter(Boolean);
 
       if (ids.length === 0) {
         return NextResponse.json({ novedades: [] });
@@ -72,7 +77,7 @@ export async function GET(request: NextRequest) {
         ORDER BY n.created_at DESC
       `;
 
-      return NextResponse.json({ novedades });
+      return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
     return NextResponse.json({ error: "Se requiere pedidoId, planillaId o planillaIds" }, { status: 400 });
@@ -89,7 +94,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     console.log("[API novedades POST] ===== INICIO =====");
-    
+
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
