@@ -36,7 +36,14 @@ interface EntregadorViewProps {
 
 export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const { toast } = useToast()
-  const [filterFechaDesde, setFilterFechaDesde] = useState(new Date().toISOString().split("T")[0])
+  
+  const getDateDaysAgo = (days: number) => {
+    const date = new Date()
+    date.setDate(date.getDate() - days)
+    return date.toISOString().split("T")[0]
+  }
+  
+  const [filterFechaDesde, setFilterFechaDesde] = useState(getDateDaysAgo(7))
   const [filterFechaHasta, setFilterFechaHasta] = useState(new Date().toISOString().split("T")[0])
   const [selectedView, setSelectedView] = useState<"rutas" | "historial">("rutas")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
@@ -356,10 +363,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     // ✅ Sumar novedades validadas
     const novedades = novedadesPorPlanilla[route.id] || []
 
-    novedades.forEach((novedad) => {
-      if (!novedad.validado) return
-
-      const monto = Number(novedad.monto_novedad) || 0
+  novedades.forEach((novedad) => {
+    const monto = Number(novedad.monto_novedad) || 0
 
       switch (novedad.tipo_novedad) {
         case "agotado":
