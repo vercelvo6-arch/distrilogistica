@@ -167,6 +167,52 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }, [selectedView])
 
+  // Efecto para cargar novedades SOLO de planillas dentro del rango de fechas filtrado
+  // Se ejecuta cuando cambian los filtros de fecha O cuando se cargan las planillas
+  useEffect(() => {
+    async function loadNovedadesForFilteredRoutes() {
+      if (routeSheets.length === 0) return
+      
+      // IMPORTANTE: Solo cargar novedades si hay filtros de fecha aplicados
+      // Esto evita cargar 100+ novedades de planillas históricas
+      if (!filterFechaDesde && !filterFechaHasta) {
+        console.log("[CAJA] Sin filtros de fecha, no se cargan novedades automáticamente")
+        return
+      }
+      
+      // Obtener planillas pendientes dentro del rango de filtros
+      const planillasPendientes = routeSheets.filter((p) => {
+        if (!((p.estado === 'alistado' || p.estado === 'completado') && !p.cuadradoEnCaja)) return false
+        const routeDate = new Date(p.fecha).toISOString().split("T")[0]
+        if (filterFechaDesde && routeDate < filterFechaDesde) return false
+        if (filterFechaHasta && routeDate > filterFechaHasta) return false
+        return true
+      })
+
+      // Filtrar solo las que NO tienen novedades cargadas aún
+      const planillasSinNovedades = planillasPendientes.filter(
+        (p) => novedadesPorPlanilla[p.id] === undefined
+      )
+
+      if (planillasSinNovedades.length === 0) return
+
+      console.log("[CAJA] Cargando novedades para", planillasSinNovedades.length, "planillas en rango", filterFechaDesde, "-", filterFechaHasta)
+
+      const nuevasNovedades: Record<string, NovedadPedido[]> = {}
+      await Promise.all(
+        planillasSinNovedades.map(async (planilla) => {
+          const novedades = await loadNovedadesPlanilla(planilla.id)
+          nuevasNovedades[planilla.id] = novedades
+        })
+      )
+
+      // Actualizar el mapa con las nuevas novedades
+      setNovedadesPorPlanilla((prev) => ({ ...prev, ...nuevasNovedades }))
+    }
+
+    loadNovedadesForFilteredRoutes()
+  }, [filterFechaDesde, filterFechaHasta, routeSheets])
+
   // Función para cargar novedades de una planilla
   async function loadNovedadesPlanilla(planillaId: string): Promise<NovedadPedido[]> {
     try {
@@ -232,24 +278,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         cuentasPorCobrar: [],
       }))
 
-      // CORRECCIÓN: Filtrar SOLO planillas pendientes de cuadre ANTES de cargar novedades
-      const planillasPendientes = planillas.filter(
-        (p) => (p.estado === 'alistado' || p.estado === 'completado') && !p.cuadradoEnCaja
-      )
-
-      console.log("[CAJA] Planillas totales:", planillas.length, "| Pendientes de cuadre:", planillasPendientes.length)
-
-      // Cargar novedades SOLO de planillas pendientes de cuadre (no todas las históricas)
-      const novedadesMap: Record<string, NovedadPedido[]> = {}
-      const promesas = planillasPendientes.map(async (planilla) => {
-        const novedades = await loadNovedadesPlanilla(planilla.id)
-        novedadesMap[planilla.id] = novedades
-      })
-      await Promise.all(promesas)
-
-      // CORRECCIÓN: Actualizar ambos estados de forma síncrona
-      // Primero seteamos novedades, luego planillas (para que el renderizado use el mapa correcto)
-      setNovedadesPorPlanilla(novedadesMap)
+      // NO cargar novedades aquí - se cargan cuando el usuario aplica filtros
+      // Esto evita 100+ llamadas innecesarias al cargar la página
+      console.log("[CAJA] Planillas totales:", planillas.length)
       setRouteSheets(planillas)
 
     } catch (err) {
@@ -491,24 +522,30 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     
     // CORRECCIÓN: Contar TODAS las novedades (validadas o no) para el cuadre de caja
     // El efectivo esperado debe descontar las novedades desde que el entregador las registra
+    // CORRECCIÓN CRÍTICA: Las novedades deben RESTAR del entregado
+    // porque representan montos que el entregador NO trae en efectivo
     novedades.forEach((novedad) => {
       const monto = Number(novedad.monto_novedad) || 0
 
       switch (novedad.tipo_novedad) {
         case "agotado":
           agotados += monto
+          entregado -= monto // NO trae efectivo por este producto
           break
         case "devolucion":
           devoluciones += monto
+          entregado -= monto // NO trae efectivo por esta devolución
           break
         case "fiado_parcial":
           const montoPagadoNov = Number(novedad.monto_pagado) || 0
           const saldoNov = monto - montoPagadoNov
           fiado += saldoNov
-          entregado += montoPagadoNov
+          // Solo resta del entregado el saldo que NO pagó
+          entregado -= saldoNov
           break
         case "error_facturacion":
           erroresFacturacion += monto
+          entregado -= monto // NO trae efectivo por error de facturación
           break
       }
     })
