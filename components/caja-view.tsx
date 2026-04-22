@@ -113,7 +113,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [showAgrupadoModal, setShowAgrupadoModal] = useState(false)
   const [agrupadoData, setAgrupadoData] = useState<any>(null)
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
-  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [expandedNovedades, setExpandedNovedades] = useState<Set<string>>(new Set())
 
   const [showNuevoPedidoModal, setShowNuevoPedidoModal] = useState(false)
   const [rutaParaNuevoPedido, setRutaParaNuevoPedido] = useState<RouteSheet | null>(null)
@@ -2202,40 +2202,67 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 </div>
 
                 {/* Cards interactivos de novedades por planilla */}
-                {filteredRoutes.length > 0 && (
-                  <div className="mt-6">
-                    <h3 className="text-sm font-semibold mb-3 text-gray-700">Novedades por Tipo (Clicables)</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {filteredRoutes.map((route) => (
-                        <div key={route.id} className="space-y-2">
-                          <p className="text-xs text-gray-500 font-medium">Ruta {route.ruta}</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            <CardNovedadesInteractivo
-                              planillaId={route.id}
-                              tipo="agotado"
-                              onNovedadActualizada={() => loadData()}
-                            />
-                            <CardNovedadesInteractivo
-                              planillaId={route.id}
-                              tipo="devolucion"
-                              onNovedadActualizada={() => loadData()}
-                            />
-                            <CardNovedadesInteractivo
-                              planillaId={route.id}
-                              tipo="fiado_parcial"
-                              onNovedadActualizada={() => loadData()}
-                            />
-                            <CardNovedadesInteractivo
-                              planillaId={route.id}
-                              tipo="error_facturacion"
-                              onNovedadActualizada={() => loadData()}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+{filteredRoutes.length > 0 && (
+  <div className="mt-6">
+    <h3 className="text-sm font-semibold mb-3 text-gray-700">Novedades por Tipo (Clicables)</h3>
+    <div className="space-y-3">
+      {filteredRoutes.map((route) => (
+        <div key={route.id} className="border rounded-lg p-3 bg-white">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-gray-700">
+              {route.entregador} · Ruta {route.ruta} · {new Date(route.fecha).toLocaleDateString("es-CO")}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const newExpanded = new Set(expandedNovedades)
+                if (newExpanded.has(route.id)) {
+                  newExpanded.delete(route.id)
+                } else {
+                  newExpanded.add(route.id)
+                }
+                setExpandedNovedades(newExpanded)
+              }}
+              className="border-yellow-300 text-yellow-700 hover:bg-yellow-50"
+            >
+              {expandedNovedades.has(route.id) ? (
+                <><ChevronUp className="h-4 w-4 mr-1" />Ocultar Novedades</>
+              ) : (
+                <><ChevronDown className="h-4 w-4 mr-1" />Ver Novedades</>
+              )}
+            </Button>
+          </div>
+
+          {expandedNovedades.has(route.id) && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+              <CardNovedadesInteractivo
+                planillaId={route.id}
+                tipo="agotado"
+                onNovedadActualizada={() => loadData()}
+              />
+              <CardNovedadesInteractivo
+                planillaId={route.id}
+                tipo="devolucion"
+                onNovedadActualizada={() => loadData()}
+              />
+              <CardNovedadesInteractivo
+                planillaId={route.id}
+                tipo="fiado_parcial"
+                onNovedadActualizada={() => loadData()}
+              />
+              <CardNovedadesInteractivo
+                planillaId={route.id}
+                tipo="error_facturacion"
+                onNovedadActualizada={() => loadData()}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
               </Card>
 
               <Card className="p-6">
