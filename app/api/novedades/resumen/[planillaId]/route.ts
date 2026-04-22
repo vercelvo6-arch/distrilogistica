@@ -9,7 +9,6 @@ const esVerdadero = (val: any): boolean => val === true || val === 't';
 
 export async function GET(
   request: NextRequest,
-  // ✅ FIX CRÍTICO: params es Promise en Next.js 15+/16
   { params }: { params: Promise<{ planillaId: string }> }
 ) {
   try {
@@ -18,7 +17,6 @@ export async function GET(
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    // ✅ FIX CRÍTICO: await params antes de desestructurar
     const { planillaId } = await params;
 
     if (!planillaId) {
