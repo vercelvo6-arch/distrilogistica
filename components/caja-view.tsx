@@ -80,7 +80,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [loading, setLoading] = useState(true)
 
   // ✅ NUEVO: Estado para novedades por planilla
-  const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, NovedadPedido[]>>({})
+  const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<string, NovedadPedido[]>>({})
 
   const [showModal, setShowModal] = useState(false)
   const [selectedPlanilla, setSelectedPlanilla] = useState<RouteSheet | null>(null)
@@ -235,7 +235,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       setRouteSheets(planillas)
 
       // ✅ NUEVO: Cargar novedades de cada planilla en paralelo para mejor rendimiento
-      const novedadesMap: Record<number, NovedadPedido[]> = {}
+      const novedadesMap: Record<string, NovedadPedido[]> = {}
       const promesas = planillas.map(async (planilla) => {
         const novedades = await loadNovedadesPlanilla(planilla.id)
         novedadesMap[planilla.id] = novedades
