@@ -59,6 +59,7 @@ interface NovedadPedido {
   monto_pagado: number
   validado: boolean
 }
+const esValidado = (val: any): boolean => val === true || val === 't';
 
 export function CajaView({ onLogout, user }: CajaViewProps) {
   const { toast } = useToast()
@@ -477,7 +478,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const novedades = novedadesPorPlanilla[route.id] || []
     
     novedades.forEach((novedad) => {
-      if (!novedad.validado) return // Solo contar novedades validadas
+      if (!esValidado(novedad.validado)) return // Solo contar novedades validadas
 
       const monto = Number(novedad.monto_novedad) || 0
 
