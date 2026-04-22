@@ -5,12 +5,12 @@ import { handleDBError } from "@/lib/db-helpers";
 
 export const dynamic = "force-dynamic";
 
-// PostgreSQL puede retornar boolean como true/false O como 't'/'f' según el driver
-const esVerdadero = (val: any): boolean => val === true || val === 't'
+const esVerdadero = (val: any): boolean => val === true || val === 't';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { planillaId: string } }
+  // ✅ FIX CRÍTICO: params es Promise en Next.js 15+/16
+  { params }: { params: Promise<{ planillaId: string }> }
 ) {
   try {
     const session = await getSession();
@@ -18,7 +18,12 @@ export async function GET(
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    const planillaId = params.planillaId;
+    // ✅ FIX CRÍTICO: await params antes de desestructurar
+    const { planillaId } = await params;
+
+    if (!planillaId) {
+      return NextResponse.json({ error: "planillaId requerido" }, { status: 400 });
+    }
 
     const sql = getDB();
 
@@ -33,9 +38,9 @@ export async function GET(
     `;
 
     const resumenPorTipo: Record<string, any> = {
-      agotado: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
-      devolucion: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
-      fiado_parcial: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0, pagado: 0 },
+      agotado:           { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
+      devolucion:        { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
+      fiado_parcial:     { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0, pagado: 0 },
       error_facturacion: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
     };
 
@@ -44,11 +49,9 @@ export async function GET(
       if (!resumenPorTipo[tipo]) continue;
 
       const monto = Number(novedad.monto_novedad || 0);
-      
       resumenPorTipo[tipo].clientes.add(novedad.pedido_id);
       resumenPorTipo[tipo].cantidad++;
 
-      // ✅ FIX: PostgreSQL retorna boolean como 't'/'f' o true/false según el driver
       if (esVerdadero(novedad.validado)) {
         resumenPorTipo[tipo].validadas += monto;
         if (tipo === 'fiado_parcial') {
@@ -58,20 +61,19 @@ export async function GET(
         resumenPorTipo[tipo].pendientes += monto;
       }
 
-      resumenPorTipo[tipo].total = resumenPorTipo[tipo].validadas + resumenPorTipo[tipo].pendientes;
+      resumenPorTipo[tipo].total =
+        resumenPorTipo[tipo].validadas + resumenPorTipo[tipo].pendientes;
     }
 
     Object.keys(resumenPorTipo).forEach(tipo => {
       resumenPorTipo[tipo].clientes = resumenPorTipo[tipo].clientes.size;
     });
 
-    // ✅ FIX: Filtrar pendientes comparando correctamente el boolean de PG
     const novedadesPendientes = todasLasNovedades.filter(n => !esVerdadero(n.validado));
 
     const totalNovedades = Object.values(resumenPorTipo).reduce(
       (sum: number, tipo: any) => sum + tipo.total, 0
     );
-
     const totalPendientes = Object.values(resumenPorTipo).reduce(
       (sum: number, tipo: any) => sum + tipo.pendientes, 0
     );
