@@ -50,7 +50,7 @@ interface NuevoProducto {
   subtotal: number
 }
 
-// ✅ NUEVO: Interface para novedades de pedido
+// Interface para novedades de pedido
 interface NovedadPedido {
   id: string
   pedido_id: string
@@ -59,7 +59,6 @@ interface NovedadPedido {
   monto_pagado: number
   validado: boolean
 }
-const esValidado = (val: any): boolean => val === true || val === 't';
 
 export function CajaView({ onLogout, user }: CajaViewProps) {
   const { toast } = useToast()
@@ -79,7 +78,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [recepciones, setRecepciones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // ✅ NUEVO: Estado para novedades por planilla
+  // Estado para novedades por planilla
   const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<string, NovedadPedido[]>>({})
 
   const [showModal, setShowModal] = useState(false)
@@ -114,6 +113,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [agrupadoData, setAgrupadoData] = useState<any>(null)
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
   const [expandedNovedades, setExpandedNovedades] = useState<Set<string>>(new Set())
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
 
   const [showNuevoPedidoModal, setShowNuevoPedidoModal] = useState(false)
   const [rutaParaNuevoPedido, setRutaParaNuevoPedido] = useState<RouteSheet | null>(null)
@@ -167,19 +167,19 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }, [selectedView])
 
-  // ✅ NUEVO: Función para cargar novedades de una planilla
+  // Función para cargar novedades de una planilla
   async function loadNovedadesPlanilla(planillaId: string): Promise<NovedadPedido[]> {
-  try {
-    console.log("[CAJA] fetching novedades para:", planillaId)
-    const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
-    const data = await response.json()
-    console.log("[CAJA] novedades recibidas:", data.novedades?.length, data.novedades)
-    return data.novedades || []
-  } catch (error) {
-    console.error("[CAJA] Error cargando novedades:", error)
-    return []
+    try {
+      console.log("[CAJA] fetching novedades para:", planillaId)
+      const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
+      const data = await response.json()
+      console.log("[CAJA] novedades recibidas:", data.novedades?.length, data.novedades)
+      return data.novedades || []
+    } catch (error) {
+      console.error("[CAJA] Error cargando novedades:", error)
+      return []
+    }
   }
-}
 
   async function loadData() {
     try {
@@ -232,16 +232,25 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         cuentasPorCobrar: [],
       }))
 
-      setRouteSheets(planillas)
+      // CORRECCIÓN: Filtrar SOLO planillas pendientes de cuadre ANTES de cargar novedades
+      const planillasPendientes = planillas.filter(
+        (p) => (p.estado === 'alistado' || p.estado === 'completado') && !p.cuadradoEnCaja
+      )
 
-      // ✅ NUEVO: Cargar novedades de cada planilla en paralelo para mejor rendimiento
+      console.log("[CAJA] Planillas totales:", planillas.length, "| Pendientes de cuadre:", planillasPendientes.length)
+
+      // Cargar novedades SOLO de planillas pendientes de cuadre (no todas las históricas)
       const novedadesMap: Record<string, NovedadPedido[]> = {}
-      const promesas = planillas.map(async (planilla) => {
+      const promesas = planillasPendientes.map(async (planilla) => {
         const novedades = await loadNovedadesPlanilla(planilla.id)
         novedadesMap[planilla.id] = novedades
       })
       await Promise.all(promesas)
+
+      // CORRECCIÓN: Actualizar ambos estados de forma síncrona
+      // Primero seteamos novedades, luego planillas (para que el renderizado use el mapa correcto)
       setNovedadesPorPlanilla(novedadesMap)
+      setRouteSheets(planillas)
 
     } catch (err) {
       console.error("[CAJA] Error loading planillas:", err)
@@ -374,8 +383,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     return Math.round(effectiveTotal * 100) / 100
   }
 
-  // ✅ MODIFICADO: calculateRouteTotals ahora incluye novedades de la tabla novedades_pedido
-  const calculateRouteTotals = (route: RouteSheet | null) => {
+  // CORRECCIÓN PRINCIPAL: calculateRouteTotals ahora recibe novedadesMap como parámetro
+  const calculateRouteTotals = (
+    route: RouteSheet | null,
+    novedadesMap: Record<string, NovedadPedido[]> = novedadesPorPlanilla
+  ) => {
     if (!route || !Array.isArray(route.orders)) {
       return {
         entregado: 0,
@@ -474,12 +486,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
     })
 
-    // ✅ NUEVO: Sumar novedades de la tabla novedades_pedido
-    const novedades = novedadesPorPlanilla[route.id] || []
+    // CORRECCIÓN: Usar el mapa pasado como parámetro, NO el estado
+    const novedades = novedadesMap[route.id] || []
     
+    // CORRECCIÓN: Contar TODAS las novedades (validadas o no) para el cuadre de caja
+    // El efectivo esperado debe descontar las novedades desde que el entregador las registra
     novedades.forEach((novedad) => {
-      if (!esValidado(novedad.validado)) return // Solo contar novedades validadas
-
       const monto = Number(novedad.monto_novedad) || 0
 
       switch (novedad.tipo_novedad) {
@@ -1429,7 +1441,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   try {
     setSubmitting(true)
 
-    // ✅ PASO 1: GUARDAR TODOS LOS PEDIDOS FIADOS ANTES DEL CUADRE
+    // PASO 1: GUARDAR TODOS LOS PEDIDOS FIADOS ANTES DEL CUADRE
    console.log('[CUADRE AGRUPADO] 🔄 Guardando pedidos con estado especial...')
     
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
@@ -1470,7 +1482,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     
     console.log('[CUADRE AGRUPADO] ✅ Pedidos guardados:', pedidosGuardados)   
 
-    // ✅ PASO 2: CREAR EL CUADRE AGRUPADO (código original)
+    // PASO 2: CREAR EL CUADRE AGRUPADO (código original)
     const fiadoFinal = Number(formData.fiados) || 0
     const repasosFinal = Number(formData.repasos) || 0
     const devolucionesFinal = Number(formData.devolucionesParciales) || 0
@@ -1640,7 +1652,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       body: JSON.stringify({ cobroId: selectedCobro.id }),
     })
     
-    // ✅ ACTUALIZAR EL EFECTIVO RECIBIDO AUTOMÁTICAMENTE
+    // ACTUALIZAR EL EFECTIVO RECIBIDO AUTOMÁTICAMENTE
     const efectivoActual = Number(formData.efectivoRecibido) || 0
     const ajuste = monto - selectedCobro.total
     const nuevoEfectivo = efectivoActual + ajuste
@@ -1963,7 +1975,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
       onClick={() => {
         console.log('[CAJA] 🔍 rec.id:', rec.id, 'tipo:', typeof rec.id)
         
-        // ✅ VALIDAR Y CONVERTIR A NÚMERO
+        // VALIDAR Y CONVERTIR A NÚMERO
         const cuadreId = Number(rec.id)
         
         if (!cuadreId || isNaN(cuadreId) || cuadreId <= 0) {
