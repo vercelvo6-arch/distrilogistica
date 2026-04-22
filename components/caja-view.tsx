@@ -64,7 +64,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const { toast } = useToast()
   const [filterEntregador, setFilterEntregador] = useState("all")
   const [filterRuta, setFilterRuta] = useState("all")
-  const [filterFechaDesde, setFilterFechaDesde] = useState(new Date().toISOString().split("T")[0])
+  
+  const getDateDaysAgo = (days: number) => {
+    const date = new Date()
+    date.setDate(date.getDate() - days)
+    return date.toISOString().split("T")[0]
+  }
+  
+  const [filterFechaDesde, setFilterFechaDesde] = useState(getDateDaysAgo(7))
   const [filterFechaHasta, setFilterFechaHasta] = useState(new Date().toISOString().split("T")[0])
   const [selectedView, setSelectedView] = useState<"caja" | "historial" | "comisiones">("caja")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
