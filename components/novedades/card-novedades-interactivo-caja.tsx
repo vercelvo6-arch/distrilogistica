@@ -10,7 +10,7 @@ import { formatCOP } from "@/lib/format-utils"
 import { useToast } from "@/hooks/use-toast"
 
 interface CardNovedadesInteractivoProps {
-  planillaId: number
+  planillaId: string
   tipo: "agotado" | "devolucion" | "fiado_parcial" | "error_facturacion"
   onNovedadActualizada?: () => void
 }
