@@ -7,16 +7,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { formatCOP } from "@/lib/format-utils"
 import { useToast } from "@/hooks/use-toast"
-import { Plus, Trash2, AlertCircle } from "lucide-react"
+import { Plus, Trash2, AlertCircle, X } from "lucide-react"
 import type { Order } from "@/lib/types"
 
 interface ModalNovedadesEntregadorProps {
   order: Order
-  planillaId: number
+  planillaId: string  // ← string, no number
   onClose: () => void
   onNovedadCreada: () => void
 }
@@ -43,13 +42,12 @@ export function ModalNovedadesEntregador({
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
-  // Estado para nueva novedad
   const [showNuevaForm, setShowNuevaForm] = useState(false)
   const [nuevaNovedad, setNuevaNovedad] = useState({
     tipo: "",
     monto: "",
     descripcion: "",
-    montoPagado: "", // Solo para fiados
+    montoPagado: "",
   })
 
   useEffect(() => {
@@ -60,7 +58,6 @@ export function ModalNovedadesEntregador({
     try {
       const response = await fetch(`/api/novedades?pedidoId=${order.id}`)
       if (!response.ok) throw new Error("Error al cargar novedades")
-
       const data = await response.json()
       setNovedades(data.novedades || [])
     } catch (error) {
@@ -72,25 +69,16 @@ export function ModalNovedadesEntregador({
 
   async function handleCrearNovedad() {
     if (!nuevaNovedad.tipo || !nuevaNovedad.monto) {
-      toast({
-        title: "Error",
-        description: "Debes seleccionar tipo y monto",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "Debes seleccionar tipo y monto", variant: "destructive" })
       return
     }
 
     const monto = Number(nuevaNovedad.monto)
     if (monto <= 0) {
-      toast({
-        title: "Error",
-        description: "El monto debe ser mayor a 0",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "El monto debe ser mayor a 0", variant: "destructive" })
       return
     }
 
-    // Validar fiado
     if (nuevaNovedad.tipo === "fiado_parcial") {
       const montoPagado = Number(nuevaNovedad.montoPagado || 0)
       if (montoPagado < 0 || montoPagado > monto) {
@@ -119,25 +107,12 @@ export function ModalNovedadesEntregador({
       })
 
       const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Error al crear novedad")
 
-      if (!response.ok) {
-        throw new Error(data.error || "Error al crear novedad")
-      }
+      toast({ title: "Novedad Registrada", description: "La novedad fue creada exitosamente" })
 
-      toast({
-        title: "Novedad Registrada",
-        description: "La novedad fue creada exitosamente",
-      })
-
-      // Limpiar form
-      setNuevaNovedad({
-        tipo: "",
-        monto: "",
-        descripcion: "",
-        montoPagado: "",
-      })
+      setNuevaNovedad({ tipo: "", monto: "", descripcion: "", montoPagado: "" })
       setShowNuevaForm(false)
-
       await loadNovedades()
       onNovedadCreada()
     } catch (error) {
@@ -156,27 +131,14 @@ export function ModalNovedadesEntregador({
     if (!confirm("¿Eliminar esta novedad?")) return
 
     try {
-      const response = await fetch(`/api/novedades/${novedadId}`, {
-        method: "DELETE",
-      })
+      const response = await fetch(`/api/novedades/${novedadId}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("Error al eliminar")
 
-      if (!response.ok) {
-        throw new Error("Error al eliminar")
-      }
-
-      toast({
-        title: "Eliminada",
-        description: "Novedad eliminada correctamente",
-      })
-
+      toast({ title: "Eliminada", description: "Novedad eliminada correctamente" })
       await loadNovedades()
       onNovedadCreada()
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo eliminar la novedad",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "No se pudo eliminar la novedad", variant: "destructive" })
     }
   }
 
@@ -204,15 +166,31 @@ export function ModalNovedadesEntregador({
   const totalOriginal = order.total
   const totalEfectivo = totalOriginal - totalNovedades
 
+  // ── Overlay manual — sin Dialog de shadcn para evitar error insertBefore en móvil ──
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{order.cliente} - Gestionar Novedades</DialogTitle>
-        </DialogHeader>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl w-full mx-4 overflow-y-auto"
+        style={{ maxWidth: "672px", maxHeight: "90vh" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
+          <h2 className="text-lg font-semibold">{order.cliente} — Gestionar Novedades</h2>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-gray-100 transition-colors"
+            aria-label="Cerrar"
+          >
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
 
-        <div className="space-y-4">
-          {/* Resumen superior */}
+        {/* Body */}
+        <div className="p-4 space-y-4">
+          {/* Resumen */}
           <div className="grid grid-cols-3 gap-3 p-3 bg-gray-50 rounded">
             <div className="text-center">
               <p className="text-xs text-gray-500">Total Original</p>
@@ -228,7 +206,7 @@ export function ModalNovedadesEntregador({
             </div>
           </div>
 
-          {/* Lista de novedades existentes */}
+          {/* Lista de novedades */}
           {loading ? (
             <p className="text-center text-gray-500 py-4">Cargando...</p>
           ) : novedades.length === 0 ? (
@@ -263,11 +241,7 @@ export function ModalNovedadesEntregador({
                       <p className="text-xs text-gray-500 mt-1">{novedad.descripcion || "Sin descripción"}</p>
                     </div>
                     {!novedad.validado && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEliminarNovedad(novedad.id)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => handleEliminarNovedad(novedad.id)}>
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
                     )}
@@ -281,11 +255,13 @@ export function ModalNovedadesEntregador({
           {showNuevaForm ? (
             <Card className="p-4 bg-blue-50 border-blue-200">
               <p className="font-medium mb-3">➕ Agregar Nueva Novedad</p>
-
               <div className="space-y-3">
                 <div>
                   <Label>Tipo de Novedad</Label>
-                  <Select value={nuevaNovedad.tipo} onValueChange={(v) => setNuevaNovedad({ ...nuevaNovedad, tipo: v })}>
+                  <Select
+                    value={nuevaNovedad.tipo}
+                    onValueChange={(v) => setNuevaNovedad({ ...nuevaNovedad, tipo: v })}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar..." />
                     </SelectTrigger>
@@ -353,10 +329,11 @@ export function ModalNovedadesEntregador({
           )}
         </div>
 
-        <DialogFooter>
-          <Button onClick={onClose}>Cerrar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* Footer */}
+        <div className="p-4 border-t sticky bottom-0 bg-white">
+          <Button onClick={onClose} className="w-full">Cerrar</Button>
+        </div>
+      </div>
+    </div>
   )
 }
