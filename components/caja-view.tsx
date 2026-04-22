@@ -168,18 +168,18 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }, [selectedView])
 
   // ✅ NUEVO: Función para cargar novedades de una planilla
-  async function loadNovedadesPlanilla(planillaId: number): Promise<NovedadPedido[]> {
-    try {
-      const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
-      if (!response.ok) return []
-      
-      const data = await response.json()
-      return data.novedades || []
-    } catch (error) {
-      console.error("[CAJA] Error cargando novedades:", error)
-      return []
-    }
+  async function loadNovedadesPlanilla(planillaId: string): Promise<NovedadPedido[]> {
+  try {
+    console.log("[CAJA] fetching novedades para:", planillaId)
+    const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
+    const data = await response.json()
+    console.log("[CAJA] novedades recibidas:", data.novedades?.length, data.novedades)
+    return data.novedades || []
+  } catch (error) {
+    console.error("[CAJA] Error cargando novedades:", error)
+    return []
   }
+}
 
   async function loadData() {
     try {
