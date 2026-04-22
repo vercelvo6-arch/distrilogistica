@@ -5,10 +5,9 @@ import { handleDBError } from "@/lib/db-helpers";
 
 export const dynamic = "force-dynamic";
 
-// =====================================================
-// GET: Obtener resumen de novedades de una planilla
-// Para mostrar en los cards de Caja
-// =====================================================
+// PostgreSQL puede retornar boolean como true/false O como 't'/'f' según el driver
+const esVerdadero = (val: any): boolean => val === true || val === 't'
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { planillaId: string } }
@@ -20,12 +19,9 @@ export async function GET(
     }
 
     const planillaId = params.planillaId;
-    console.log("[API novedades/resumen] ===== INICIO =====");
-    console.log("[API novedades/resumen] Planilla ID:", planillaId);
 
     const sql = getDB();
 
-    // PASO 1: Obtener TODAS las novedades de la planilla
     const todasLasNovedades = await sql`
       SELECT 
         n.*,
@@ -36,10 +32,6 @@ export async function GET(
       ORDER BY n.created_at DESC
     `;
 
-    console.log("[API novedades/resumen] Total novedades encontradas:", todasLasNovedades.length);
-    console.log("[API novedades/resumen] Novedades:", JSON.stringify(todasLasNovedades, null, 2));
-
-    // PASO 2: Agrupar manualmente por tipo y estado
     const resumenPorTipo: Record<string, any> = {
       agotado: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
       devolucion: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
@@ -47,22 +39,18 @@ export async function GET(
       error_facturacion: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
     };
 
-    // Procesar cada novedad
     for (const novedad of todasLasNovedades) {
       const tipo = novedad.tipo_novedad;
       if (!resumenPorTipo[tipo]) continue;
 
       const monto = Number(novedad.monto_novedad || 0);
       
-      // Contar clientes únicos
       resumenPorTipo[tipo].clientes.add(novedad.pedido_id);
-      
-      // Contar cantidad de novedades
       resumenPorTipo[tipo].cantidad++;
 
-      if (novedad.validado) {
+      // ✅ FIX: PostgreSQL retorna boolean como 't'/'f' o true/false según el driver
+      if (esVerdadero(novedad.validado)) {
         resumenPorTipo[tipo].validadas += monto;
-        
         if (tipo === 'fiado_parcial') {
           resumenPorTipo[tipo].pagado += Number(novedad.monto_pagado || 0);
         }
@@ -73,38 +61,20 @@ export async function GET(
       resumenPorTipo[tipo].total = resumenPorTipo[tipo].validadas + resumenPorTipo[tipo].pendientes;
     }
 
-    // Convertir Sets a números
     Object.keys(resumenPorTipo).forEach(tipo => {
       resumenPorTipo[tipo].clientes = resumenPorTipo[tipo].clientes.size;
     });
 
-    console.log("[API novedades/resumen] Resumen calculado:", JSON.stringify(resumenPorTipo, null, 2));
+    // ✅ FIX: Filtrar pendientes comparando correctamente el boolean de PG
+    const novedadesPendientes = todasLasNovedades.filter(n => !esVerdadero(n.validado));
 
-    // PASO 3: Obtener novedades pendientes
-    const novedadesPendientes = todasLasNovedades.filter(n => !n.validado);
-
-    console.log("[API novedades/resumen] Novedades pendientes:", novedadesPendientes.length);
-
-    // Calcular totales generales
     const totalNovedades = Object.values(resumenPorTipo).reduce(
-      (sum: number, tipo: any) => sum + tipo.total, 
-      0
+      (sum: number, tipo: any) => sum + tipo.total, 0
     );
 
     const totalPendientes = Object.values(resumenPorTipo).reduce(
-      (sum: number, tipo: any) => sum + tipo.pendientes, 
-      0
+      (sum: number, tipo: any) => sum + tipo.pendientes, 0
     );
-
-    console.log("[API novedades/resumen] ✅ Totales:", {
-      totalNovedades,
-      totalPendientes,
-      agotados: resumenPorTipo.agotado.total,
-      devoluciones: resumenPorTipo.devolucion.total,
-      fiados: resumenPorTipo.fiado_parcial.total,
-      errores: resumenPorTipo.error_facturacion.total,
-    });
-    console.log("[API novedades/resumen] ===== FIN =====");
 
     return NextResponse.json({
       resumen: resumenPorTipo,
