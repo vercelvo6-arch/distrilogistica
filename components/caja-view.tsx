@@ -1,6 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
+
+// Función compatible con navegadores móviles antiguos (reemplaza crypto.randomUUID)
+function generateId() {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36)
+}
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2, Edit2 } from "lucide-react"
@@ -122,7 +127,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     observaciones: "",
   })
   const [productosNuevoPedido, setProductosNuevoPedido] = useState<NuevoProducto[]>([
-    { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
+    { id: generateId(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
   ])
   const [submittingNuevoPedido, setSubmittingNuevoPedido] = useState(false)
 
@@ -1143,7 +1148,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setRutaParaNuevoPedido(ruta)
     setNuevoPedidoData({ cliente: "", observaciones: "" })
     setProductosNuevoPedido([
-      { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
+      { id: generateId(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
     ])
     setShowNuevoPedidoModal(true)
   }
@@ -1153,14 +1158,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setRutaParaNuevoPedido(null)
     setNuevoPedidoData({ cliente: "", observaciones: "" })
     setProductosNuevoPedido([
-      { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
+      { id: generateId(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
     ])
   }
 
   const agregarProducto = () => {
     setProductosNuevoPedido([
       ...productosNuevoPedido,
-      { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
+      { id: generateId(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
     ])
   }
 
