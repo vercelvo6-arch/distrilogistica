@@ -1,11 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-
-// Función compatible con navegadores móviles antiguos (reemplaza crypto.randomUUID)
-function generateId() {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36)
-}
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2, Edit2 } from "lucide-react"
@@ -55,7 +50,7 @@ interface NuevoProducto {
   subtotal: number
 }
 
-// Interface para novedades de pedido
+// ✅ NUEVO: Interface para novedades de pedido
 interface NovedadPedido {
   id: string
   pedido_id: string
@@ -83,8 +78,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [recepciones, setRecepciones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Estado para novedades por planilla
-  const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<string, NovedadPedido[]>>({})
+  // ✅ NUEVO: Estado para novedades por planilla
+  const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, NovedadPedido[]>>({})
 
   const [showModal, setShowModal] = useState(false)
   const [selectedPlanilla, setSelectedPlanilla] = useState<RouteSheet | null>(null)
@@ -117,7 +112,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [showAgrupadoModal, setShowAgrupadoModal] = useState(false)
   const [agrupadoData, setAgrupadoData] = useState<any>(null)
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
-  const [expandedNovedades, setExpandedNovedades] = useState<Set<string>>(new Set())
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
 
   const [showNuevoPedidoModal, setShowNuevoPedidoModal] = useState(false)
@@ -127,7 +121,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     observaciones: "",
   })
   const [productosNuevoPedido, setProductosNuevoPedido] = useState<NuevoProducto[]>([
-    { id: generateId(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
+    { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
   ])
   const [submittingNuevoPedido, setSubmittingNuevoPedido] = useState(false)
 
@@ -172,59 +166,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }, [selectedView])
 
-  // Efecto para cargar novedades SOLO de planillas dentro del rango de fechas filtrado
-  // Se ejecuta cuando cambian los filtros de fecha O cuando se cargan las planillas
-  useEffect(() => {
-    async function loadNovedadesForFilteredRoutes() {
-      if (routeSheets.length === 0) return
-      
-      // IMPORTANTE: Solo cargar novedades si hay filtros de fecha aplicados
-      // Esto evita cargar 100+ novedades de planillas históricas
-      if (!filterFechaDesde && !filterFechaHasta) {
-        console.log("[CAJA] Sin filtros de fecha, no se cargan novedades automáticamente")
-        return
-      }
-      
-      // Obtener planillas pendientes dentro del rango de filtros
-      const planillasPendientes = routeSheets.filter((p) => {
-        if (!((p.estado === 'alistado' || p.estado === 'completado') && !p.cuadradoEnCaja)) return false
-        const routeDate = new Date(p.fecha).toISOString().split("T")[0]
-        if (filterFechaDesde && routeDate < filterFechaDesde) return false
-        if (filterFechaHasta && routeDate > filterFechaHasta) return false
-        return true
-      })
-
-      // Filtrar solo las que NO tienen novedades cargadas aún
-      const planillasSinNovedades = planillasPendientes.filter(
-        (p) => novedadesPorPlanilla[p.id] === undefined
-      )
-
-      if (planillasSinNovedades.length === 0) return
-
-      console.log("[CAJA] Cargando novedades para", planillasSinNovedades.length, "planillas en rango", filterFechaDesde, "-", filterFechaHasta)
-
-      const nuevasNovedades: Record<string, NovedadPedido[]> = {}
-      await Promise.all(
-        planillasSinNovedades.map(async (planilla) => {
-          const novedades = await loadNovedadesPlanilla(planilla.id)
-          nuevasNovedades[planilla.id] = novedades
-        })
-      )
-
-      // Actualizar el mapa con las nuevas novedades
-      setNovedadesPorPlanilla((prev) => ({ ...prev, ...nuevasNovedades }))
-    }
-
-    loadNovedadesForFilteredRoutes()
-  }, [filterFechaDesde, filterFechaHasta, routeSheets])
-
-  // Función para cargar novedades de una planilla
-  async function loadNovedadesPlanilla(planillaId: string): Promise<NovedadPedido[]> {
+  // ✅ NUEVO: Función para cargar novedades de una planilla
+  async function loadNovedadesPlanilla(planillaId: number): Promise<NovedadPedido[]> {
     try {
-      console.log("[CAJA] fetching novedades para:", planillaId)
       const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
+      if (!response.ok) return []
+      
       const data = await response.json()
-      console.log("[CAJA] novedades recibidas:", data.novedades?.length, data.novedades)
       return data.novedades || []
     } catch (error) {
       console.error("[CAJA] Error cargando novedades:", error)
@@ -283,10 +231,16 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         cuentasPorCobrar: [],
       }))
 
-      // NO cargar novedades aquí - se cargan cuando el usuario aplica filtros
-      // Esto evita 100+ llamadas innecesarias al cargar la página
-      console.log("[CAJA] Planillas totales:", planillas.length)
       setRouteSheets(planillas)
+
+      // ✅ NUEVO: Cargar novedades de cada planilla en paralelo para mejor rendimiento
+      const novedadesMap: Record<number, NovedadPedido[]> = {}
+      const promesas = planillas.map(async (planilla) => {
+        const novedades = await loadNovedadesPlanilla(planilla.id)
+        novedadesMap[planilla.id] = novedades
+      })
+      await Promise.all(promesas)
+      setNovedadesPorPlanilla(novedadesMap)
 
     } catch (err) {
       console.error("[CAJA] Error loading planillas:", err)
@@ -419,11 +373,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     return Math.round(effectiveTotal * 100) / 100
   }
 
-  // CORRECCIÓN PRINCIPAL: calculateRouteTotals ahora recibe novedadesMap como parámetro
-  const calculateRouteTotals = (
-    route: RouteSheet | null,
-    novedadesMap: Record<string, NovedadPedido[]> = novedadesPorPlanilla
-  ) => {
+  // ✅ MODIFICADO: calculateRouteTotals ahora incluye novedades de la tabla novedades_pedido
+  const calculateRouteTotals = (route: RouteSheet | null) => {
     if (!route || !Array.isArray(route.orders)) {
       return {
         entregado: 0,
@@ -522,35 +473,29 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
     })
 
-    // CORRECCIÓN: Usar el mapa pasado como parámetro, NO el estado
-    const novedades = novedadesMap[route.id] || []
+    // ✅ NUEVO: Sumar novedades de la tabla novedades_pedido
+    const novedades = novedadesPorPlanilla[route.id] || []
     
-    // CORRECCIÓN: Contar TODAS las novedades (validadas o no) para el cuadre de caja
-    // El efectivo esperado debe descontar las novedades desde que el entregador las registra
-    // CORRECCIÓN CRÍTICA: Las novedades deben RESTAR del entregado
-    // porque representan montos que el entregador NO trae en efectivo
     novedades.forEach((novedad) => {
+      if (!novedad.validado) return // Solo contar novedades validadas
+
       const monto = Number(novedad.monto_novedad) || 0
 
       switch (novedad.tipo_novedad) {
         case "agotado":
           agotados += monto
-          entregado -= monto // NO trae efectivo por este producto
           break
         case "devolucion":
           devoluciones += monto
-          entregado -= monto // NO trae efectivo por esta devolución
           break
         case "fiado_parcial":
           const montoPagadoNov = Number(novedad.monto_pagado) || 0
           const saldoNov = monto - montoPagadoNov
           fiado += saldoNov
-          // Solo resta del entregado el saldo que NO pagó
-          entregado -= saldoNov
+          entregado += montoPagadoNov
           break
         case "error_facturacion":
           erroresFacturacion += monto
-          entregado -= monto // NO trae efectivo por error de facturación
           break
       }
     })
@@ -1148,7 +1093,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setRutaParaNuevoPedido(ruta)
     setNuevoPedidoData({ cliente: "", observaciones: "" })
     setProductosNuevoPedido([
-      { id: generateId(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
+      { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
     ])
     setShowNuevoPedidoModal(true)
   }
@@ -1158,14 +1103,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setRutaParaNuevoPedido(null)
     setNuevoPedidoData({ cliente: "", observaciones: "" })
     setProductosNuevoPedido([
-      { id: generateId(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
+      { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 }
     ])
   }
 
   const agregarProducto = () => {
     setProductosNuevoPedido([
       ...productosNuevoPedido,
-      { id: generateId(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
+      { id: crypto.randomUUID(), codigo: "", descripcion: "", cantidad: 1, precioUnitario: 0, subtotal: 0 },
     ])
   }
 
@@ -1483,7 +1428,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   try {
     setSubmitting(true)
 
-    // PASO 1: GUARDAR TODOS LOS PEDIDOS FIADOS ANTES DEL CUADRE
+    // ✅ PASO 1: GUARDAR TODOS LOS PEDIDOS FIADOS ANTES DEL CUADRE
    console.log('[CUADRE AGRUPADO] 🔄 Guardando pedidos con estado especial...')
     
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
@@ -1524,7 +1469,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     
     console.log('[CUADRE AGRUPADO] ✅ Pedidos guardados:', pedidosGuardados)   
 
-    // PASO 2: CREAR EL CUADRE AGRUPADO (código original)
+    // ✅ PASO 2: CREAR EL CUADRE AGRUPADO (código original)
     const fiadoFinal = Number(formData.fiados) || 0
     const repasosFinal = Number(formData.repasos) || 0
     const devolucionesFinal = Number(formData.devolucionesParciales) || 0
@@ -1694,7 +1639,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       body: JSON.stringify({ cobroId: selectedCobro.id }),
     })
     
-    // ACTUALIZAR EL EFECTIVO RECIBIDO AUTOMÁTICAMENTE
+    // ✅ ACTUALIZAR EL EFECTIVO RECIBIDO AUTOMÁTICAMENTE
     const efectivoActual = Number(formData.efectivoRecibido) || 0
     const ajuste = monto - selectedCobro.total
     const nuevoEfectivo = efectivoActual + ajuste
@@ -2017,7 +1962,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
       onClick={() => {
         console.log('[CAJA] 🔍 rec.id:', rec.id, 'tipo:', typeof rec.id)
         
-        // VALIDAR Y CONVERTIR A NÚMERO
+        // ✅ VALIDAR Y CONVERTIR A NÚMERO
         const cuadreId = Number(rec.id)
         
         if (!cuadreId || isNaN(cuadreId) || cuadreId <= 0) {
@@ -2256,67 +2201,40 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 </div>
 
                 {/* Cards interactivos de novedades por planilla */}
-{filteredRoutes.length > 0 && (
-  <div className="mt-6">
-    <h3 className="text-sm font-semibold mb-3 text-gray-700">Novedades por Tipo (Clicables)</h3>
-    <div className="space-y-3">
-      {filteredRoutes.map((route) => (
-        <div key={route.id} className="border rounded-lg p-3 bg-white">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-700">
-              {route.entregador} · Ruta {route.ruta} · {new Date(route.fecha).toLocaleDateString("es-CO")}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const newExpanded = new Set(expandedNovedades)
-                if (newExpanded.has(route.id)) {
-                  newExpanded.delete(route.id)
-                } else {
-                  newExpanded.add(route.id)
-                }
-                setExpandedNovedades(newExpanded)
-              }}
-              className="border-yellow-300 text-yellow-700 hover:bg-yellow-50"
-            >
-              {expandedNovedades.has(route.id) ? (
-                <><ChevronUp className="h-4 w-4 mr-1" />Ocultar Novedades</>
-              ) : (
-                <><ChevronDown className="h-4 w-4 mr-1" />Ver Novedades</>
-              )}
-            </Button>
-          </div>
-
-          {expandedNovedades.has(route.id) && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-              <CardNovedadesInteractivo
-                planillaId={route.id}
-                tipo="agotado"
-                onNovedadActualizada={() => loadData()}
-              />
-              <CardNovedadesInteractivo
-                planillaId={route.id}
-                tipo="devolucion"
-                onNovedadActualizada={() => loadData()}
-              />
-              <CardNovedadesInteractivo
-                planillaId={route.id}
-                tipo="fiado_parcial"
-                onNovedadActualizada={() => loadData()}
-              />
-              <CardNovedadesInteractivo
-                planillaId={route.id}
-                tipo="error_facturacion"
-                onNovedadActualizada={() => loadData()}
-              />
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  </div>
-)}
+                {filteredRoutes.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold mb-3 text-gray-700">Novedades por Tipo (Clicables)</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {filteredRoutes.map((route) => (
+                        <div key={route.id} className="space-y-2">
+                          <p className="text-xs text-gray-500 font-medium">Ruta {route.ruta}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <CardNovedadesInteractivo
+                              planillaId={route.id}
+                              tipo="agotado"
+                              onNovedadActualizada={() => loadData()}
+                            />
+                            <CardNovedadesInteractivo
+                              planillaId={route.id}
+                              tipo="devolucion"
+                              onNovedadActualizada={() => loadData()}
+                            />
+                            <CardNovedadesInteractivo
+                              planillaId={route.id}
+                              tipo="fiado_parcial"
+                              onNovedadActualizada={() => loadData()}
+                            />
+                            <CardNovedadesInteractivo
+                              planillaId={route.id}
+                              tipo="error_facturacion"
+                              onNovedadActualizada={() => loadData()}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Card>
 
               <Card className="p-6">
@@ -2573,7 +2491,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                                       <SelectItem value="header-mismo-entregador" disabled className="font-semibold">
                                                         Rutas de {route.entregador}
                                                       </SelectItem>
-                                                      {filteredRoutes
+                                                      {routeSheets
                                                         .filter(r =>
                                                           r.entregador === route.entregador &&
                                                           r.id !== route.id &&
