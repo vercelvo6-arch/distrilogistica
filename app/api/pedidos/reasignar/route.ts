@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
         p.planilla_id as planilla_actual,
         p.cliente,
         p.total,
+        p.estado,
         pl.tipo_ruta as ruta_actual,
         pl.entregador as entregador_actual
       FROM pedidos p
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[API Reasignar Pedido] Moviendo pedido:', {
       pedido: pedido.cliente,
+      estado_actual: pedido.estado,
       de: `${pedido.ruta_actual} - ${pedido.entregador_actual}`,
       a: `${planilla.tipo_ruta} - ${planilla.entregador}`
     })
@@ -102,17 +104,29 @@ export async function POST(request: NextRequest) {
 
     const nuevaSecuencia = Number(ultimaSecuencia[0].max_secuencia) + 1
 
+    // ✅ FIX CRÍTICO: Si el pedido era repaso, llega como pendiente a la nueva planilla
+    // Esto rompe el bucle infinito de reasignación:
+    // - repaso del día → se descuenta del cargue actual ✅
+    // - al reasignarlo → llega como pendiente en el nuevo cargue ✅
+    // - si no se entrega → Caja puede marcarlo como repaso de nuevo pero
+    //   esta vez el admin puede reasignarlo sin que vuelva al card de repasos
+    const nuevoEstado = pedido.estado === 'repaso' ? 'pendiente' : pedido.estado
+
     // 6️⃣ Actualizar el pedido
     await sql`
       UPDATE pedidos
       SET 
         planilla_id = ${nuevaPlanillaId},
         secuencia = ${nuevaSecuencia},
+        estado = ${nuevoEstado},
         updated_at = NOW()
       WHERE id = ${pedidoId}
     `
 
-    console.log('[API Reasignar Pedido] ✓ Pedido actualizado con nueva secuencia:', nuevaSecuencia)
+    console.log('[API Reasignar Pedido] ✓ Pedido actualizado:', {
+      nueva_secuencia: nuevaSecuencia,
+      nuevo_estado: nuevoEstado
+    })
 
     // 7️⃣ Recalcular totales de la planilla ORIGEN
     const totalesOrigen = await sql`
@@ -172,6 +186,8 @@ export async function POST(request: NextRequest) {
       pedido: {
         id: pedidoId,
         cliente: pedido.cliente,
+        estadoAnterior: pedido.estado,
+        estadoNuevo: nuevoEstado,
         planillaAnterior: pedido.planilla_actual,
         planillaNueva: nuevaPlanillaId,
         rutaAnterior: pedido.ruta_actual,
