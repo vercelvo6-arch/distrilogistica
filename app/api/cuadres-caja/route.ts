@@ -35,7 +35,6 @@ export async function POST(request: Request) {
       erroresFacturacion
     } = body
 
-    // Validaciones
     if (!planillaIds || !Array.isArray(planillaIds) || planillaIds.length === 0) {
       console.error('[CUADRE] planillaIds invalido')
       return NextResponse.json({ error: 'planillaIds invalido' }, { status: 400 })
@@ -43,9 +42,6 @@ export async function POST(request: Request) {
 
     console.log('[CUADRE] planillaIds:', planillaIds)
 
-    // VERIFICAR QUE LAS PLANILLAS EXISTEN
-    console.log('[CUADRE] Verificando que las planillas existen...')
-    
     const planillasExistentes = await sql`
       SELECT id, tipo_ruta, entregador, estado, cuadrado_en_caja
       FROM planillas
@@ -138,21 +134,18 @@ export async function POST(request: Request) {
     }
 
     // GUARDAR REPASOS
-    // Los repasos se insertan en la tabla 'repasos' para que aparezcan
-    // visiblemente en el Admin y puedan ser reasignados a una nueva ruta.
     console.log('[CUADRE] Buscando pedidos de repaso...')
 
     const pedidosRepaso = await sql`
       SELECT 
         p.id,
         p.cliente,
-        p.direccion,
-        p.telefono,
         p.total,
         p.observaciones,
         pl.fecha,
         pl.entregador,
-        pl.tipo_ruta
+        pl.tipo_ruta,
+        pl.id as planilla_id
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.estado = 'repaso'
@@ -170,25 +163,21 @@ export async function POST(request: Request) {
             INSERT INTO repasos (
               pedido_id,
               cliente,
-              direccion,
-              telefono,
-              monto_total,
+              total,
               fecha_repaso,
-              entregador,
-              ruta,
-              estado,
-              observaciones
+              entregador_origen,
+              ruta_origen,
+              planilla_origen_id,
+              estado
             ) VALUES (
               ${pedido.id},
               ${pedido.cliente},
-              ${pedido.direccion || null},
-              ${pedido.telefono || null},
               ${Number(pedido.total)},
               ${pedido.fecha},
               ${pedido.entregador},
               ${pedido.tipo_ruta},
-              'pendiente',
-              ${pedido.observaciones || null}
+              ${pedido.planilla_id},
+              'pendiente'
             )
             ON CONFLICT (pedido_id)
             DO UPDATE SET
@@ -223,17 +212,7 @@ export async function POST(request: Request) {
     const devolucionesNum = Number(devoluciones || 0)
     const repasosNum = Number(repasos || 0)
     const erroresFacturacionNum = Number(erroresFacturacion || 0)
-
-    // El totalEsperado viene calculado correctamente desde el frontend:
-    // cargue - (fiado + repasos + devoluciones + agotados + descuentos + erroresFacturacion)
     const totalEsperadoNum = Number(totalEsperado) || 0
-
-    console.log('[CUADRE] Verificando efectivo esperado:', {
-      totalEsperado: totalEsperadoNum,
-      erroresFacturacion: erroresFacturacionNum,
-      nota: 'totalEsperado ya viene calculado desde frontend (cargue - todas las novedades incluyendo errores de facturación)'
-    })
-    
     const totalRecibido = totalEfectivo + totalConsignado
     const diferencia = Math.round((totalRecibido - totalEsperadoNum) * 100) / 100
     const estado = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
@@ -356,7 +335,7 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    console.error('[CUADRE] ERROR CRITICO:', error)
+    console.error('[CUADRE CAJA POST] ERROR:', error)
     return handleDBError(error, 'CUADRE CAJA POST')
   }
 }
