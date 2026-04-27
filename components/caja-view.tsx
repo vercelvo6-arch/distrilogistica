@@ -193,7 +193,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         fecha: p.fecha,
         entregador: p.entregador,
         estado: p.estado,
-        cuadradoEnCaja: p.cuadrado_en_caja || false,
+        cuadradoEnCaja: p.cuadrado_en_caja === true || p.cuadrado_en_caja === 't',
         totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
         totalAmount: Number(p.total_cargue) || 0,
         montoCargue: Number(p.total_cargue) || 0,
