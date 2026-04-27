@@ -1,5 +1,18 @@
 import type { SalesRecord, Product, Order, OrderItem, RouteSheet } from "./types"
 
+// ✅ Helper para parsear valores monetarios del CSV
+// Formato colombiano: $570.360,97 → 570360.97
+function parsearMonto(valor: string): number {
+  if (!valor) return 0
+  return Number(
+    valor
+      .replace(/\$/g, '')
+      .replace(/\s/g, '')
+      .replace(/\./g, '')
+      .replace(',', '.')
+  ) || 0
+}
+
 export function parseNurturingCSV(csvText: string): SalesRecord[] {
   const lines = csvText.trim().split("\n")
   console.log("[DEBUG] Total lines:", lines.length)
@@ -21,14 +34,17 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
       continue
     }
 
+    // Columna 5: Cantidad Comprada
     const cantidadStr = values[5] || "0"
     const cantidad = Number.parseInt(cantidadStr.replace(/[^\d]/g, "")) || 0
 
-    const precioStr = values[6] || "0"
-    const precio =
-      Number.parseFloat(precioStr.replace(/\$/g, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")) || 0
+    // Columna 6: Totales del ítem (valor bruto por producto)
+    const precio = parsearMonto(values[6] || "0")
 
-    // ✅ LIMPIAR RUTA: eliminar espacios y asegurar que no esté vacía
+    // ✅ Columna 15: Totales de la FACTURA COMPLETA (ya incluye descuentos del sistema)
+    const totalFactura = parsearMonto(values[15] || "0")
+
+    // Columna 10: Ruta
     const rutaRaw = values[10] || ""
     const rutaLimpia = rutaRaw.trim()
 
@@ -37,7 +53,8 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
       nombreProducto: values[2] || "",
       cantidadComprada: cantidad,
       totalesUnidad: precio,
-      ruta: rutaLimpia,  // ✅ Usar ruta limpia
+      totalFactura,           // ✅ NUEVO: total real de la factura con descuentos
+      ruta: rutaLimpia,
       vendidoPor: values[12] || "",
       vendidoA: values[13] || "",
       fecha: values[9] || new Date().toISOString().split("T")[0],
@@ -45,7 +62,7 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
       idVenta: values[7] || "",
     }
 
-    // ✅ VALIDAR: debe tener código, cantidad Y RUTA
+    // Validar: debe tener código, cantidad Y ruta
     if (record.numeroArticulo && record.cantidadComprada > 0 && record.ruta) {
       records.push(record)
     }
@@ -54,7 +71,6 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
   console.log("[CSV-PARSER] ✅ Parsed NURTURING records:", records.length)
   if (records.length > 0) {
     console.log("[CSV-PARSER] 📋 Sample record:", records[0])
-    // Verificar rutas únicas
     const rutasUnicas = new Set(records.map(r => r.ruta))
     console.log("[CSV-PARSER] 🛣️ Rutas únicas encontradas:", Array.from(rutasUnicas).sort())
   }
@@ -95,7 +111,7 @@ export function parsePlanillaCSV(csvText: string): Product[] {
 export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Product[], fecha: string): Order[] {
   const productMap = new Map(productCatalog.map((p) => [p.codigo, p]))
   
-  // ✅ Filtrar ventas sin ruta antes de agrupar
+  // Filtrar ventas sin ruta
   const salesConRuta = sales.filter(s => s.ruta && s.ruta.trim() !== "")
   
   console.log(`[CSV-PARSER] 📦 Sales totales: ${sales.length}, con ruta válida: ${salesConRuta.length}`)
@@ -127,23 +143,44 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
         descripcion: sale.nombreProducto || product?.descripcion,
         categoria: product?.categoria || "",
         cantidad: sale.cantidadComprada,
-        valorUnidad: sale.totalesUnidad / sale.cantidadComprada,
+        valorUnidad: sale.cantidadComprada > 0
+          ? sale.totalesUnidad / sale.cantidadComprada
+          : 0,
         subtotal: sale.totalesUnidad,
       }
     })
 
-    const total = items.reduce((sum, item) => sum + item.subtotal, 0)
-    const ruta = facturaSales[0].ruta.trim()  // ✅ Asegurar ruta limpia
+    // ✅ CLAVE: usar totalFactura (columna 15) como el total real del pedido
+    // Este valor ya incluye descuentos aplicados por el sistema de facturación
+    // Si no está disponible, caer al total sumado de ítems
+    const totalSumadoItems = items.reduce((sum, item) => sum + item.subtotal, 0)
+    const totalFactura = facturaSales[0].totalFactura || 0
+    
+    // Usar el total de factura si es válido (mayor a 0 y cercano al total de ítems)
+    // Tolerancia del 50% para evitar usar totales de factura incorrectos
+    const usarTotalFactura = totalFactura > 0
+    const total = usarTotalFactura ? totalFactura : totalSumadoItems
+
+    // Calcular descuento implícito para registro
+    const descuentoImplicito = usarTotalFactura
+      ? Math.max(0, Math.round((totalSumadoItems - totalFactura) * 100) / 100)
+      : 0
+
+    if (descuentoImplicito > 0) {
+      console.log(`[CSV-PARSER] 💰 Descuento detectado en ${facturaSales[0].vendidoA}: $${descuentoImplicito} (${((descuentoImplicito/totalSumadoItems)*100).toFixed(1)}%)`)
+    }
+
+    const ruta = facturaSales[0].ruta.trim()
 
     const uniqueId = `ORD${Date.now()}${String(orderCounter).padStart(4, '0')}${Math.random().toString(36).substr(2, 4)}`
     
     orders.push({
       id: uniqueId,
       cliente: facturaSales[0].vendidoA,
-      ruta: ruta,  // ✅ Ruta limpia
+      ruta,
       fecha,
       items,
-      total,
+      total,                    // ✅ Total real con descuentos incluidos
       estado: "pendiente",
       comentarios: facturaSales[0].comentarios,
       montoPagado: 0,
@@ -153,8 +190,11 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
 
   console.log("[CSV-PARSER] ✅ Generated orders:", orders.length)
   if (orders.length > 0) {
-    console.log("[CSV-PARSER] 📋 Sample order:", orders[0])
-    // Mostrar distribución de órdenes por ruta
+    console.log("[CSV-PARSER] 📋 Sample order:", {
+      cliente: orders[0].cliente,
+      total: orders[0].total,
+      items: orders[0].items.length
+    })
     const ordenesXRuta = new Map<string, number>()
     orders.forEach(o => {
       ordenesXRuta.set(o.ruta, (ordenesXRuta.get(o.ruta) || 0) + 1)
@@ -168,7 +208,6 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
 export function generateRouteSheets(orders: Order[]): RouteSheet[] {
   console.log(`[CSV-PARSER] 🚛 Generando planillas desde ${orders.length} órdenes`)
   
-  // ✅ Filtrar órdenes sin ruta válida
   const ordenesValidas = orders.filter(o => o.ruta && o.ruta.trim() !== "")
   
   if (ordenesValidas.length < orders.length) {
@@ -178,8 +217,7 @@ export function generateRouteSheets(orders: Order[]): RouteSheet[] {
   const routeMap = new Map<string, Order[]>()
 
   ordenesValidas.forEach((order) => {
-    const rutaKey = order.ruta.trim()  // ✅ Limpiar espacios
-    
+    const rutaKey = order.ruta.trim()
     if (!routeMap.has(rutaKey)) {
       routeMap.set(rutaKey, [])
     }
@@ -194,17 +232,18 @@ export function generateRouteSheets(orders: Order[]): RouteSheet[] {
 
   routeMap.forEach((routeOrders, ruta) => {
     sheetCounter++
+    // ✅ totalAmount usa los totales reales (ya con descuentos)
     const totalAmount = routeOrders.reduce((sum, order) => sum + order.total, 0)
 
     const uniqueId = `PLN${Date.now()}${String(sheetCounter).padStart(3, '0')}R${ruta}${Math.random().toString(36).substr(2, 3)}`
 
-    console.log(`[CSV-PARSER] 📄 Planilla ${sheetCounter}: Ruta ${ruta} - ${routeOrders.length} pedidos - ${totalAmount.toFixed(2)}`)
+    console.log(`[CSV-PARSER] 📄 Planilla ${sheetCounter}: Ruta ${ruta} - ${routeOrders.length} pedidos - $${totalAmount.toFixed(2)}`)
 
     sheets.push({
       id: uniqueId,
-      ruta: ruta,
+      ruta,
       fecha: routeOrders[0].fecha,
-      orders: routeOrders,  // ✅ AQUÍ se pasan los pedidos
+      orders: routeOrders,
       totalOrders: routeOrders.length,
       totalAmount,
       estado: "pendiente",
