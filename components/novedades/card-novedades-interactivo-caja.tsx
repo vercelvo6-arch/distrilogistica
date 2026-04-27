@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast"
 
 interface CardNovedadesInteractivoProps {
   planillaId: string
-  tipo: "agotado" | "devolucion" | "fiado_parcial" | "error_facturacion"
+  tipo: "agotado" | "devolucion" | "fiado" | "error_facturacion"
   onNovedadActualizada?: () => void
 }
 
@@ -55,24 +55,17 @@ export function CardNovedadesInteractivo({
     try {
       const response = await fetch(`/api/novedades/resumen/${planillaId}`)
       if (!response.ok) {
-        console.error("[CardNovedades] Error en respuesta:", response.status)
         setLoading(false)
         return
       }
 
       const data = await response.json()
-      console.log("[CardNovedades] Data recibida:", data)
-      
       const resumenTipo = data.resumen[tipo]
-      console.log(`[CardNovedades] Resumen ${tipo}:`, resumenTipo)
-      
       setResumen(resumenTipo)
 
-      // Filtrar novedades pendientes de este tipo
       const novedadesFiltradas = (data.novedadesPendientes || []).filter(
         (n: Novedad) => n.tipo_novedad === tipo
       )
-      console.log(`[CardNovedades] Novedades filtradas ${tipo}:`, novedadesFiltradas.length)
       setNovedades(novedadesFiltradas)
     } catch (error) {
       console.error("[CardNovedades] Error cargando resumen:", error)
@@ -88,22 +81,12 @@ export function CardNovedadesInteractivo({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ novedadIds: [novedadId] }),
       })
-
       if (!response.ok) throw new Error("Error al validar")
-
-      toast({
-        title: "Validado",
-        description: "Novedad validada exitosamente",
-      })
-
+      toast({ title: "Validado", description: "Novedad validada exitosamente" })
       await loadResumen()
       onNovedadActualizada?.()
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo validar la novedad",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "No se pudo validar la novedad", variant: "destructive" })
     }
   }
 
@@ -114,22 +97,12 @@ export function CardNovedadesInteractivo({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ novedadId, nuevoTipo }),
       })
-
       if (!response.ok) throw new Error("Error al cambiar tipo")
-
-      toast({
-        title: "Tipo Cambiado",
-        description: "La novedad fue reclasificada exitosamente",
-      })
-
+      toast({ title: "Tipo Cambiado", description: "La novedad fue reclasificada exitosamente" })
       await loadResumen()
       onNovedadActualizada?.()
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo cambiar el tipo",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: "No se pudo cambiar el tipo", variant: "destructive" })
     }
   }
 
@@ -137,7 +110,7 @@ export function CardNovedadesInteractivo({
     switch (tipo) {
       case "agotado": return "AGOTADOS"
       case "devolucion": return "DEVOLUCIONES"
-      case "fiado_parcial": return "FIADOS"
+      case "fiado": return "FIADOS"
       case "error_facturacion": return "ERRORES FACTURACIÓN"
     }
   }
@@ -146,7 +119,7 @@ export function CardNovedadesInteractivo({
     switch (tipo) {
       case "agotado": return "bg-gray-100 border-gray-300"
       case "devolucion": return "bg-red-50 border-red-300"
-      case "fiado_parcial": return "bg-orange-50 border-orange-300"
+      case "fiado": return "bg-orange-50 border-orange-300"
       case "error_facturacion": return "bg-yellow-50 border-yellow-300"
     }
   }
@@ -155,15 +128,14 @@ export function CardNovedadesInteractivo({
     switch (tipo) {
       case "agotado": return "⚫"
       case "devolucion": return "🔴"
-      case "fiado_parcial": return "🟠"
+      case "fiado": return "🟠"
       case "error_facturacion": return "🟡"
     }
   }
 
-  // CAMBIO CRÍTICO: Mostrar card si hay cantidad > 0, NO si total > 0
   if (loading) return null
   if (!resumen) return null
-  if (resumen.cantidad === 0) return null  // ← CAMBIO AQUÍ
+  if (resumen.cantidad === 0) return null
 
   return (
     <>
@@ -218,26 +190,23 @@ export function CardNovedadesInteractivo({
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-bold text-red-600">{formatCOP(novedad.monto_novedad)}</p>
-                      {tipo === "fiado_parcial" && novedad.monto_pagado > 0 && (
-                        <p className="text-sm text-green-600">Pagó: {formatCOP(novedad.monto_pagado)}</p>
+                      {tipo === "fiado" && novedad.monto_pagado > 0 && (
+                        <>
+                          <p className="text-sm text-green-600">Pagó: {formatCOP(novedad.monto_pagado)}</p>
+                          <p className="text-sm text-orange-600 font-medium">
+                            Debe: {formatCOP(novedad.monto_novedad - novedad.monto_pagado)}
+                          </p>
+                        </>
                       )}
                     </div>
                   </div>
 
                   <div className="flex gap-2 mt-3">
-                    <Button
-                      size="sm"
-                      onClick={() => handleValidar(novedad.id)}
-                      className="flex-1"
-                    >
+                    <Button size="sm" onClick={() => handleValidar(novedad.id)} className="flex-1">
                       ✓ Validar
                     </Button>
                     <Select
-                      onValueChange={(value) => {
-                        if (value) {
-                          handleCambiarTipo(novedad.id, value)
-                        }
-                      }}
+                      onValueChange={(value) => { if (value) handleCambiarTipo(novedad.id, value) }}
                       defaultValue=""
                     >
                       <SelectTrigger className="flex-1">
@@ -246,7 +215,7 @@ export function CardNovedadesInteractivo({
                       <SelectContent>
                         {tipo !== "agotado" && <SelectItem value="agotado">⚫ Agotado</SelectItem>}
                         {tipo !== "devolucion" && <SelectItem value="devolucion">🔴 Devolución</SelectItem>}
-                        {tipo !== "fiado_parcial" && <SelectItem value="fiado_parcial">🟠 Fiado</SelectItem>}
+                        {tipo !== "fiado" && <SelectItem value="fiado">🟠 Fiado</SelectItem>}
                         {tipo !== "error_facturacion" && <SelectItem value="error_facturacion">🟡 Error Fact.</SelectItem>}
                       </SelectContent>
                     </Select>
