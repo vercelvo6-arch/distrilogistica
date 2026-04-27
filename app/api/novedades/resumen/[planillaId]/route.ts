@@ -26,9 +26,7 @@ export async function GET(
     const sql = getDB();
 
     const todasLasNovedades = await sql`
-      SELECT 
-        n.*,
-        p.cliente
+      SELECT n.*, p.cliente
       FROM novedades_pedido n
       JOIN pedidos p ON n.pedido_id = p.id
       WHERE p.planilla_id = ${planillaId}
@@ -38,12 +36,13 @@ export async function GET(
     const resumenPorTipo: Record<string, any> = {
       agotado:           { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
       devolucion:        { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
-      fiado_parcial:     { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0, pagado: 0 },
+      fiado:             { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0, pagado: 0 },
       error_facturacion: { total: 0, validadas: 0, pendientes: 0, clientes: new Set(), cantidad: 0 },
     };
 
     for (const novedad of todasLasNovedades) {
-      const tipo = novedad.tipo_novedad;
+      // ✅ Normalizar fiado_parcial → fiado para compatibilidad con datos anteriores
+      const tipo = novedad.tipo_novedad === 'fiado_parcial' ? 'fiado' : novedad.tipo_novedad;
       if (!resumenPorTipo[tipo]) continue;
 
       const monto = Number(novedad.monto_novedad || 0);
@@ -52,7 +51,7 @@ export async function GET(
 
       if (esVerdadero(novedad.validado)) {
         resumenPorTipo[tipo].validadas += monto;
-        if (tipo === 'fiado_parcial') {
+        if (tipo === 'fiado') {
           resumenPorTipo[tipo].pagado += Number(novedad.monto_pagado || 0);
         }
       } else {
