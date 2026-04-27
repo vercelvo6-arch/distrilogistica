@@ -15,7 +15,7 @@ import type { Order } from "@/lib/types"
 
 interface ModalNovedadesEntregadorProps {
   order: Order
-  planillaId: string  // ← string, no number
+  planillaId: string
   onClose: () => void
   onNovedadCreada: () => void
 }
@@ -79,7 +79,7 @@ export function ModalNovedadesEntregador({
       return
     }
 
-    if (nuevaNovedad.tipo === "fiado_parcial") {
+    if (nuevaNovedad.tipo === "fiado") {
       const montoPagado = Number(nuevaNovedad.montoPagado || 0)
       if (montoPagado < 0 || montoPagado > monto) {
         toast({
@@ -102,7 +102,9 @@ export function ModalNovedadesEntregador({
           tipoNovedad: nuevaNovedad.tipo,
           montoNovedad: monto,
           descripcion: nuevaNovedad.descripcion || null,
-          montoPagado: nuevaNovedad.tipo === "fiado_parcial" ? Number(nuevaNovedad.montoPagado || 0) : 0,
+          montoPagado: nuevaNovedad.tipo === "fiado"
+            ? Number(nuevaNovedad.montoPagado || 0)
+            : 0,
         }),
       })
 
@@ -129,11 +131,9 @@ export function ModalNovedadesEntregador({
 
   async function handleEliminarNovedad(novedadId: string) {
     if (!confirm("¿Eliminar esta novedad?")) return
-
     try {
       const response = await fetch(`/api/novedades/${novedadId}`, { method: "DELETE" })
       if (!response.ok) throw new Error("Error al eliminar")
-
       toast({ title: "Eliminada", description: "Novedad eliminada correctamente" })
       await loadNovedades()
       onNovedadCreada()
@@ -146,7 +146,8 @@ export function ModalNovedadesEntregador({
     switch (tipo) {
       case "agotado": return "Agotado"
       case "devolucion": return "Devolución"
-      case "fiado_parcial": return "Fiado Parcial"
+      case "fiado": return "Fiado"
+      case "fiado_parcial": return "Fiado"
       case "error_facturacion": return "Error Facturación"
       default: return tipo
     }
@@ -156,17 +157,26 @@ export function ModalNovedadesEntregador({
     switch (tipo) {
       case "agotado": return "bg-gray-100 text-gray-700 border-gray-300"
       case "devolucion": return "bg-red-100 text-red-700 border-red-300"
+      case "fiado":
       case "fiado_parcial": return "bg-orange-100 text-orange-700 border-orange-300"
       case "error_facturacion": return "bg-yellow-100 text-yellow-700 border-yellow-300"
       default: return "bg-gray-100"
     }
   }
 
-  const totalNovedades = novedades.reduce((sum, n) => sum + Number(n.monto_novedad), 0)
-  const totalOriginal = order.total
-  const totalEfectivo = totalOriginal - totalNovedades
+  const esFiado = (tipo: string) => tipo === "fiado" || tipo === "fiado_parcial"
 
-  // ── Overlay manual — sin Dialog de shadcn para evitar error insertBefore en móvil ──
+  const totalDescuentoReal = novedades.reduce((sum, n) => {
+    if (esFiado(n.tipo_novedad)) {
+      const saldoPendiente = Number(n.monto_novedad) - Number(n.monto_pagado || 0)
+      return sum + saldoPendiente
+    }
+    return sum + Number(n.monto_novedad)
+  }, 0)
+
+  const totalOriginal = order.total
+  const totalEfectivo = totalOriginal - totalDescuentoReal
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -176,21 +186,14 @@ export function ModalNovedadesEntregador({
         className="bg-white rounded-lg shadow-xl w-full mx-4 overflow-y-auto"
         style={{ maxWidth: "672px", maxHeight: "90vh" }}
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">{order.cliente} — Gestionar Novedades</h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-gray-100 transition-colors"
-            aria-label="Cerrar"
-          >
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 transition-colors" aria-label="Cerrar">
             <X className="h-5 w-5 text-gray-500" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-4 space-y-4">
-          {/* Resumen */}
           <div className="grid grid-cols-3 gap-3 p-3 bg-gray-50 rounded">
             <div className="text-center">
               <p className="text-xs text-gray-500">Total Original</p>
@@ -198,15 +201,14 @@ export function ModalNovedadesEntregador({
             </div>
             <div className="text-center">
               <p className="text-xs text-gray-500">Novedades</p>
-              <p className="font-bold text-red-600">-{formatCOP(totalNovedades)}</p>
+              <p className="font-bold text-red-600">-{formatCOP(totalDescuentoReal)}</p>
             </div>
             <div className="text-center">
-              <p className="text-xs text-gray-500">A Cobrar</p>
-              <p className="font-bold text-green-600">{formatCOP(totalEfectivo)}</p>
+              <p className="text-xs text-gray-500">A Cobrar / Fiado</p>
+              <p className="font-bold text-green-600">{formatCOP(Math.max(0, totalEfectivo))}</p>
             </div>
           </div>
 
-          {/* Lista de novedades */}
           {loading ? (
             <p className="text-center text-gray-500 py-4">Cargando...</p>
           ) : novedades.length === 0 ? (
@@ -227,16 +229,26 @@ export function ModalNovedadesEntregador({
                           {getTipoLabel(novedad.tipo_novedad)}
                         </Badge>
                         {novedad.validado && (
-                          <Badge className="bg-green-100 text-green-700 border-green-300">
-                            ✓ Validado
-                          </Badge>
+                          <Badge className="bg-green-100 text-green-700 border-green-300">✓ Validado</Badge>
                         )}
                       </div>
                       <p className="font-bold text-lg">{formatCOP(novedad.monto_novedad)}</p>
-                      {novedad.tipo_novedad === "fiado_parcial" && novedad.monto_pagado && (
-                        <p className="text-sm text-green-600">
-                          Pagó: {formatCOP(novedad.monto_pagado)} | Debe: {formatCOP(novedad.monto_novedad - novedad.monto_pagado)}
-                        </p>
+                      {esFiado(novedad.tipo_novedad) && (
+                        <div className="text-sm mt-1">
+                          {Number(novedad.monto_pagado) > 0 ? (
+                            <>
+                              <span className="text-green-600">Pagó: {formatCOP(novedad.monto_pagado || 0)}</span>
+                              {" | "}
+                              <span className="text-orange-600 font-medium">
+                                Debe: {formatCOP(Number(novedad.monto_novedad) - Number(novedad.monto_pagado || 0))}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-orange-600 font-medium">
+                              Fiado completo: {formatCOP(novedad.monto_novedad)}
+                            </span>
+                          )}
+                        </div>
                       )}
                       <p className="text-xs text-gray-500 mt-1">{novedad.descripcion || "Sin descripción"}</p>
                     </div>
@@ -251,7 +263,6 @@ export function ModalNovedadesEntregador({
             </div>
           )}
 
-          {/* Formulario nueva novedad */}
           {showNuevaForm ? (
             <Card className="p-4 bg-blue-50 border-blue-200">
               <p className="font-medium mb-3">➕ Agregar Nueva Novedad</p>
@@ -260,22 +271,24 @@ export function ModalNovedadesEntregador({
                   <Label>Tipo de Novedad</Label>
                   <Select
                     value={nuevaNovedad.tipo}
-                    onValueChange={(v) => setNuevaNovedad({ ...nuevaNovedad, tipo: v })}
+                    onValueChange={(v) => setNuevaNovedad({ ...nuevaNovedad, tipo: v, montoPagado: "" })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="agotado">⚫ Agotado</SelectItem>
-                      <SelectItem value="devolucion">🔴 Devolución</SelectItem>
-                      <SelectItem value="fiado_parcial">🟠 Fiado Parcial</SelectItem>
-                      <SelectItem value="error_facturacion">🟡 Error Facturación</SelectItem>
+                      <SelectItem value="agotado">⚫ Agotado — producto no entregado</SelectItem>
+                      <SelectItem value="devolucion">🔴 Devolución — cliente devuelve</SelectItem>
+                      <SelectItem value="fiado">🟠 Fiado — cliente debe todo o parte</SelectItem>
+                      <SelectItem value="error_facturacion">🟡 Error Facturación — error en precio</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label>Monto Afectado</Label>
+                  <Label>
+                    {nuevaNovedad.tipo === "fiado" ? "Monto total del pedido que queda fiado" : "Monto Afectado"}
+                  </Label>
                   <Input
                     type="number"
                     value={nuevaNovedad.monto}
@@ -284,19 +297,32 @@ export function ModalNovedadesEntregador({
                   />
                 </div>
 
-                {nuevaNovedad.tipo === "fiado_parcial" && (
-                  <div>
-                    <Label>¿Cuánto pagó el cliente?</Label>
-                    <Input
-                      type="number"
-                      value={nuevaNovedad.montoPagado}
-                      onChange={(e) => setNuevaNovedad({ ...nuevaNovedad, montoPagado: e.target.value })}
-                      placeholder="0"
-                    />
-                    {nuevaNovedad.monto && nuevaNovedad.montoPagado && (
-                      <p className="text-xs text-orange-600 mt-1">
-                        Saldo pendiente: {formatCOP(Number(nuevaNovedad.monto) - Number(nuevaNovedad.montoPagado))}
-                      </p>
+                {nuevaNovedad.tipo === "fiado" && (
+                  <div className="p-3 bg-orange-50 rounded border border-orange-200 space-y-3">
+                    <div>
+                      <Label>¿Cuánto pagó el cliente ahora? (0 si no pagó nada)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={Number(nuevaNovedad.monto) || 0}
+                        value={nuevaNovedad.montoPagado}
+                        onChange={(e) => setNuevaNovedad({ ...nuevaNovedad, montoPagado: e.target.value })}
+                        placeholder="0"
+                      />
+                    </div>
+                    {nuevaNovedad.monto && (
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="text-center p-2 bg-green-50 rounded">
+                          <p className="text-xs text-green-600">Recibido ahora</p>
+                          <p className="font-bold text-green-700">{formatCOP(Number(nuevaNovedad.montoPagado || 0))}</p>
+                        </div>
+                        <div className="text-center p-2 bg-orange-100 rounded">
+                          <p className="text-xs text-orange-600">Queda debiendo</p>
+                          <p className="font-bold text-orange-700">
+                            {formatCOP(Math.max(0, Number(nuevaNovedad.monto) - Number(nuevaNovedad.montoPagado || 0)))}
+                          </p>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -306,7 +332,7 @@ export function ModalNovedadesEntregador({
                   <Textarea
                     value={nuevaNovedad.descripcion}
                     onChange={(e) => setNuevaNovedad({ ...nuevaNovedad, descripcion: e.target.value })}
-                    placeholder="Ej: Productos incompletos, color equivocado..."
+                    placeholder="Ej: Productos incompletos, cliente no tenía dinero..."
                     rows={2}
                   />
                 </div>
@@ -315,7 +341,10 @@ export function ModalNovedadesEntregador({
                   <Button onClick={handleCrearNovedad} disabled={submitting} className="flex-1">
                     {submitting ? "Guardando..." : "Guardar Novedad"}
                   </Button>
-                  <Button variant="outline" onClick={() => setShowNuevaForm(false)}>
+                  <Button variant="outline" onClick={() => {
+                    setShowNuevaForm(false)
+                    setNuevaNovedad({ tipo: "", monto: "", descripcion: "", montoPagado: "" })
+                  }}>
                     Cancelar
                   </Button>
                 </div>
@@ -329,7 +358,6 @@ export function ModalNovedadesEntregador({
           )}
         </div>
 
-        {/* Footer */}
         <div className="p-4 border-t sticky bottom-0 bg-white">
           <Button onClick={onClose} className="w-full">Cerrar</Button>
         </div>
