@@ -385,7 +385,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     })
 
     return {
-      entregado: Math.round(entregado * 100) / 100,
+      entregado: Math.round((route.totalAmount - fiado - devoluciones - repasos - agotados - erroresFacturacion) * 100) / 100,
       fiado: Math.round(fiado * 100) / 100,
       devoluciones: Math.round(devoluciones * 100) / 100,
       repasos: Math.round(repasos * 100) / 100,
