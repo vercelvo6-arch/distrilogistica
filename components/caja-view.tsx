@@ -398,7 +398,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       let effectiveTotal = 0
       let returnedTotal = 0
-      let agotadosEnPedido = 0
       let erroresEnPedido = 0
 
       order.items.forEach((item) => {
@@ -420,14 +419,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           return
         }
 
-        // AGOTADO
+        // CANTIDAD ENTREGADA
         const cantEntregada =
           item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
             ? Number(item.cantidadEntregada)
             : cantOriginal
 
-        if (cantEntregada === 0 || item.estadoProducto === "agotado") {
-          agotadosEnPedido += subtotalOriginal
+        // ✅ CORRECCIÓN: Si cantidad entregada es 0, simplemente no suma (no cuenta como entregado)
+        // Los agotados SOLO vienen de las novedades que crea el entregador
+        if (cantEntregada === 0) {
           return
         }
 
@@ -440,9 +440,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         effectiveTotal += subtotalReal
       })
 
-      agotados += agotadosEnPedido
-      devoluciones += returnedTotal
-      erroresFacturacion += erroresEnPedido
+    // ✅ agotados SOLO vienen de las novedades
+    devoluciones += returnedTotal
+    erroresFacturacion += erroresEnPedido
 
       // Sumar según el estado del pedido
       if (order.estado === "fiado") {
@@ -501,7 +501,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     })
 
     return {
-      entregado: Math.round((route.totalAmount - fiado - devoluciones - repasos - agotados - erroresFacturacion) * 100) / 100,
+      entregado: Math.round(entregado * 100) / 100,
       fiado: Math.round(fiado * 100) / 100,
       devoluciones: Math.round(devoluciones * 100) / 100,
       repasos: Math.round(repasos * 100) / 100,
