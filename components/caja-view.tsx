@@ -470,7 +470,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         if (order.descuento) {
           entregado -= Number(order.descuento)
         }
-      }
       } else {
         // ── CANAL PEDIDO: sin novedad validada, caja opera normal ──
         let effectiveTotal = 0
