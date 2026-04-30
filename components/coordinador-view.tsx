@@ -1092,7 +1092,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                   observaciones: producto.observacionesFaltante,
                                                 })
                                               } else {
-                                                alert("No se encontró el faltante en la base de datos")
+                                                console.log('[SUBSANAR DEBUG] faltantes array completo:', faltantes)
+                                                console.log('[SUBSANAR DEBUG] buscando codigo:', producto.codigo, 'entregador:', entregador)
+                                                console.log('[SUBSANAR DEBUG] todos los codigos:', faltantes.map(f => f.codigo))
+                                                console.log('[SUBSANAR DEBUG] todos los entregadores:', faltantes.map(f => f.entregador))
+                                              alert("No se encontró el faltante en la base de datos")
                                               }
                                             }}
                                             disabled={producto.estadoAlistamiento === "completo"}
