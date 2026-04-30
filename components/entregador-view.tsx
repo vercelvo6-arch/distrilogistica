@@ -277,16 +277,12 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     return Math.round(effectiveTotal * 100) / 100
   }
 
+  // FIX: Una sola fuente de verdad por pedido.
+  // Si tiene novedades validadas → usar novedades (entregador registro).
+  // Si no → usar estado del pedido (caja opero manualmente).
   const calculateRouteTotals = (route: RouteSheet | null) => {
     if (!route || !Array.isArray(route.orders)) {
-      return {
-        entregado: 0,
-        fiado: 0,
-        devoluciones: 0,
-        repasos: 0,
-        agotados: 0,
-        erroresFacturacion: 0,
-      }
+      return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0, agotados: 0, erroresFacturacion: 0 }
     }
 
     let entregado = 0
@@ -296,93 +292,103 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     let agotados = 0
     let erroresFacturacion = 0
 
+    const todasNovedades = novedadesPorPlanilla[route.id] || []
+    const pedidoIds = new Set(route.orders.map((o) => o?.id))
+
     route.orders.forEach((order) => {
       if (!order || !Array.isArray(order.items)) return
 
-      let effectiveTotal = 0
-      let returnedTotal = 0
-      let erroresEnPedido = 0
+      const novedadesDelPedido = todasNovedades.filter(
+        (n) => n.pedido_id === order.id && n.validado
+      )
 
-      order.items.forEach((item) => {
-        if (!item) return
-
-        const cantOriginal = Number(item.cantidad) || 0
-        const precioUnit = Number(item.valorUnidad) || 0
-        const subtotalOriginal = cantOriginal * precioUnit
-
-        if (item.motivoAjuste === 'error_facturacion') {
-          erroresEnPedido += subtotalOriginal
-          return
-        }
-
-        if (item.motivoAjuste === 'devuelto' || item.devuelto) {
-          returnedTotal += subtotalOriginal
-          return
-        }
-
-        const cantEntregada =
-          item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
-            ? Number(item.cantidadEntregada)
-            : cantOriginal
-
-        // ✅ CORRECCIÓN: Si cantidad entregada es 0, simplemente no suma (no cuenta como entregado)
-        // Los agotados SOLO vienen de las novedades que crea el entregador
-        if (cantEntregada === 0) {
-          return
-        }
-
-        const subtotalReal =
-          item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
-            ? Number(item.subtotalAjustado)
-            : cantEntregada * precioUnit
-
-        effectiveTotal += subtotalReal
-      })
-
-      // ✅ agotados SOLO vienen de las novedades
-      devoluciones += returnedTotal
-      erroresFacturacion += erroresEnPedido
-
-      if (order.estado === "fiado") {
-        const montoPagadoReal = Number(order.montoPagado) || 0
-        const saldoPendienteReal = effectiveTotal - montoPagadoReal
-        fiado += saldoPendienteReal
-        entregado += montoPagadoReal
-      } else if (order.estado === "repaso") {
-        repasos += effectiveTotal
-      } else if (order.estado === "devolucion") {
-        devoluciones += effectiveTotal
+      if (novedadesDelPedido.length > 0) {
+        // ── CANAL NOVEDADES: entregador registro y caja valido ──
+        novedadesDelPedido.forEach((novedad) => {
+          const monto = Number(novedad.monto_novedad) || 0
+          switch (novedad.tipo_novedad) {
+            case "agotado":
+              agotados += monto
+              break
+            case "devolucion":
+              devoluciones += monto
+              break
+            case "fiado_parcial":
+              const montoPagadoNov = Number(novedad.monto_pagado) || 0
+              fiado += monto - montoPagadoNov
+              entregado += montoPagadoNov
+              break
+            case "error_facturacion":
+              erroresFacturacion += monto
+              break
+          }
+        })
       } else {
-        entregado += effectiveTotal
-        if (order.descuento) {
-          entregado -= Number(order.descuento)
+        // ── CANAL PEDIDO: sin novedad validada, caja opera normal ──
+        let effectiveTotal = 0
+        let returnedTotal = 0
+        let erroresEnPedido = 0
+
+        order.items.forEach((item) => {
+          if (!item) return
+          const cantOriginal = Number(item.cantidad) || 0
+          const precioUnit = Number(item.valorUnidad) || 0
+          const subtotalOriginal = cantOriginal * precioUnit
+
+          if (item.motivoAjuste === 'error_facturacion') {
+            erroresEnPedido += subtotalOriginal
+            return
+          }
+          if (item.motivoAjuste === 'devuelto' || item.devuelto) {
+            returnedTotal += subtotalOriginal
+            return
+          }
+          const cantEntregada =
+            item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+              ? Number(item.cantidadEntregada)
+              : cantOriginal
+          if (cantEntregada === 0) return
+
+          const subtotalReal =
+            item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+              ? Number(item.subtotalAjustado)
+              : cantEntregada * precioUnit
+          effectiveTotal += subtotalReal
+        })
+
+        devoluciones += returnedTotal
+        erroresFacturacion += erroresEnPedido
+
+        if (order.estado === "fiado") {
+          const montoPagadoReal = Number(order.montoPagado) || 0
+          fiado += effectiveTotal - montoPagadoReal
+          entregado += montoPagadoReal
+        } else if (order.estado === "repaso") {
+          repasos += effectiveTotal
+        } else if (order.estado === "devolucion") {
+          devoluciones += effectiveTotal
+        } else {
+          entregado += effectiveTotal
+          if (order.descuento) entregado -= Number(order.descuento)
         }
       }
     })
 
-    // ✅ Sumar novedades validadas
-    const novedades = novedadesPorPlanilla[route.id] || []
-
-  novedades.forEach((novedad) => {
-    const monto = Number(novedad.monto_novedad) || 0
-
-      switch (novedad.tipo_novedad) {
-        case "agotado":
-          agotados += monto
-          break
-        case "devolucion":
-          devoluciones += monto
-          break
-        case "fiado_parcial":
-          const montoPagado = Number(novedad.monto_pagado) || 0
-          fiado += (monto - montoPagado)
-          entregado += montoPagado
-          break
-        case "error_facturacion":
-          erroresFacturacion += monto
-          break
-      }
-    })
+    // Novedades validadas cuyo pedido_id no existe en esta planilla (casos edge)
+    todasNovedades
+      .filter((n) => n.validado && !pedidoIds.has(n.pedido_id))
+      .forEach((novedad) => {
+        const monto = Number(novedad.monto_novedad) || 0
+        switch (novedad.tipo_novedad) {
+          case "agotado": agotados += monto; break
+          case "devolucion": devoluciones += monto; break
+          case "error_facturacion": erroresFacturacion += monto; break
+          case "fiado_parcial":
+            fiado += monto - (Number(novedad.monto_pagado) || 0)
+            entregado += Number(novedad.monto_pagado) || 0
+            break
+        }
+      })
 
     return {
       entregado: Math.round(entregado * 100) / 100,
