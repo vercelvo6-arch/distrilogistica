@@ -106,7 +106,6 @@ export async function POST(request: NextRequest) {
 
     console.log('[FALTANTES] Actualizando', pedidosAfectados.length, 'productos');
 
-    // ✅ Un solo UPDATE en lugar de un loop
     if (pedidosAfectados.length > 0) {
       const pedidoIds = pedidosAfectados.map((p: any) => p.pedido_id);
       
@@ -162,6 +161,7 @@ export async function GET(request: NextRequest) {
     // Si NO se especifica estado, solo mostrar pendientes
     const estadoFiltro = estado && estado !== 'all' ? estado : 'pendiente';
     
+    // ✅ FIX: planilla_id se mantiene como string (antes tenía Number() que convertía PLN... a NaN)
     let faltantes = await sql`
       SELECT 
         f.*,
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN planillas pl ON f.planilla_id = pl.id
       WHERE 
         f.estado = ${estadoFiltro}
-        AND (${planilla_id ? sql`f.planilla_id = ${Number(planilla_id)}` : sql`1=1`})
+        AND (${planilla_id ? sql`f.planilla_id = ${planilla_id}` : sql`1=1`})
         AND (${entregador && entregador !== 'all' ? sql`f.entregador = ${entregador}` : sql`1=1`})
         AND (${codigo ? sql`f.codigo ILIKE ${`%${codigo}%`}` : sql`1=1`})
         AND (${fecha_inicio ? sql`f.fecha_marcado >= ${fecha_inicio}::date` : sql`1=1`})
@@ -214,6 +214,9 @@ export async function PATCH(request: NextRequest) {
       observaciones_resolucion
     } = body;
 
+    // ✅ DEBUG: verificar qué faltanteId llega exactamente
+    console.log('[FALTANTES PATCH] faltanteId recibido:', faltanteId, typeof faltanteId);
+
     // Validaciones
     if (!faltanteId || !tipoResolucion) {
       return NextResponse.json(
@@ -236,20 +239,29 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // ✅ Observaciones opcionales con valor por defecto
     const observacionesFinal = observaciones_resolucion?.trim() || 'Subsanado por coordinador';
 
     const sql = getDB();
 
-    // Obtener el faltante actual
+    // ✅ FIX: buscar sin filtrar por estado para dar mejor mensaje de error
     const faltanteActual = await sql`
-      SELECT * FROM faltantes WHERE id = ${faltanteId} AND estado = 'pendiente'
+      SELECT * FROM faltantes WHERE id = ${faltanteId}
     `;
 
     if (faltanteActual.length === 0) {
+      console.log('[FALTANTES PATCH] ❌ Faltante no encontrado con id:', faltanteId);
       return NextResponse.json(
-        { error: 'Faltante no encontrado o ya fue subsanado' },
+        { error: 'Faltante no encontrado en la base de datos' },
         { status: 404 }
+      );
+    }
+
+    // ✅ FIX: verificar estado por separado para dar mensaje específico
+    if (faltanteActual[0].estado !== 'pendiente') {
+      console.log('[FALTANTES PATCH] ❌ Faltante ya procesado, estado actual:', faltanteActual[0].estado);
+      return NextResponse.json(
+        { error: `Este faltante ya fue procesado (estado: ${faltanteActual[0].estado})` },
+        { status: 409 }
       );
     }
 
@@ -275,9 +287,8 @@ export async function PATCH(request: NextRequest) {
 
     let resultado: any;
 
-    // ✅ Si es resolución PARCIAL: actualizar cantidad pendiente del mismo faltante
     if (tipoResolucion === 'parcial') {
-      const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal
+      const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal;
       
       resultado = await sql`
         UPDATE faltantes
@@ -291,7 +302,6 @@ export async function PATCH(request: NextRequest) {
       
       console.log(`[FALTANTES SUBSANAR] ✓ Faltante actualizado: quedan ${cantidadPendiente} unidades pendientes`);
     } else {
-      // ✅ Para 'completo' o 'definitivo': marcar como resuelto
       resultado = await sql`
         UPDATE faltantes
         SET 
