@@ -290,6 +290,70 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     alert("Error al cargar datos de supervisión: " + (err as Error).message)
   }
 }
+  // ✅ FIX: Función async separada para abrir modal de subsanar (pedidos de último momento)
+  const handleAbrirSubsanar = async (producto: any, entregador: string, sheets: any[]) => {
+    const faltantesDelProducto = faltantes.filter(
+      (f) => f.codigo === producto.codigo && f.entregador === entregador && f.estado === "pendiente",
+    )
+
+    if (faltantesDelProducto.length > 0) {
+      setFaltanteParaSubsanar({
+        id: faltantesDelProducto[0].id,
+        codigo: producto.codigo,
+        descripcion: producto.descripcion,
+        categoria: producto.categoria,
+        cantidad_faltante: faltantesDelProducto[0].cantidad_faltante,
+        entregador: entregador,
+        ruta: sheets[0]?.ruta || "",
+        estado: producto.estadoAlistamiento,
+        observaciones: producto.observacionesFaltante,
+      })
+    } else {
+      // Crear faltante automáticamente si no existe (pedido de último momento)
+      const sheetDelEntregador = sheets.find((s: any) => s.entregador === entregador)
+      const createResponse = await fetch('/api/faltantes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planilla_id: sheetDelEntregador?.id,
+          codigo: producto.codigo,
+          descripcion: producto.descripcion,
+          categoria: producto.categoria || '',
+          entregador: entregador,
+          ruta: sheets[0]?.ruta || '',
+          cantidadSolicitada: producto.cantidadTotal,
+          cantidadDisponible: 0,
+          cantidadFaltante: producto.cantidadTotal,
+          unidadIncompleta: false,
+          observaciones: 'Registrado por coordinador',
+          marcadoPor: user.id,
+          estadoAlistamiento: 'no_alistado',
+        }),
+      })
+      if (createResponse.ok) {
+        const faltantesResp = await fetch('/api/faltantes').then(r => r.json())
+        const nuevoFaltante = (faltantesResp.faltantes || []).find(
+          (f: any) => f.codigo === producto.codigo && f.entregador === entregador && f.estado === 'pendiente'
+        )
+        if (nuevoFaltante) {
+          setFaltanteParaSubsanar({
+            id: nuevoFaltante.id,
+            codigo: producto.codigo,
+            descripcion: producto.descripcion,
+            categoria: producto.categoria,
+            cantidad_faltante: producto.cantidadTotal,
+            entregador: entregador,
+            ruta: sheets[0]?.ruta || '',
+            estado: producto.estadoAlistamiento,
+            observaciones: producto.observacionesFaltante,
+          })
+        }
+      } else {
+        alert("Error al registrar el faltante automáticamente")
+      }
+    }
+  }
+
   const handleDevolverAlistamiento = async (planillaId: string, entregador: string, ruta: string) => {
     if (!confirm(`¿Devolver la planilla de ${entregador} - Ruta ${ruta} a estado "Alistando"?\n\nEsto permitirá al alistador completarla correctamente.`)) {
       return
@@ -1071,71 +1135,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           <Button
                                             variant="outline"
                                             size="sm"
-                                            onClick={() => {
-                                              const faltantesDelProducto = faltantes.filter(
-                                                (f) =>
-                                                  f.codigo === producto.codigo &&
-                                                  f.entregador === entregador &&
-                                                  f.estado === "pendiente",
-                                              )
-
-                                              if (faltantesDelProducto.length > 0) {
-                                                setFaltanteParaSubsanar({
-                                                  id: faltantesDelProducto[0].id,
-                                                  codigo: producto.codigo,
-                                                  descripcion: producto.descripcion,
-                                                  categoria: producto.categoria,
-                                                  cantidad_faltante: faltantesDelProducto[0].cantidad_faltante,
-                                                  entregador: entregador,
-                                                  ruta: sheets[0]?.ruta || "",
-                                                  estado: producto.estadoAlistamiento,
-                                                  observaciones: producto.observacionesFaltante,
-                                                })
-                                              } else {
-  // Crear faltante automáticamente y abrir modal
-  const sheetDelEntregador = sheets.find((s: any) => s.entregador === entregador)
-  const createResponse = await fetch('/api/faltantes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      planilla_id: sheetDelEntregador?.id,
-      codigo: producto.codigo,
-      descripcion: producto.descripcion,
-      categoria: producto.categoria || '',
-      entregador: entregador,
-      ruta: sheets[0]?.ruta || '',
-      cantidadSolicitada: producto.cantidadTotal,
-      cantidadDisponible: 0,
-      cantidadFaltante: producto.cantidadTotal,
-      unidadIncompleta: false,
-      observaciones: 'Registrado por coordinador',
-      marcadoPor: user.id,
-      estadoAlistamiento: 'no_alistado',
-    }),
-  })
-  if (createResponse.ok) {
-    const faltantesResp = await fetch('/api/faltantes').then(r => r.json())
-    const nuevoFaltante = (faltantesResp.faltantes || []).find(
-      (f: any) => f.codigo === producto.codigo && f.entregador === entregador && f.estado === 'pendiente'
-    )
-    if (nuevoFaltante) {
-      setFaltanteParaSubsanar({
-        id: nuevoFaltante.id,
-        codigo: producto.codigo,
-        descripcion: producto.descripcion,
-        categoria: producto.categoria,
-        cantidad_faltante: producto.cantidadTotal,
-        entregador: entregador,
-        ruta: sheets[0]?.ruta || '',
-        estado: producto.estadoAlistamiento,
-        observaciones: producto.observacionesFaltante,
-      })
-    }
-  } else {
-    alert("Error al registrar el faltante")
-  }
-}
-                                            }}
+                                            onClick={() => handleAbrirSubsanar(producto, entregador, sheets)}
                                             disabled={producto.estadoAlistamiento === "completo"}
                                           >
                                             Subsanar
