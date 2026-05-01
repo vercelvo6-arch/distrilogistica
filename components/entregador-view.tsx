@@ -304,25 +304,76 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
       if (novedadesDelPedido.length > 0) {
         // ── CANAL NOVEDADES: entregador registro y caja valido ──
+        // PRIMERO: Calcular el total del pedido (items entregados)
+        let totalPedido = 0
+        let devolucionesEnItems = 0
+        let erroresEnItems = 0
+
+        order.items.forEach((item) => {
+          if (!item) return
+          const cantOriginal = Number(item.cantidad) || 0
+          const precioUnit = Number(item.valorUnidad) || 0
+          const subtotalOriginal = cantOriginal * precioUnit
+
+          if (item.motivoAjuste === 'error_facturacion') {
+            erroresEnItems += subtotalOriginal
+            return
+          }
+          if (item.motivoAjuste === 'devuelto' || item.devuelto) {
+            devolucionesEnItems += subtotalOriginal
+            return
+          }
+          const cantEntregada =
+            item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+              ? Number(item.cantidadEntregada)
+              : cantOriginal
+          if (cantEntregada === 0) return
+
+          const subtotalReal =
+            item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+              ? Number(item.subtotalAjustado)
+              : cantEntregada * precioUnit
+          totalPedido += subtotalReal
+        })
+
+        devoluciones += devolucionesEnItems
+        erroresFacturacion += erroresEnItems
+
+        // SEGUNDO: Procesar novedades y calcular cuánto se resta
+        let totalNovedades = 0
         novedadesDelPedido.forEach((novedad) => {
           const monto = Number(novedad.monto_novedad) || 0
           switch (novedad.tipo_novedad) {
             case "agotado":
               agotados += monto
+              totalNovedades += monto
               break
             case "devolucion":
               devoluciones += monto
+              totalNovedades += monto
               break
             case "fiado_parcial":
               const montoPagadoNov = Number(novedad.monto_pagado) || 0
               fiado += monto - montoPagadoNov
               entregado += montoPagadoNov
+              totalNovedades += monto - montoPagadoNov
               break
             case "error_facturacion":
               erroresFacturacion += monto
+              totalNovedades += monto
               break
           }
         })
+
+        // TERCERO: Entregado es total del pedido menos novedades
+        const entregadoDelPedido = totalPedido - totalNovedades
+        if (entregadoDelPedido > 0) {
+          entregado += entregadoDelPedido
+        }
+
+        if (order.descuento) {
+          entregado -= Number(order.descuento)
+        }
       } else {
         // ── CANAL PEDIDO: sin novedad validada, caja opera normal ──
         let effectiveTotal = 0
