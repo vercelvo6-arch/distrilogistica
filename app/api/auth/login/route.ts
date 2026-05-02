@@ -6,11 +6,10 @@ import bcrypt from "bcryptjs"
 export async function POST(request: Request) {
   try {
     console.log("[API login] Login request received")
-    
+
     const body = await request.json()
     const { email, password } = body
 
-    // Validaciones - SOLO email y password
     if (!email || !password) {
       return NextResponse.json(
         { error: "Faltan campos requeridos: email, password" },
@@ -20,10 +19,9 @@ export async function POST(request: Request) {
 
     const sql = getDB()
 
-    // Buscar usuario por email
     const users = await sql`
-      SELECT id, nombre, email, password_hash, rol, estado 
-      FROM usuarios 
+      SELECT id, nombre, email, password_hash, rol, estado
+      FROM usuarios
       WHERE email = ${email}
     `
 
@@ -36,17 +34,14 @@ export async function POST(request: Request) {
 
     const user = users[0]
 
-    // Verificar si el usuario está activo
-    if (user.estado !== 'activo') {
+    if (user.estado !== "activo") {
       return NextResponse.json(
         { error: "Usuario inactivo. Contacte al administrador" },
         { status: 403 }
       )
     }
 
-    // Verificar contraseña
     const passwordMatch = await bcrypt.compare(password, user.password_hash)
-
     if (!passwordMatch) {
       return NextResponse.json(
         { error: "Credenciales inválidas" },
@@ -56,13 +51,40 @@ export async function POST(request: Request) {
 
     console.log("[API login] User authenticated:", user.id)
 
-    // Crear sesión
+    // Buscar si hay otros usuarios con el mismo nombre (mismo entregador, distintos recorridos)
+    const mismoNombre = await sql`
+      SELECT id, nombre, email, rol
+      FROM usuarios
+      WHERE nombre = ${user.nombre}
+        AND estado = 'activo'
+        AND id != ${user.id}
+    `
+
+    // Si hay más usuarios con el mismo nombre → pedir al frontend que elija recorrido
+    if (mismoNombre.length > 0) {
+      return NextResponse.json({
+        success: true,
+        requiereSeleccion: true,
+        usuariosDisponibles: [
+          { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol },
+          ...mismoNombre.map((u: any) => ({
+            id: u.id,
+            nombre: u.nombre,
+            email: u.email,
+            rol: u.rol,
+          })),
+        ],
+      })
+    }
+
+    // Un solo usuario → login normal
     await createSession(user.id)
 
     console.log("[API login] Session created, returning response")
 
     return NextResponse.json({
       success: true,
+      requiereSeleccion: false,
       user: {
         id: user.id,
         nombre: user.nombre,
