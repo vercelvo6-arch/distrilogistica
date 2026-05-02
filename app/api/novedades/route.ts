@@ -5,7 +5,7 @@ import { handleDBError } from "@/lib/db-helpers";
 
 export const dynamic = "force-dynamic";
 
-// ✅ FIX: PostgreSQL retorna boolean como 't'/'f' con el driver Neon
+// FIX: PostgreSQL retorna boolean como 't'/'f' con el driver Neon
 const esVerdadero = (val: any): boolean => val === true || val === 't';
 
 function normalizarNovedades(novedades: any[]) {
@@ -23,18 +23,19 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const pedidoId = searchParams.get("pedidoId");
-    const planillaId = searchParams.get("planillaId");
+    const pedidoId   = searchParams.get("pedidoId");
+    const planillaId  = searchParams.get("planillaId");
     const planillaIds = searchParams.get("planillaIds");
 
     const sql = getDB();
 
+    // ── Por pedido ────────────────────────────────────────────
     if (pedidoId) {
       const novedades = await sql`
-        SELECT 
+        SELECT
           n.*,
           p.cliente,
-          p.total as total_pedido
+          p.total AS total_pedido
         FROM novedades_pedido n
         JOIN pedidos p ON n.pedido_id = p.id
         WHERE n.pedido_id = ${pedidoId}
@@ -43,44 +44,59 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
+    // ── Por planilla singular ─────────────────────────────────
+    // FIX: castear a integer para evitar fallo silencioso de comparación string vs integer
     if (planillaId) {
+      const idNum = Number(planillaId);
+      if (!idNum || isNaN(idNum)) {
+        return NextResponse.json({ error: "planillaId inválido" }, { status: 400 });
+      }
+
       const novedades = await sql`
-        SELECT 
+        SELECT
           n.*,
           p.cliente,
-          p.total as total_pedido,
+          p.total AS total_pedido,
           p.planilla_id
         FROM novedades_pedido n
         JOIN pedidos p ON n.pedido_id = p.id
-        WHERE p.planilla_id = ${planillaId}
+        WHERE p.planilla_id = ${idNum}
         ORDER BY n.created_at DESC
       `;
       return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
+    // ── Por múltiples planillas ───────────────────────────────
+    // FIX: convertir a integer[] para que la comparación con planilla_id (integer) funcione
     if (planillaIds) {
-      const ids = planillaIds.split(",").map((id) => id.trim()).filter(Boolean);
+      const ids = planillaIds
+        .split(",")
+        .map((id) => Number(id.trim()))
+        .filter((id) => id && !isNaN(id));
 
       if (ids.length === 0) {
         return NextResponse.json({ novedades: [] });
       }
 
       const novedades = await sql`
-        SELECT 
+        SELECT
           n.*,
           p.cliente,
-          p.total as total_pedido,
+          p.total AS total_pedido,
           p.planilla_id
         FROM novedades_pedido n
         JOIN pedidos p ON n.pedido_id = p.id
-        WHERE p.planilla_id = ANY(${ids}::text[])
+        WHERE p.planilla_id = ANY(${ids}::integer[])
         ORDER BY n.created_at DESC
       `;
 
       return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
-    return NextResponse.json({ error: "Se requiere pedidoId, planillaId o planillaIds" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Se requiere pedidoId, planillaId o planillaIds" },
+      { status: 400 }
+    );
 
   } catch (error: any) {
     console.error("[API novedades GET] Error:", error);
