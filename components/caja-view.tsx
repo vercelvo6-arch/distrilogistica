@@ -166,20 +166,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }, [selectedView])
 
-  // ✅ NUEVO: Función para cargar novedades de una planilla
-  async function loadNovedadesPlanilla(planillaId: number): Promise<NovedadPedido[]> {
-    try {
-      const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
-      if (!response.ok) return []
-      
-      const data = await response.json()
-      return data.novedades || []
-    } catch (error) {
-      console.error("[CAJA] Error cargando novedades:", error)
-      return []
-    }
-  }
-
   async function loadData() {
     try {
       const response = await fetch("/api/planillas")
@@ -233,11 +219,21 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       setRouteSheets(planillas)
 
-      // ✅ NUEVO: Cargar novedades de cada planilla en paralelo para mejor rendimiento
+      // Cargar novedades de cada planilla en paralelo
       const novedadesMap: Record<number, NovedadPedido[]> = {}
       const promesas = planillas.map(async (planilla) => {
-        const novedades = await loadNovedadesPlanilla(planilla.id)
-        novedadesMap[planilla.id] = novedades
+        try {
+          const response = await fetch(`/api/novedades?planillaId=${planilla.id}`)
+          if (response.ok) {
+            const data = await response.json()
+            novedadesMap[planilla.id] = data.novedades || []
+          } else {
+            novedadesMap[planilla.id] = []
+          }
+        } catch (error) {
+          console.error("[CAJA] Error cargando novedades planilla", planilla.id, error)
+          novedadesMap[planilla.id] = []
+        }
       })
       await Promise.all(promesas)
       setNovedadesPorPlanilla(novedadesMap)
@@ -395,7 +391,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       if (!order || !Array.isArray(order.items)) return
 
       const novedadesDelPedido = todasNovedades.filter(
-        (n) => n.pedido_id === order.id && n.validado
+        (n) => n.pedido_id === order.id
       )
 
             if (novedadesDelPedido.length > 0) {
