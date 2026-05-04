@@ -17,6 +17,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  // Selector de recorrido
+  const [usuariosDisponibles, setUsuariosDisponibles] = useState<any[]>([])
+  const [mostrarSelector, setMostrarSelector] = useState(false)
+
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -24,33 +29,71 @@ export default function LoginPage() {
     setIsLoading(true)
     setError(null)
 
-    console.log("[v0] Client: Starting login")
+    console.log("[LOGIN] Iniciando sesión...")
 
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
-        credentials: "include", // Ensure cookies are sent/received
+        credentials: "include",
       })
 
-      console.log("[v0] Client: Response status:", response.status)
-
       const data = await response.json()
-      console.log("[v0] Client: Response data:", data)
 
       if (!response.ok) {
         throw new Error(data.error || "Error al iniciar sesión")
       }
 
-      console.log("[v0] Client: Login successful, navigating to /")
+      // Si hay múltiples recorridos para este usuario → mostrar selector
+      if (data.requiereSeleccion) {
+        setUsuariosDisponibles(data.usuariosDisponibles)
+        setMostrarSelector(true)
+        setIsLoading(false)
+        return
+      }
 
+      // Login normal → redirigir
       window.location.href = "/"
     } catch (error: unknown) {
-      console.error("[v0] Client: Login error:", error)
+      console.error("[LOGIN] Error:", error)
       setError(error instanceof Error ? error.message : "Error al iniciar sesión")
       setIsLoading(false)
     }
+  }
+
+  const handleSeleccionarRecorrido = async (userId: string) => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/auth/seleccionar-recorrido", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Error al seleccionar recorrido")
+      }
+
+      window.location.href = "/"
+    } catch (error: unknown) {
+      console.error("[LOGIN] Error seleccionando recorrido:", error)
+      setError(error instanceof Error ? error.message : "Error al seleccionar recorrido")
+      setIsLoading(false)
+    }
+  }
+
+  // Formatear el email para mostrar solo el recorrido
+  const formatearRecorrido = (email: string) => {
+    return email
+      .replace("@gmail.com", "")
+      .replace("@distrisanty.com", "")
+      .replace("distrisanty", "")
+      .replace("alfonso", "Alfonso")
+      .trim()
   }
 
   return (
@@ -67,10 +110,60 @@ export default function LoginPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
-              <CardDescription>Ingresa tu correo y contraseña</CardDescription>
+              <CardTitle className="text-2xl">
+                {mostrarSelector ? "¿Qué recorrido vas a trabajar hoy?" : "Iniciar Sesión"}
+              </CardTitle>
+              <CardDescription>
+                {mostrarSelector
+                  ? "Selecciona tu recorrido del día"
+                  : "Ingresa tu correo y contraseña"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
+
+              {/* SELECTOR DE RECORRIDO */}
+              {mostrarSelector ? (
+                <div className="flex flex-col gap-3">
+                  {usuariosDisponibles.map((u) => (
+                    <Button
+                      key={u.id}
+                      variant="outline"
+                      className="w-full justify-start text-left h-auto py-3 px-4 border-teal-200 hover:bg-teal-50 hover:border-teal-400"
+                      onClick={() => handleSeleccionarRecorrido(u.id)}
+                      disabled={isLoading}
+                    >
+                      <div className="flex flex-col items-start">
+                        <span className="font-semibold text-teal-800">
+                          {formatearRecorrido(u.email)}
+                        </span>
+                        <span className="text-xs text-gray-400">{u.email}</span>
+                      </div>
+                    </Button>
+                  ))}
+
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription className="text-sm">{error}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    className="w-full text-gray-500 mt-2"
+                    onClick={() => {
+                      setMostrarSelector(false)
+                      setUsuariosDisponibles([])
+                      setError(null)
+                    }}
+                    disabled={isLoading}
+                  >
+                    ← Volver al inicio de sesión
+                  </Button>
+                </div>
+              ) : (
+
+              /* FORMULARIO DE LOGIN NORMAL */
               <form onSubmit={handleLogin}>
                 <div className="flex flex-col gap-6">
                   <div className="grid gap-2">
@@ -101,7 +194,11 @@ export default function LoginPage() {
                       <AlertDescription className="text-sm">{error}</AlertDescription>
                     </Alert>
                   )}
-                  <Button type="submit" className="w-full bg-teal-600 hover:bg-teal-700" disabled={isLoading}>
+                  <Button
+                    type="submit"
+                    className="w-full bg-teal-600 hover:bg-teal-700"
+                    disabled={isLoading}
+                  >
                     {isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
                   </Button>
                 </div>
@@ -112,6 +209,8 @@ export default function LoginPage() {
                   </Link>
                 </div>
               </form>
+
+              )}
             </CardContent>
           </Card>
         </div>
