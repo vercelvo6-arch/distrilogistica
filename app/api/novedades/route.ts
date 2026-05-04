@@ -5,16 +5,12 @@ import { handleDBError } from "@/lib/db-helpers";
 
 export const dynamic = "force-dynamic";
 
-// FIX: PostgreSQL retorna boolean como 't'/'f' con el driver Neon
 const esVerdadero = (val: any): boolean => val === true || val === 't';
 
 function normalizarNovedades(novedades: any[]) {
   return novedades.map(n => ({ ...n, validado: esVerdadero(n.validado) }));
 }
 
-// =====================================================
-// GET: Obtener novedades
-// =====================================================
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
@@ -29,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB();
 
-    // ── Por pedido ────────────────────────────────────────────
+    // Por pedido
     if (pedidoId) {
       const novedades = await sql`
         SELECT
@@ -44,14 +40,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
-    // ── Por planilla singular ─────────────────────────────────
-    // FIX: castear a integer para evitar fallo silencioso de comparación string vs integer
+    // Por planilla singular — IDs son strings tipo PLN1777...
     if (planillaId) {
-      const idNum = Number(planillaId);
-      if (!idNum || isNaN(idNum)) {
-        return NextResponse.json({ error: "planillaId inválido" }, { status: 400 });
-      }
-
       const novedades = await sql`
         SELECT
           n.*,
@@ -60,19 +50,18 @@ export async function GET(request: NextRequest) {
           p.planilla_id
         FROM novedades_pedido n
         JOIN pedidos p ON n.pedido_id = p.id
-        WHERE p.planilla_id = ${idNum}
+        WHERE p.planilla_id = ${planillaId}
         ORDER BY n.created_at DESC
       `;
       return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
-    // ── Por múltiples planillas ───────────────────────────────
-    // FIX: convertir a integer[] para que la comparación con planilla_id (integer) funcione
+    // Por múltiples planillas
     if (planillaIds) {
       const ids = planillaIds
         .split(",")
-        .map((id) => Number(id.trim()))
-        .filter((id) => id && !isNaN(id));
+        .map((id) => id.trim())
+        .filter((id) => id);
 
       if (ids.length === 0) {
         return NextResponse.json({ novedades: [] });
@@ -86,7 +75,7 @@ export async function GET(request: NextRequest) {
           p.planilla_id
         FROM novedades_pedido n
         JOIN pedidos p ON n.pedido_id = p.id
-        WHERE p.planilla_id = ANY(${ids}::integer[])
+        WHERE p.planilla_id = ANY(${ids})
         ORDER BY n.created_at DESC
       `;
 
@@ -104,13 +93,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// =====================================================
-// POST: Crear una nueva novedad
-// =====================================================
 export async function POST(request: NextRequest) {
   try {
-    console.log("[API novedades POST] ===== INICIO =====");
-
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
@@ -126,7 +110,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const tiposValidos = ["agotado", "devolucion", "fiado_parcial", "error_facturacion"];
+    // ✅ fiado incluido como tipo válido
+    const tiposValidos = ["agotado", "devolucion", "fiado_parcial", "fiado", "error_facturacion"];
     if (!tiposValidos.includes(tipoNovedad)) {
       return NextResponse.json(
         { error: `Tipo de novedad inválido. Debe ser: ${tiposValidos.join(", ")}` },
@@ -155,6 +140,9 @@ export async function POST(request: NextRequest) {
 
     const tipoRegistro = session.user?.rol === "entregador" ? "entregador" : "caja";
 
+    // ✅ monto_pagado aplica tanto para fiado como fiado_parcial
+    const esFiado = tipoNovedad === 'fiado_parcial' || tipoNovedad === 'fiado'
+
     const [novedad] = await sql`
       INSERT INTO novedades_pedido (
         pedido_id,
@@ -170,15 +158,13 @@ export async function POST(request: NextRequest) {
         ${tipoNovedad},
         ${Number(montoNovedad)},
         ${descripcion || null},
-        ${tipoNovedad === 'fiado_parcial' ? Number(montoPagado || 0) : 0},
+        ${esFiado ? Number(montoPagado || 0) : 0},
         ${session.user?.email || session.user?.id},
         ${tipoRegistro},
         ${tipoRegistro === 'caja'}
       )
       RETURNING *
     `;
-
-    console.log("[API novedades POST] ✅ Novedad creada:", novedad);
 
     return NextResponse.json({
       success: true,
