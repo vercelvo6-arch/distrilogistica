@@ -51,6 +51,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [loading, setLoading] = useState(true)
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [searchCliente, setSearchCliente] = useState("")
 
   const [showFiadoModal, setShowFiadoModal] = useState(false)
   const [selectedOrderForFiado, setSelectedOrderForFiado] = useState<Order | null>(null)
@@ -240,6 +241,23 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
     return true
   })
+
+  // Lista plana de todos los clientes para el buscador
+  const todosLosClientes = filteredRoutes.flatMap((route) =>
+    (route.orders || []).map((order) => ({
+      ...order,
+      planillaId: route.id,
+      rutaNombre: route.ruta,
+      fechaPlanilla: route.fecha,
+    }))
+  )
+
+  // Clientes filtrados por busqueda
+  const clientesFiltrados = searchCliente.trim()
+    ? todosLosClientes.filter((c) =>
+        c.cliente?.toLowerCase().includes(searchCliente.toLowerCase())
+      )
+    : []
 
   const calculateOrderEffectiveTotal = (order: Order): number => {
     if (!order || !Array.isArray(order.items)) return 0
@@ -658,9 +676,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   }
 
   const handleOrderStatusChange = async (orderId: string, newStatus: Order["estado"]) => {
-    const order = routeSheets
-      .flatMap(sheet => sheet.orders)
-      .find(o => o.id === orderId)
+    const order = todosLosClientes.find(o => o.id === orderId)
+      ?? routeSheets.flatMap(sheet => sheet.orders).find(o => o.id === orderId)
 
     if (newStatus === "fiado") {
       if (order) {
@@ -944,6 +961,50 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 </div>
               </Card>
 
+              {/* BUSCADOR DE CLIENTES */}
+              <Card className="p-4 mb-4">
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Buscar cliente por nombre..."
+                    value={searchCliente}
+                    onChange={(e) => setSearchCliente(e.target.value)}
+                    className="w-full"
+                  />
+                  {searchCliente.trim() && (
+                    <div className="text-sm text-muted-foreground">
+                      {clientesFiltrados.length} cliente(s) encontrado(s)
+                    </div>
+                  )}
+                </div>
+
+                {/* Resultados de busqueda */}
+                {clientesFiltrados.length > 0 && (
+                  <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
+                    {clientesFiltrados.map((cliente) => (
+                      <div
+                        key={cliente.id}
+                        className="p-3 border rounded-lg hover:bg-accent cursor-pointer"
+                        onClick={() => {
+                          // Expandir la ruta y el pedido
+                          setExpandedRoutes(prev => new Set(prev).add(cliente.planillaId))
+                          setExpandedOrders(prev => new Set(prev).add(cliente.id))
+                          setSearchCliente("")
+                          // Scroll al elemento
+                          setTimeout(() => {
+                            document.getElementById(`order-${cliente.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                          }, 100)
+                        }}
+                      >
+                        <p className="font-medium">{cliente.cliente}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Ruta {cliente.rutaNombre} - {formatCOP(cliente.total)} - {cliente.estado.toUpperCase()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+
               <Card className="p-6">
                 <h2 className="text-lg font-semibold mb-4">Mis Rutas Pendientes</h2>
                 {filteredRoutes.length === 0 ? (
@@ -1052,7 +1113,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                     }
 
                                     return (
-                                      <Card key={order.id} className="p-3 bg-gray-50">
+                                      <Card key={order.id} id={`order-${order.id}`} className="p-3 bg-gray-50">
                                         <div className="flex justify-between items-start">
                                           <div className="flex-1">
                                             <div className="flex items-center gap-2">
