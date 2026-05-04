@@ -5,16 +5,17 @@ import { getDB } from '@/lib/db'
 export async function GET() {
   try {
     const session = await getSession()
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    // Obtener datos actualizados del usuario desde la BD
     const sql = getDB()
+
+    // FIX: incluir nombre_grupo para filtrar planillas de todos los recorridos del entregador
     const users = await sql`
-      SELECT id, nombre, email, rol, estado 
-      FROM usuarios 
+      SELECT id, nombre, nombre_grupo, email, rol, estado
+      FROM usuarios
       WHERE id = ${session.user.id}
     `
 
@@ -24,7 +25,6 @@ export async function GET() {
 
     const user = users[0]
 
-    // Verificar si el usuario está activo
     if (user.estado !== 'activo') {
       return NextResponse.json({ error: 'Usuario inactivo' }, { status: 403 })
     }
@@ -33,9 +33,10 @@ export async function GET() {
       user: {
         id: user.id,
         nombre: user.nombre,
+        nombreGrupo: user.nombre_grupo || null,
         email: user.email,
         rol: user.rol,
-        estado: user.estado
+        estado: user.estado,
       }
     })
   } catch (error) {
