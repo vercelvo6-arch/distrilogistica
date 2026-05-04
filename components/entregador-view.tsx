@@ -52,6 +52,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [searchCliente, setSearchCliente] = useState("")
+  const [vistaPlana, setVistaPlana] = useState(true) // true = todos los clientes, false = por rutas
 
   const [showFiadoModal, setShowFiadoModal] = useState(false)
   const [selectedOrderForFiado, setSelectedOrderForFiado] = useState<Order | null>(null)
@@ -252,12 +253,12 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }))
   )
 
-  // Clientes filtrados por busqueda
+  // Clientes filtrados por busqueda (si hay busqueda filtra, si no muestra todos)
   const clientesFiltrados = searchCliente.trim()
     ? todosLosClientes.filter((c) =>
         c.cliente?.toLowerCase().includes(searchCliente.toLowerCase())
       )
-    : []
+    : todosLosClientes
 
   const calculateOrderEffectiveTotal = (order: Order): number => {
     if (!order || !Array.isArray(order.items)) return 0
@@ -961,50 +962,314 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 </div>
               </Card>
 
-              {/* BUSCADOR DE CLIENTES */}
+              {/* BUSCADOR Y TOGGLE DE VISTA */}
               <Card className="p-4 mb-4">
-                <div className="space-y-2">
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between mb-3">
                   <Input
                     placeholder="Buscar cliente por nombre..."
                     value={searchCliente}
                     onChange={(e) => setSearchCliente(e.target.value)}
-                    className="w-full"
+                    className="w-full sm:w-64"
                   />
-                  {searchCliente.trim() && (
-                    <div className="text-sm text-muted-foreground">
-                      {clientesFiltrados.length} cliente(s) encontrado(s)
-                    </div>
-                  )}
-                </div>
-
-                {/* Resultados de busqueda */}
-                {clientesFiltrados.length > 0 && (
-                  <div className="mt-3 space-y-2 max-h-64 overflow-y-auto">
-                    {clientesFiltrados.map((cliente) => (
-                      <div
-                        key={cliente.id}
-                        className="p-3 border rounded-lg hover:bg-accent cursor-pointer"
-                        onClick={() => {
-                          // Expandir la ruta y el pedido
-                          setExpandedRoutes(prev => new Set(prev).add(cliente.planillaId))
-                          setExpandedOrders(prev => new Set(prev).add(cliente.id))
-                          setSearchCliente("")
-                          // Scroll al elemento
-                          setTimeout(() => {
-                            document.getElementById(`order-${cliente.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                          }, 100)
-                        }}
-                      >
-                        <p className="font-medium">{cliente.cliente}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Ruta {cliente.rutaNombre} - {formatCOP(cliente.total)} - {cliente.estado.toUpperCase()}
-                        </p>
-                      </div>
-                    ))}
+                  <div className="flex gap-2">
+                    <Button
+                      variant={vistaPlana ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setVistaPlana(true)}
+                    >
+                      Todos los Clientes
+                    </Button>
+                    <Button
+                      variant={!vistaPlana ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setVistaPlana(false)}
+                    >
+                      Por Rutas
+                    </Button>
                   </div>
-                )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {clientesFiltrados.length} cliente(s) en {filteredRoutes.length} ruta(s)
+                </p>
               </Card>
 
+              {/* VISTA PLANA - TODOS LOS CLIENTES */}
+              {vistaPlana && (
+                <Card className="p-4">
+                  <h2 className="text-lg font-semibold mb-4">Todos los Clientes</h2>
+                  {clientesFiltrados.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">
+                      No se encontraron clientes
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {clientesFiltrados.map((order) => {
+                        const isExpanded = expandedOrders.has(order.id)
+                        const novedadesDelPedido = (novedadesPorPlanilla[order.planillaId] || [])
+                          .filter((n: any) => n.pedido_id === order.id)
+                        
+                        let effectiveTotal = 0
+                        let returnedTotal = 0
+                        if (Array.isArray(order.items)) {
+                          order.items.forEach((item: any) => {
+                            if (!item) return
+                            if (item.devuelto || item.motivoAjuste === 'devuelto') {
+                              returnedTotal += Number(item.subtotal) || 0
+                            } else {
+                              const estadoProd = item.estadoProducto || "normal"
+                              if (estadoProd === "agotado") return
+                              if (item.motivoAjuste === 'error_facturacion') return
+                              if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
+                                effectiveTotal += Number(item.subtotalAjustado) || 0
+                              } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
+                                effectiveTotal += (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
+                              } else {
+                                effectiveTotal += Number(item.subtotal) || 0
+                              }
+                            }
+                          })
+                        }
+
+                        return (
+                          <Card key={order.id} id={`order-plano-${order.id}`} className="p-3 bg-gray-50">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-medium text-sm">{order.cliente}</p>
+                                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                    Ruta {order.rutaNombre}
+                                  </Badge>
+                                  {novedadesDelPedido.length > 0 && (
+                                    <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-300">
+                                      {novedadesDelPedido.length} novedad(es)
+                                    </Badge>
+                                  )}
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      order.estado === "entregado"
+                                        ? "bg-green-100 text-green-700 border-green-300"
+                                        : order.estado === "fiado"
+                                          ? "bg-orange-100 text-orange-700 border-orange-300"
+                                          : order.estado === "repaso"
+                                            ? "bg-blue-100 text-blue-700 border-blue-300"
+                                            : "bg-red-100 text-red-700 border-red-300"
+                                    }
+                                  >
+                                    {order.estado.toUpperCase()}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {Array.isArray(order.items) ? order.items.length : 0} productos - {formatCOP(effectiveTotal)}
+                                  {returnedTotal > 0 && (
+                                    <span className="text-red-500 ml-1">Dev: {formatCOP(returnedTotal)}</span>
+                                  )}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const newExpanded = new Set(expandedOrders)
+                                  if (newExpanded.has(order.id)) {
+                                    newExpanded.delete(order.id)
+                                  } else {
+                                    newExpanded.add(order.id)
+                                  }
+                                  setExpandedOrders(newExpanded)
+                                }}
+                              >
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </div>
+
+                            {isExpanded && Array.isArray(order.items) && (
+                              <div className="mt-3 pt-3 border-t space-y-4">
+                                {/* Boton gestionar novedades */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedOrderForNovedades(order)
+                                    setSelectedPlanillaId(String(order.planillaId))
+                                  }}
+                                  className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
+                                >
+                                  Gestionar Novedades
+                                </Button>
+
+                                {/* Tabla de productos */}
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-2">
+                                    Productos del pedido: Edita "Cant. Entregada" para entregas parciales.
+                                  </p>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="border-b">
+                                          <th className="text-left py-1 px-1 w-16">Dev.</th>
+                                          <th className="text-left py-1 px-1">Codigo</th>
+                                          <th className="text-left py-1 px-1">Descripcion</th>
+                                          <th className="text-center py-1 px-1">Cant. Orig</th>
+                                          <th className="text-center py-1 px-1">Cant. Entreg</th>
+                                          <th className="text-right py-1 px-1">Subtotal</th>
+                                          <th className="text-center py-1 px-1">Estado</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {order.items.map((item: any, idx: number) => {
+                                          if (!item) return null
+                                          const cantidadEntregada = Number(item.cantidadEntregada) || Number(item.cantidad) || 0
+                                          const subtotalCalculado = cantidadEntregada * (Number(item.valorUnidad) || 0)
+                                          const subtotalFinal = item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+                                            ? Number(item.subtotalAjustado)
+                                            : subtotalCalculado
+                                          const estadoProducto = item.estadoProducto || "normal"
+                                          const tieneAjusteManual = item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+
+                                          return (
+                                            <tr key={idx} className={`border-b ${item.devuelto || item.motivoAjuste === 'devuelto' ? "bg-red-50" : item.motivoAjuste === 'error_facturacion' ? "bg-orange-50" : ""}`}>
+                                              <td className="py-1 px-1">
+                                                <Select
+                                                  value={item.motivoAjuste || "normal"}
+                                                  onValueChange={(value) => handleMotivoAjusteChange(order.id, item.codigo, value === "normal" ? "" : value)}
+                                                >
+                                                  <SelectTrigger className="h-6 w-14 text-xs">
+                                                    <SelectValue placeholder="-" />
+                                                  </SelectTrigger>
+                                                  <SelectContent>
+                                                    <SelectItem value="normal">Normal</SelectItem>
+                                                    <SelectItem value="devuelto">Devolucion</SelectItem>
+                                                    <SelectItem value="error_facturacion">Error Fact.</SelectItem>
+                                                  </SelectContent>
+                                                </Select>
+                                              </td>
+                                              <td className="py-1 px-1">{item.codigo}</td>
+                                              <td className="py-1 px-1">{item.descripcion}</td>
+                                              <td className="text-center py-1 px-1">{item.cantidad}</td>
+                                              <td className="text-center py-1 px-1">
+                                                {!item.devuelto ? (
+                                                  <Input
+                                                    type="number"
+                                                    defaultValue={cantidadEntregada}
+                                                    min={0}
+                                                    max={item.cantidad}
+                                                    onBlur={(e) => {
+                                                      const newCant = Number.parseInt(e.target.value) || 0
+                                                      if (newCant !== cantidadEntregada) {
+                                                        handleCantidadChange(order.id, item.codigo, newCant, item.cantidad)
+                                                      }
+                                                    }}
+                                                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur() }}
+                                                    className="w-16 px-2 py-1 border rounded text-center"
+                                                  />
+                                                ) : (
+                                                  <span>{cantidadEntregada}</span>
+                                                )}
+                                              </td>
+                                              <td className="text-right py-1 px-1">
+                                                {!item.devuelto ? (
+                                                  <div className="flex flex-col items-end gap-1">
+                                                    <Input
+                                                      type="number"
+                                                      defaultValue={subtotalFinal}
+                                                      min={0}
+                                                      onBlur={(e) => {
+                                                        const newSubtotal = Number.parseFloat(e.target.value) || 0
+                                                        if (newSubtotal !== subtotalFinal) {
+                                                          handleSubtotalChange(order.id, item.codigo, newSubtotal)
+                                                        }
+                                                      }}
+                                                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur() }}
+                                                      className={`w-28 px-2 py-1 border rounded text-right font-medium ${tieneAjusteManual ? "border-orange-400 bg-orange-50" : ""}`}
+                                                    />
+                                                    {tieneAjusteManual && (
+                                                      <Badge variant="outline" className="text-[10px] bg-orange-100">Ajustado</Badge>
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  <span className="font-medium">{formatCOP(subtotalFinal)}</span>
+                                                )}
+                                              </td>
+                                              <td className="text-center py-1 px-1">
+                                                {estadoProducto === "agotado" && <Badge variant="outline" className="text-[10px] bg-gray-100">Agotado</Badge>}
+                                                {estadoProducto === "parcial" && <Badge variant="outline" className="text-[10px] bg-yellow-100">Parcial</Badge>}
+                                                {estadoProducto === "normal" && !item.devuelto && <Badge variant="outline" className="text-[10px] bg-green-100">Normal</Badge>}
+                                                {item.devuelto && <Badge variant="outline" className="text-[10px] bg-red-100">Devuelto</Badge>}
+                                              </td>
+                                            </tr>
+                                          )
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  <div className="flex justify-end mt-2 pt-2 border-t">
+                                    <span className="font-medium text-sm">Total:</span>
+                                    <span className="font-bold text-sm ml-2">{formatCOP(effectiveTotal)}</span>
+                                  </div>
+                                </div>
+
+                                {/* Descuentos */}
+                                <div className="pt-3 border-t">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-medium text-gray-600">Descuento (Opcional)</span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label className="text-xs text-gray-500">Monto del Descuento</Label>
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        max={effectiveTotal}
+                                        defaultValue={order.descuento || ""}
+                                        placeholder="0"
+                                        onBlur={(e) => handleDescuentoChange(order.id, Number(e.target.value) || 0)}
+                                        className="mt-1"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs text-gray-500">Motivo del Descuento</Label>
+                                      <Input
+                                        type="text"
+                                        defaultValue={order.motivoDescuento || ""}
+                                        placeholder="Ej: Promocion, averia..."
+                                        onBlur={(e) => handleMotivoDescuentoChange(order.id, e.target.value)}
+                                        className="mt-1"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Estado del Pedido */}
+                                <div className="pt-3 border-t">
+                                  <Label className="text-xs text-gray-600 block mb-2">Estado del Pedido</Label>
+                                  <Select
+                                    value={order.estado}
+                                    onValueChange={(value) => handleOrderStatusChange(order.id, value as Order["estado"])}
+                                  >
+                                    <SelectTrigger className="text-sm">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="entregado">Entregado</SelectItem>
+                                      <SelectItem value="fiado">Fiado</SelectItem>
+                                      <SelectItem value="repaso">Repaso</SelectItem>
+                                      <SelectItem value="devolucion">Devolucion</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                            )}
+                          </Card>
+                        )
+                      })}
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {/* VISTA POR RUTAS (original) */}
+              {!vistaPlana && (
               <Card className="p-6">
                 <h2 className="text-lg font-semibold mb-4">Mis Rutas Pendientes</h2>
                 {filteredRoutes.length === 0 ? (
@@ -1453,6 +1718,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   </div>
                 )}
               </Card>
+              )}
             </>
           )}
         </main>
