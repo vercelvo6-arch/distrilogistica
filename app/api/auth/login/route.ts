@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     const sql = getDB()
 
     const users = await sql`
-      SELECT id, nombre, email, password_hash, rol, estado
+      SELECT id, nombre, nombre_grupo, email, password_hash, rol, estado
       FROM usuarios
       WHERE email = ${email}
     `
@@ -51,24 +51,26 @@ export async function POST(request: Request) {
 
     console.log("[API login] User authenticated:", user.id)
 
-    // Buscar si hay otros usuarios con el mismo nombre (mismo entregador, distintos recorridos)
-    const mismoNombre = user.nombre_grupo ? await sql`
-  SELECT id, nombre, email, rol
-  FROM usuarios
-  WHERE nombre_grupo = ${user.nombre_grupo}
-    AND estado = 'activo'
-    AND id != ${user.id}
-` : []
-    `
+    // Si tiene nombre_grupo → buscar otros usuarios del mismo grupo
+    let mismoGrupo: any[] = []
+    if (user.nombre_grupo) {
+      mismoGrupo = await sql`
+        SELECT id, nombre, nombre_grupo, email, rol
+        FROM usuarios
+        WHERE nombre_grupo = ${user.nombre_grupo}
+          AND estado = 'activo'
+          AND id != ${user.id}
+      `
+    }
 
-    // Si hay más usuarios con el mismo nombre → pedir al frontend que elija recorrido
-    if (mismoNombre.length > 0) {
+    // Si hay más usuarios en el mismo grupo → pedir al frontend que elija recorrido
+    if (mismoGrupo.length > 0) {
       return NextResponse.json({
         success: true,
         requiereSeleccion: true,
         usuariosDisponibles: [
           { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol },
-          ...mismoNombre.map((u: any) => ({
+          ...mismoGrupo.map((u: any) => ({
             id: u.id,
             nombre: u.nombre,
             email: u.email,
