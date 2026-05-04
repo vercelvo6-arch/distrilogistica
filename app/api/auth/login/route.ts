@@ -52,12 +52,13 @@ export async function POST(request: Request) {
     console.log("[API login] User authenticated:", user.id)
 
     // Buscar si hay otros usuarios con el mismo nombre (mismo entregador, distintos recorridos)
-    const mismoNombre = await sql`
-      SELECT id, nombre, email, rol
-      FROM usuarios
-      WHERE nombre = ${user.nombre}
-        AND estado = 'activo'
-        AND id != ${user.id}
+    const mismoNombre = user.nombre_grupo ? await sql`
+  SELECT id, nombre, email, rol
+  FROM usuarios
+  WHERE nombre_grupo = ${user.nombre_grupo}
+    AND estado = 'activo'
+    AND id != ${user.id}
+` : []
     `
 
     // Si hay más usuarios con el mismo nombre → pedir al frontend que elija recorrido
