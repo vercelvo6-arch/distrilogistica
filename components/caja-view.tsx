@@ -490,7 +490,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
               ? Number(item.cantidadEntregada)
               : cantOriginal
-          if (cantEntregada === 0) return
+          if (cantEntregada === 0) {
+             agotadosEnPedido += subtotalOriginal
+             return
+          }
 
           const subtotalReal =
             item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
@@ -499,6 +502,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           effectiveTotal += subtotalReal
         })
 
+        agotados += agotadosEnPedido
         devoluciones += returnedTotal
         erroresFacturacion += erroresEnPedido
 
