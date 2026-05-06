@@ -471,6 +471,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         let effectiveTotal = 0
         let returnedTotal = 0
         let erroresEnPedido = 0
+        let agotadosEnPedido = 0
 
         order.items.forEach((item) => {
           if (!item) return
