@@ -39,7 +39,6 @@ export async function updatePedidoEstado(
 ) {
   const sql = getDB()
   try {
-    // 1️⃣ Obtener información del pedido ANTES de actualizar
     const pedidoActual = await sql`
       SELECT 
         p.id,
@@ -66,19 +65,16 @@ export async function updatePedidoEstado(
 
     const pedido = pedidoActual[0]
 
-    // 2️⃣ Construir el objeto de actualización dinámicamente
     const updates: any = {
       estado,
       entregado_en: estado === "entregado" ? new Date().toISOString() : null,
     }
     
-    // Si es fiado y se proporcionan los montos, agregarlos
     if (estado === 'fiado' && montoPagado !== undefined && saldoPendiente !== undefined) {
       updates.monto_pagado = montoPagado
       updates.saldo_pendiente = saldoPendiente
     }
 
-    // 3️⃣ Actualizar el pedido
     await sql`
       UPDATE pedidos 
       SET estado = ${updates.estado},
@@ -89,15 +85,7 @@ export async function updatePedidoEstado(
       WHERE id = ${pedidoId}
     `
 
-    // 4️⃣ SI ES UN COBRO → Actualizar el fiado original
     if (pedido.es_cobro && pedido.pedido_fiado_id) {
-      console.log('[updatePedidoEstado] 🔄 Actualizando fiado original:', {
-        fiadoId: pedido.pedido_fiado_id,
-        montoPagado: montoPagado || 0,
-        estado
-      })
-
-      // Obtener el fiado original
       const fiadoOriginal = await sql`
         SELECT * FROM fiados 
         WHERE id = ${pedido.pedido_fiado_id}
@@ -109,7 +97,6 @@ export async function updatePedidoEstado(
         const nuevoSaldo = Number(fiado.saldo_pendiente) - pagoActual
         const nuevoEstado = nuevoSaldo === 0 ? 'pagado' : 'abonado'
 
-        // Actualizar el fiado
         await sql`
           UPDATE fiados 
           SET saldo_pendiente = ${nuevoSaldo},
@@ -118,7 +105,6 @@ export async function updatePedidoEstado(
           WHERE id = ${pedido.pedido_fiado_id}
         `
 
-        // Registrar el abono (solo si pagó algo)
         if (pagoActual > 0) {
           await sql`
             INSERT INTO abonos_fiados (
@@ -138,29 +124,13 @@ export async function updatePedidoEstado(
             )
           `
         }
-
-        console.log('[updatePedidoEstado] ✅ Fiado actualizado:', {
-          fiadoId: pedido.pedido_fiado_id,
-          saldoAnterior: fiado.saldo_pendiente,
-          nuevoSaldo,
-          nuevoEstado
-        })
       }
     }
 
-    // 5️⃣ SI ES FIADO (pedido normal marcado como fiado), crear registro en tabla fiados
     if (estado === 'fiado' && !pedido.es_cobro) {
       const montoTotal = Number(pedido.total)
       const pagado = Number(montoPagado || 0)
       const saldo = Number(saldoPendiente || montoTotal)
-
-      console.log('[updatePedidoEstado] 💰 Creando registro en tabla fiados:', {
-        pedidoId,
-        cliente: pedido.cliente,
-        montoTotal,
-        montoPagado: pagado,
-        saldoPendiente: saldo
-      })
 
       await sql`
         INSERT INTO fiados (
@@ -197,11 +167,8 @@ export async function updatePedidoEstado(
           estado = EXCLUDED.estado,
           updated_at = NOW()
       `
-
-      console.log('[updatePedidoEstado] ✓ Fiado registrado en tabla fiados')
     }
 
-    // 6️⃣ Recalcular totales de la planilla
     const planillaId = pedido.planilla_id
 
     const totales = await sql`
@@ -327,14 +294,6 @@ export async function completarPlanilla(planillaId: string) {
     if (!p.porcentaje_comision || p.porcentaje_comision === 0) {
       throw new Error(`No hay configuración de comisión activa para ${p.entregador}. Configure el porcentaje en Admin > Comisiones > Configuración`)
     }
-
-    console.log('[completarPlanilla] 📊 Datos de planilla:', {
-      id: p.id,
-      entregador: p.entregador,
-      tipo_ruta: p.tipo_ruta,
-      fecha: p.fecha,
-      porcentaje: p.porcentaje_comision
-    })
     
     const pedidos = await sql`
       SELECT 
@@ -370,16 +329,13 @@ export async function completarPlanilla(planillaId: string) {
       for (const prod of productos) {
         const estadoProd = prod.estado_producto || 'normal'
         
-        // 🚫 AGOTADOS no suman ni restan (neutral)
         if (estadoProd === 'agotado') continue
         
-        // ❌ DEVUELTOS van a devolución
         if (prod.devuelto) {
           totalPedidoDevuelto += Number(prod.total)
           continue
         }
 
-        // ✅ ENTREGADOS: Usar subtotal_ajustado si existe, sino calcular con cantidad_entregada
         if (prod.subtotal_ajustado !== null && prod.subtotal_ajustado !== undefined) {
           totalPedidoEntregado += Number(prod.subtotal_ajustado)
         } else if (prod.cantidad_entregada !== null && prod.cantidad_entregada !== undefined) {
@@ -389,7 +345,6 @@ export async function completarPlanilla(planillaId: string) {
         }
       }
 
-      // Sumar según estado del pedido
       if (pedido.estado === 'entregado') {
         totalEntregado += totalPedidoEntregado
         totalDevolucion += totalPedidoDevuelto
@@ -399,7 +354,6 @@ export async function completarPlanilla(planillaId: string) {
       } else if (pedido.estado === 'repaso') {
         totalRepaso += totalPedidoEntregado
       } else if (pedido.estado === 'devolucion') {
-        // Pedido completo devuelto
         totalDevolucion += totalPedidoEntregado + totalPedidoDevuelto
       }
     }
@@ -414,18 +368,8 @@ export async function completarPlanilla(planillaId: string) {
       WHERE id = ${planillaId}
     `
 
-    // Calcular comisión: (Entregado + Fiado - Devoluciones) × %
     const baseComisionable = (totalEntregado + totalFiado) - totalDevolucion
     const montoComision = baseComisionable * (Number(p.porcentaje_comision) / 100)
-
-    console.log('[completarPlanilla] 💰 Calculando comisión:', {
-      entregado: totalEntregado,
-      fiado: totalFiado,
-      devoluciones: totalDevolucion,
-      base: baseComisionable,
-      porcentaje: p.porcentaje_comision,
-      comision: montoComision
-    })
 
     await sql`
       INSERT INTO comisiones (
@@ -467,8 +411,6 @@ export async function completarPlanilla(planillaId: string) {
       WHERE id = ${planillaId}
     `
 
-    console.log('[completarPlanilla] ✅ Comisión guardada:', montoComision)
-
     revalidatePath("/")
     return { success: true, comision: montoComision }
     
@@ -485,7 +427,6 @@ export async function updateCantidadEntregada(
 ) {
   const sql = getDB()
   try {
-    // Obtener cantidad original y precio
     const producto = await sql`
       SELECT cantidad, precio_unitario 
       FROM pedido_productos 
@@ -498,11 +439,10 @@ export async function updateCantidadEntregada(
 
     const cantidadOriginal = Number(producto[0].cantidad)
     const precioUnitario = Number(producto[0].precio_unitario)
+    const subtotalOriginal = cantidadOriginal * precioUnitario
     
-    // Calcular nuevo subtotal
     const nuevoSubtotal = cantidadEntregada * precioUnitario
     
-    // Determinar estado del producto
     let estadoProducto = 'normal'
     if (cantidadEntregada === 0) {
       estadoProducto = 'agotado'
@@ -510,7 +450,6 @@ export async function updateCantidadEntregada(
       estadoProducto = 'parcial'
     }
 
-    // Actualizar producto
     await sql`
       UPDATE pedido_productos 
       SET cantidad_entregada = ${cantidadEntregada},
@@ -520,13 +459,31 @@ export async function updateCantidadEntregada(
       WHERE pedido_id = ${pedidoId} AND codigo = ${codigo}
     `
 
-    // Recalcular totales del pedido
+    // ✅ Si quedó agotado → crear novedad en novedades_pedido (para que aparezca en el card)
+    if (estadoProducto === 'agotado') {
+      await sql`
+        INSERT INTO novedades_pedido (
+          pedido_id, tipo_novedad, monto_novedad, descripcion, registrado_por, tipo_registro, validado
+        ) VALUES (
+          ${pedidoId}, 'agotado', ${subtotalOriginal}, ${`Producto agotado: ${codigo}`}, 'caja', 'caja', true
+        )
+        ON CONFLICT DO NOTHING
+      `
+    } else {
+      // ✅ Si ya no está agotado → eliminar la novedad de agotado que creó caja
+      await sql`
+        DELETE FROM novedades_pedido
+        WHERE pedido_id = ${pedidoId}
+          AND tipo_novedad = 'agotado'
+          AND tipo_registro = 'caja'
+      `
+    }
+
     const pedido = await sql`SELECT planilla_id FROM pedidos WHERE id = ${pedidoId}`
     
     if (pedido.length > 0) {
       const planillaId = pedido[0].planilla_id
 
-      // Recalcular totales de la planilla
       const totales = await sql`
         SELECT 
           COALESCE(SUM(CASE WHEN p.estado = 'entregado' THEN p.total ELSE 0 END), 0) as total_entregado,
@@ -586,10 +543,7 @@ export async function updateDescuentoPedido(pedidoId: string, descuento: number)
       WHERE id = ${pedidoId}
     `
 
-    console.log('[updateDescuentoPedido] ✓ Descuento actualizado:', {
-      pedidoId,
-      descuento
-    })
+    console.log('[updateDescuentoPedido] ✓ Descuento actualizado:', { pedidoId, descuento })
 
     revalidatePath("/")
     return { success: true, descuento }
@@ -610,11 +564,6 @@ export async function updateMotivoDescuentoPedido(pedidoId: string, motivo: stri
       WHERE id = ${pedidoId}
     `
 
-    console.log('[updateMotivoDescuentoPedido] ✓ Motivo actualizado:', {
-      pedidoId,
-      motivo
-    })
-
     revalidatePath("/")
     return { success: true, motivo }
     
@@ -623,6 +572,7 @@ export async function updateMotivoDescuentoPedido(pedidoId: string, motivo: stri
     throw error
   }
 }
+
 export async function updateMotivoAjuste(
   pedidoId: string,
   codigoProducto: string,
@@ -638,12 +588,6 @@ export async function updateMotivoAjuste(
         AND codigo = ${codigoProducto}
     `
 
-    console.log('[updateMotivoAjuste] ✓ Motivo de ajuste actualizado:', {
-      pedidoId,
-      codigoProducto,
-      motivoAjuste
-    })
-
     revalidatePath("/")
     return { success: true, motivoAjuste }
     
@@ -652,6 +596,7 @@ export async function updateMotivoAjuste(
     throw error
   }
 }
+
 export async function devolverAlistamiento(planillaId: string) {
   const sql = getDB()
   try {
@@ -664,8 +609,6 @@ export async function devolverAlistamiento(planillaId: string) {
       WHERE id = ${planillaId}
         AND estado = 'alistado'
     `
-
-    console.log('[devolverAlistamiento] ✓ Planilla devuelta a alistamiento:', planillaId)
 
     revalidatePath("/")
     return { success: true }
