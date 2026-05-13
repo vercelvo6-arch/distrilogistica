@@ -155,7 +155,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [selectedCobro, setSelectedCobro] = useState<Order | null>(null)
   const [montoAbonoCobro, setMontoAbonoCobro] = useState("")
   const [submittingAbonoCobro, setSubmittingAbonoCobro] = useState(false)
-  const [todosEntregadores, setTodosEntregadores] = useState<string[]>([])
   
 
   useEffect(() => {
