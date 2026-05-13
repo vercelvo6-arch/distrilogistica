@@ -77,6 +77,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [recepciones, setRecepciones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [todosEntregadores, setTodosEntregadores] = useState<string[]>([])
 
   // ✅ NUEVO: Estado para novedades por planilla
   const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, NovedadPedido[]>>({})
@@ -154,11 +155,22 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [selectedCobro, setSelectedCobro] = useState<Order | null>(null)
   const [montoAbonoCobro, setMontoAbonoCobro] = useState("")
   const [submittingAbonoCobro, setSubmittingAbonoCobro] = useState(false)
+  const [todosEntregadores, setTodosEntregadores] = useState<string[]>([])
   
 
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+  fetch("/api/entregadores")
+    .then(r => r.json())
+    .then(data => {
+      const nombres = (data.entregadores || []).map((e: any) => e.nombre)
+      setTodosEntregadores(nombres)
+    })
+    .catch(console.error)
+}, [])
 
   useEffect(() => {
     if (selectedView === "historial") {
@@ -305,7 +317,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     (s) => (s.estado === 'alistado' || s.estado === 'completado') && !s.cuadradoEnCaja
   )
 
-  const entregadores = Array.from(new Set(completedRoutes.map((r) => r.entregador).filter(Boolean))) as string[]
+  const entregadores = todosEntregadores.length > 0
+  ? todosEntregadores
+  : Array.from(new Set(completedRoutes.map((r) => r.entregador).filter(Boolean))) as string[]
   const rutas = Array.from(new Set(completedRoutes.map((r) => r.ruta)))
 
   const filteredRoutes = completedRoutes.filter((route) => {
@@ -391,7 +405,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       if (!order || !Array.isArray(order.items)) return
 
       const novedadesDelPedido = todasNovedades.filter(
-        (n) => n.pedido_id === order.id
+      (n) => n.pedido_id === order.id && n.validado
       )
 
             if (novedadesDelPedido.length > 0) {
