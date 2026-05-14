@@ -43,31 +43,20 @@ export async function POST(request: NextRequest) {
     `
 
     if (pedidoActual.length === 0) {
-      return NextResponse.json(
-        { error: 'Pedido no encontrado' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
     }
 
     const pedido = pedidoActual[0]
 
     // 2️⃣ Verificar que la nueva planilla existe
     const nuevaPlanilla = await sql`
-      SELECT 
-        id,
-        tipo_ruta,
-        entregador,
-        estado,
-        cuadrado_en_caja
+      SELECT id, tipo_ruta, entregador, estado, cuadrado_en_caja
       FROM planillas
       WHERE id = ${nuevaPlanillaId}
     `
 
     if (nuevaPlanilla.length === 0) {
-      return NextResponse.json(
-        { error: 'Planilla destino no encontrada' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Planilla destino no encontrada' }, { status: 404 })
     }
 
     const planilla = nuevaPlanilla[0]
@@ -103,7 +92,6 @@ export async function POST(request: NextRequest) {
     `
 
     const nuevaSecuencia = Number(ultimaSecuencia[0].max_secuencia) + 1
-
     const nuevoEstado = pedido.estado === 'repaso' ? 'pendiente' : pedido.estado
 
     // 6️⃣ Actualizar el pedido
@@ -117,10 +105,7 @@ export async function POST(request: NextRequest) {
       WHERE id = ${pedidoId}
     `
 
-    console.log('[API Reasignar Pedido] ✓ Pedido actualizado:', {
-      nueva_secuencia: nuevaSecuencia,
-      nuevo_estado: nuevoEstado
-    })
+    console.log('[API Reasignar Pedido] ✓ Pedido actualizado')
 
     // ✅ Actualizar faltantes del pedido a la nueva planilla y entregador
     const faltantesActualizados = await sql`
@@ -128,8 +113,7 @@ export async function POST(request: NextRequest) {
       SET 
         planilla_id = ${nuevaPlanillaId},
         entregador = ${planilla.entregador},
-        ruta = ${planilla.tipo_ruta},
-        updated_at = NOW()
+        ruta = ${planilla.tipo_ruta}
       WHERE planilla_id = ${pedido.planilla_actual}
         AND codigo IN (
           SELECT codigo FROM pedido_productos WHERE pedido_id = ${pedidoId}
@@ -140,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API Reasignar Pedido] ✓ Faltantes actualizados: ${faltantesActualizados.length}`)
 
-    // 7️⃣ Recalcular totales de la planilla ORIGEN
+    // 7️⃣ Recalcular totales planilla ORIGEN
     const totalesOrigen = await sql`
       SELECT 
         COALESCE(SUM(CASE WHEN estado = 'entregado' THEN total ELSE 0 END), 0) as total_entregado,
@@ -166,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[API Reasignar Pedido] ✓ Totales recalculados para planilla origen')
 
-    // 8️⃣ Recalcular totales de la planilla DESTINO
+    // 8️⃣ Recalcular totales planilla DESTINO
     const totalesDestino = await sql`
       SELECT 
         COALESCE(SUM(CASE WHEN estado = 'entregado' THEN total ELSE 0 END), 0) as total_entregado,
