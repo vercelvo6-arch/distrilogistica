@@ -104,12 +104,6 @@ export async function POST(request: NextRequest) {
 
     const nuevaSecuencia = Number(ultimaSecuencia[0].max_secuencia) + 1
 
-    // ✅ FIX CRÍTICO: Si el pedido era repaso, llega como pendiente a la nueva planilla
-    // Esto rompe el bucle infinito de reasignación:
-    // - repaso del día → se descuenta del cargue actual ✅
-    // - al reasignarlo → llega como pendiente en el nuevo cargue ✅
-    // - si no se entrega → Caja puede marcarlo como repaso de nuevo pero
-    //   esta vez el admin puede reasignarlo sin que vuelva al card de repasos
     const nuevoEstado = pedido.estado === 'repaso' ? 'pendiente' : pedido.estado
 
     // 6️⃣ Actualizar el pedido
@@ -127,6 +121,24 @@ export async function POST(request: NextRequest) {
       nueva_secuencia: nuevaSecuencia,
       nuevo_estado: nuevoEstado
     })
+
+    // ✅ Actualizar faltantes del pedido a la nueva planilla y entregador
+    const faltantesActualizados = await sql`
+      UPDATE faltantes
+      SET 
+        planilla_id = ${nuevaPlanillaId},
+        entregador = ${planilla.entregador},
+        ruta = ${planilla.tipo_ruta},
+        updated_at = NOW()
+      WHERE planilla_id = ${pedido.planilla_actual}
+        AND codigo IN (
+          SELECT codigo FROM pedido_productos WHERE pedido_id = ${pedidoId}
+        )
+        AND estado = 'pendiente'
+      RETURNING id
+    `
+
+    console.log(`[API Reasignar Pedido] ✓ Faltantes actualizados: ${faltantesActualizados.length}`)
 
     // 7️⃣ Recalcular totales de la planilla ORIGEN
     const totalesOrigen = await sql`
