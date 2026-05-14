@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    // Solo caja y admin pueden reasignar
     if (session.user.rol !== 'caja' && session.user.rol !== 'administrador') {
       return NextResponse.json(
         { error: 'No tienes permisos para reasignar rutas' },
@@ -25,7 +24,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { planillaId, nuevoEntregador } = body;
 
-    // Validaciones
     if (!planillaId) {
       return NextResponse.json({ error: "planillaId es requerido" }, { status: 400 });
     }
@@ -38,7 +36,6 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB();
 
-    // Verificar que el nuevo entregador existe y está activo
     const entregadorExists = await sql`
       SELECT id, nombre FROM usuarios 
       WHERE nombre = ${nuevoEntregador} 
@@ -53,7 +50,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verificar que la planilla existe y obtener el entregador actual
     const planillaActual = await sql`
       SELECT id, entregador, tipo_ruta, total_cargue 
       FROM planillas 
@@ -71,7 +67,7 @@ export async function POST(request: NextRequest) {
     console.log(`[API /reasignar] Entregador anterior: ${entregadorAnterior}`);
     console.log(`[API /reasignar] Total cargue a reasignar: ${totalCargue}`);
 
-    // Actualizar el entregador de la planilla
+    // Actualizar entregador en la planilla
     const result = await sql`
       UPDATE planillas
       SET entregador = ${nuevoEntregador},
@@ -81,6 +77,18 @@ export async function POST(request: NextRequest) {
     `;
 
     console.log(`[API /reasignar] ✓ Planilla reasignada exitosamente`);
+
+    // ✅ Actualizar entregador en faltantes pendientes de esta planilla
+    const faltantesActualizados = await sql`
+      UPDATE faltantes
+      SET entregador = ${nuevoEntregador},
+          updated_at = NOW()
+      WHERE planilla_id = ${planillaId}
+        AND estado = 'pendiente'
+      RETURNING id
+    `
+
+    console.log(`[API /reasignar] ✓ Faltantes actualizados: ${faltantesActualizados.length}`);
     console.log(`[API /reasignar] ===== FIN =====`);
 
     return NextResponse.json({
@@ -90,7 +98,8 @@ export async function POST(request: NextRequest) {
       entregadorAnterior,
       nuevoEntregador,
       totalCargue,
-      planilla: result[0]
+      planilla: result[0],
+      faltantesActualizados: faltantesActualizados.length
     });
 
   } catch (error: any) {
