@@ -81,8 +81,8 @@ export async function POST(request: NextRequest) {
     // ✅ Actualizar entregador en faltantes pendientes de esta planilla
     const faltantesActualizados = await sql`
       UPDATE faltantes
-      SET entregador = ${nuevoEntregador},
-          updated_at = NOW()
+      SET 
+        entregador = ${nuevoEntregador}
       WHERE planilla_id = ${planillaId}
         AND estado = 'pendiente'
       RETURNING id
