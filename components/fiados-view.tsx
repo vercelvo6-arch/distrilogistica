@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Plus, ArrowRight, Upload } from "lucide-react"
+import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Plus, ArrowRight, Upload, Trash2 } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -38,6 +38,8 @@ interface Fiado {
   estado: string
   observaciones?: string
   abonos?: Abono[]
+  origen?: string
+  fiado_tabla_id?: string
 }
 
 interface Abono {
@@ -94,6 +96,11 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   const [planillasDisponibles, setPlanillasDisponibles] = useState<PlanillaDestino[]>([])
   const [planillaCobroId, setPlanillaCobroId] = useState<string>("")
   const [asignandoCobro, setAsignandoCobro] = useState(false)
+
+  // Estados para eliminar
+  const [showEliminarModal, setShowEliminarModal] = useState(false)
+  const [selectedFiadoParaEliminar, setSelectedFiadoParaEliminar] = useState<Fiado | null>(null)
+  const [eliminando, setEliminando] = useState(false)
 
   // Estados para importar
   const [importando, setImportando] = useState(false)
@@ -260,7 +267,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     try {
       setAsignandoCobro(true)
 
-      // ✅ LIMPIAR Y VALIDAR EL ID
       const planillaIdLimpio = String(planillaCobroId).trim()
       
       console.log('🔍 [FRONTEND] Asignando cobro:', {
@@ -422,6 +428,51 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     }
   }
 
+  // ✅ NUEVO: Abrir modal de eliminar
+  const openEliminarModal = (fiado: Fiado) => {
+    setSelectedFiadoParaEliminar(fiado)
+    setShowEliminarModal(true)
+  }
+
+  // ✅ NUEVO: Eliminar fiado
+  const handleEliminarFiado = async () => {
+    if (!selectedFiadoParaEliminar) return
+
+    try {
+      setEliminando(true)
+
+      const body = selectedFiadoParaEliminar.origen === 'fiados'
+        ? { fiadoId: selectedFiadoParaEliminar.fiado_tabla_id || selectedFiadoParaEliminar.id }
+        : { pedidoId: selectedFiadoParaEliminar.id }
+
+      const response = await fetch('/api/fiados/eliminar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Error al eliminar fiado')
+
+      toast({
+        title: "✅ Eliminado",
+        description: `Fiado de ${selectedFiadoParaEliminar.cliente} eliminado correctamente`,
+      })
+
+      setShowEliminarModal(false)
+      setSelectedFiadoParaEliminar(null)
+      await loadFiados()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al eliminar fiado",
+        variant: "destructive",
+      })
+    } finally {
+      setEliminando(false)
+    }
+  }
+
   const exportarCSV = () => {
     const headers = ["Cliente", "Dirección", "Teléfono", "Barrio", "Total", "Pagado", "Saldo", "Fecha", "Entregador", "Ruta", "Estado"]
     
@@ -456,6 +507,12 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
   const totalGeneral = resumen.reduce((sum, r) => sum + r.monto_total, 0)
   const totalClientes = fiados.length
+
+  // ✅ Helper: estados activos que deben mostrar botones de abono/cobro
+  const tieneSaldoPendiente = (fiado: Fiado) => {
+    const saldo = Number(fiado.saldo_pendiente || fiado.total)
+    return ["fiado", "parcial", "pendiente", "abono_parcial", "abonado"].includes(fiado.estado) && saldo > 0
+  }
 
   return (
     <>
@@ -613,11 +670,13 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                     fiados.map((fiado) => {
                       const saldo = Number(fiado.saldo_pendiente || fiado.total)
                       const isParcial = Number(fiado.monto_pagado) > 0 && saldo > 0
-                      
+                      const mostrarBotones = tieneSaldoPendiente(fiado)
+
                       return (
                         <TableRow key={fiado.id}>
                           <TableCell>
-                            {(fiado.estado === "fiado" || fiado.estado === "parcial" || fiado.estado === "pendiente") && saldo > 0 && (
+                            {/* ✅ FIX: incluye abono_parcial */}
+                            {mostrarBotones && (
                               <Checkbox
                                 checked={selectedFiados.has(fiado.id)}
                                 onCheckedChange={(checked) => {
@@ -665,8 +724,9 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            <div className="flex gap-2 justify-center">
-                              {(fiado.estado === "fiado" || fiado.estado === "parcial" || fiado.estado === "pendiente") && saldo > 0 && (
+                            <div className="flex gap-2 justify-center flex-wrap">
+                              {/* ✅ FIX: botones visibles para abono_parcial también */}
+                              {mostrarBotones && (
                                 <>
                                   <Button
                                     variant="outline"
@@ -688,6 +748,18 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                                     </Button>
                                   )}
                                 </>
+                              )}
+                              {/* ✅ NUEVO: botón eliminar solo para admin */}
+                              {userRole === "administrador" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openEliminarModal(fiado)}
+                                  className="border-red-300 text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="h-3 w-3 mr-1" />
+                                  Eliminar
+                                </Button>
                               )}
                             </div>
                           </TableCell>
@@ -892,6 +964,45 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
             </Button>
             <Button onClick={handleAsignarCobro} disabled={asignandoCobro || !planillaCobroId}>
               {asignandoCobro ? "Asignando..." : "Confirmar Asignación"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ✅ NUEVO: MODAL PARA ELIMINAR FIADO */}
+      <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar Fiado</DialogTitle>
+            <DialogDescription>
+              Esta acción marcará el fiado como eliminado. El registro histórico se conserva.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedFiadoParaEliminar && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-red-50 border border-red-200 rounded space-y-1">
+                <p className="font-medium text-red-800">Cliente: {selectedFiadoParaEliminar.cliente}</p>
+                <p className="text-sm text-red-700">Saldo pendiente: {formatCOP(Number(selectedFiadoParaEliminar.saldo_pendiente))}</p>
+                <p className="text-sm text-red-700">Entregador: {selectedFiadoParaEliminar.entregador}</p>
+              </div>
+              <p className="text-sm text-gray-600">
+                El fiado no aparecerá más en la lista pero el registro histórico se conserva en la base de datos.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEliminarModal(false)
+                setSelectedFiadoParaEliminar(null)
+              }}
+              disabled={eliminando}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleEliminarFiado} disabled={eliminando}>
+              {eliminando ? "Eliminando..." : "Eliminar Fiado"}
             </Button>
           </DialogFooter>
         </DialogContent>
