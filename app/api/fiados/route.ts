@@ -42,17 +42,15 @@ export async function GET(request: NextRequest) {
         FROM fiados f
         WHERE f.planilla_id = ${Number(planillaId)}
           AND f.estado != 'pagado_completo'
+          AND (f.eliminado IS NULL OR f.eliminado = false)
         ORDER BY f.cliente ASC
       `
-
-      console.log('[API fiados] Fiados asignados a planilla', planillaId, ':', fiadosAsignados.length)
 
       return NextResponse.json({ fiados: fiadosAsignados, resumen: [] })
     }
 
     // ========================================
-    // CONSULTA 1: Tabla "pedidos" (fiados de planillas diarias)
-    // ✅ SOLUCIÓN DEFINITIVA: LEFT JOIN para excluir pedidos con cobro activo
+    // CONSULTA 1: Tabla "pedidos"
     // ========================================
     let fiadosPedidos: any[] = []
     
@@ -191,7 +189,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ========================================
-    // CONSULTA 2: Tabla "fiados" (importados desde CSV)
+    // CONSULTA 2: Tabla "fiados" — con filtro eliminado
     // ========================================
     let fiadosTabla: any[] = []
     
@@ -213,13 +211,15 @@ export async function GET(request: NextRequest) {
             f.entregador,
             f.ruta as tipo_ruta,
             f.planilla_id::text as planilla_id,
-            'fiados' as origen
+            'fiados' as origen,
+            f.id::text as fiado_tabla_id
           FROM fiados f
           WHERE f.fecha_fiado >= ${fechaInicio}::date
             AND f.fecha_fiado <= ${fechaFin}::date
             AND f.entregador = ${entregador}
             AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
             AND f.estado IN ('pendiente', 'abono_parcial')
+            AND (f.eliminado IS NULL OR f.eliminado = false)
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       } else if (fechaInicio && fechaFin) {
@@ -239,12 +239,14 @@ export async function GET(request: NextRequest) {
             f.entregador,
             f.ruta as tipo_ruta,
             f.planilla_id::text as planilla_id,
-            'fiados' as origen
+            'fiados' as origen,
+            f.id::text as fiado_tabla_id
           FROM fiados f
           WHERE f.fecha_fiado >= ${fechaInicio}::date
             AND f.fecha_fiado <= ${fechaFin}::date
             AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
             AND f.estado IN ('pendiente', 'abono_parcial')
+            AND (f.eliminado IS NULL OR f.eliminado = false)
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       } else if (entregador && entregador !== 'all') {
@@ -264,11 +266,13 @@ export async function GET(request: NextRequest) {
             f.entregador,
             f.ruta as tipo_ruta,
             f.planilla_id::text as planilla_id,
-            'fiados' as origen
+            'fiados' as origen,
+            f.id::text as fiado_tabla_id
           FROM fiados f
           WHERE f.entregador = ${entregador}
             AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
             AND f.estado IN ('pendiente', 'abono_parcial')
+            AND (f.eliminado IS NULL OR f.eliminado = false)
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       } else {
@@ -288,10 +292,12 @@ export async function GET(request: NextRequest) {
             f.entregador,
             f.ruta as tipo_ruta,
             f.planilla_id::text as planilla_id,
-            'fiados' as origen
+            'fiados' as origen,
+            f.id::text as fiado_tabla_id
           FROM fiados f
           WHERE (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
             AND f.estado IN ('pendiente', 'abono_parcial')
+            AND (f.eliminado IS NULL OR f.eliminado = false)
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
       }
