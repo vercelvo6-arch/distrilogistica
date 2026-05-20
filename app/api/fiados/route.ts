@@ -189,7 +189,8 @@ export async function GET(request: NextRequest) {
     }
 
     // ========================================
-    // CONSULTA 2: Tabla "fiados" — con filtro eliminado
+    // CONSULTA 2: Tabla "fiados"
+    // ✅ FIX: usar + interval '1 day' para incluir timestamps del día final
     // ========================================
     let fiadosTabla: any[] = []
     
@@ -215,7 +216,7 @@ export async function GET(request: NextRequest) {
             f.id::text as fiado_tabla_id
           FROM fiados f
           WHERE f.fecha_fiado >= ${fechaInicio}::date
-            AND f.fecha_fiado <= ${fechaFin}::date
+            AND f.fecha_fiado < ${fechaFin}::date + interval '1 day'
             AND f.entregador = ${entregador}
             AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
             AND f.estado IN ('pendiente', 'abono_parcial')
@@ -243,7 +244,7 @@ export async function GET(request: NextRequest) {
             f.id::text as fiado_tabla_id
           FROM fiados f
           WHERE f.fecha_fiado >= ${fechaInicio}::date
-            AND f.fecha_fiado <= ${fechaFin}::date
+            AND f.fecha_fiado < ${fechaFin}::date + interval '1 day'
             AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
             AND f.estado IN ('pendiente', 'abono_parcial')
             AND (f.eliminado IS NULL OR f.eliminado = false)
