@@ -16,23 +16,32 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { fiadoId, pedidoId } = body
 
+    console.log('[FIADOS ELIMINAR] Datos recibidos:', { fiadoId, pedidoId })
+
     if (!fiadoId && !pedidoId) {
       return NextResponse.json({ error: 'Se requiere fiadoId o pedidoId' }, { status: 400 })
     }
 
     const sql = getDB()
 
-    // Eliminar por fiadoId (tabla fiados)
+    // ── Eliminar por fiadoId (tabla fiados) ──
     if (fiadoId) {
+      // ✅ Castear a número — la tabla fiados usa id integer
+      const idNum = Number(fiadoId)
+      if (!idNum || isNaN(idNum)) {
+        return NextResponse.json({ error: 'fiadoId inválido' }, { status: 400 })
+      }
+
       const fiado = await sql`
-        SELECT id, estado, eliminado FROM fiados WHERE id = ${fiadoId}
+        SELECT id, estado, eliminado FROM fiados WHERE id = ${idNum}
       `
 
       if (fiado.length === 0) {
+        console.log('[FIADOS ELIMINAR] ❌ Fiado no encontrado:', idNum)
         return NextResponse.json({ error: 'Fiado no encontrado' }, { status: 404 })
       }
 
-      if (fiado[0].eliminado) {
+      if (fiado[0].eliminado === true || fiado[0].eliminado === 't') {
         return NextResponse.json({ error: 'Este fiado ya fue eliminado' }, { status: 400 })
       }
 
@@ -41,12 +50,11 @@ export async function POST(request: NextRequest) {
         SET
           eliminado = true,
           eliminado_por = ${session.user.id},
-          fecha_eliminacion = NOW(),
-          updated_at = NOW()
-        WHERE id = ${fiadoId}
+          fecha_eliminacion = NOW()
+        WHERE id = ${idNum}
       `
 
-      console.log(`[FIADOS ELIMINAR] ✓ Fiado ${fiadoId} eliminado por ${session.user.nombre}`)
+      console.log(`[FIADOS ELIMINAR] ✓ Fiado ${idNum} eliminado por ${session.user.nombre}`)
 
       return NextResponse.json({
         success: true,
@@ -54,13 +62,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Eliminar por pedidoId (tabla pedidos con estado fiado)
+    // ── Eliminar por pedidoId (tabla pedidos) ──
     if (pedidoId) {
       const pedido = await sql`
         SELECT id, estado, cliente FROM pedidos WHERE id = ${pedidoId}
       `
 
       if (pedido.length === 0) {
+        console.log('[FIADOS ELIMINAR] ❌ Pedido no encontrado:', pedidoId)
         return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
       }
 
