@@ -394,7 +394,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pedidoId: selectedFiado.id,
+          pedidoId: selectedFiado.fiado_tabla_id || selectedFiado.id,
           montoAbono,
           metodoPago: abonoForm.metodoPago,
           observaciones: abonoForm.observaciones || null,
