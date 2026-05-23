@@ -1845,6 +1845,18 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
     }
   })
 
+  // Total cobros de fiados recibidos (pedidos con esCobro=true y estado=pagado)
+  let totalCobrosCxC = 0
+  filteredRoutes.forEach((route) => {
+    if (Array.isArray(route.orders)) {
+      route.orders.forEach((order: any) => {
+        if (order?.esCobro && order?.estado === 'pagado') {
+          totalCobrosCxC += Number(order.total || 0)
+        }
+      })
+    }
+  })
+
   const totalRecibido = selectedPlanilla
     ? Number(formData.efectivoRecibido || 0) +
       (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
@@ -2216,7 +2228,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                   </Select>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mt-4 pt-4 border-t">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-3 mt-4 pt-4 border-t">
                   <div className="text-center p-2 bg-blue-50 rounded">
                     <span className="text-xs text-blue-600 font-medium">Total Cargue</span>
                     <p className="font-bold text-blue-700">{formatCOP(totalCargue)}</p>
@@ -2248,6 +2260,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                   <div className="text-center p-2 bg-purple-50 rounded">
                     <span className="text-xs text-purple-600 font-medium">Descuentos</span>
                     <p className="font-bold text-purple-700">{formatCOP(totalDescuentos)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-green-100 rounded">
+                    <span className="text-xs text-green-700 font-medium">Cobros CxC</span>
+                    <p className="font-bold text-green-800">{formatCOP(totalCobrosCxC)}</p>
                   </div>
                 </div>
 
