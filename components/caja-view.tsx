@@ -3327,7 +3327,15 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               <div className="text-center p-2 bg-green-50 rounded">
                 <span className="text-xs text-green-600 font-medium">Efectivo Esperado</span>
                 <p className="font-bold text-green-700">
-                  {formatCOP(agrupadoData?.totales.entregado || 0)}
+                  {formatCOP(
+  (agrupadoData?.totales.cargue || 0) -
+  (Number(formData.fiados) || 0) -
+  (Number(formData.repasos) || 0) -
+  (Number(formData.devolucionesParciales) || 0) -
+  (Number(formData.agotados) || 0) -
+  (Number(formData.descuento) || 0) -
+  (Number((document.getElementById('erroresFactAgrupado') as HTMLInputElement)?.value) || 0)
+)}
                 </p>
               </div>
             </div>
@@ -3335,7 +3343,13 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             <div className="border-t pt-4 flex justify-between items-center">
               <span className="font-semibold">Diferencia:</span>
               {(() => {
-                const esperado = agrupadoData?.totales.entregado || 0
+                const esperado = (agrupadoData?.totales.cargue || 0) -
+  (Number(formData.fiados) || 0) -
+  (Number(formData.repasos) || 0) -
+  (Number(formData.devolucionesParciales) || 0) -
+  (Number(formData.agotados) || 0) -
+  (Number(formData.descuento) || 0) -
+  (Number((document.getElementById('erroresFactAgrupado') as HTMLInputElement)?.value) || 0)
                 const recibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
                 const diferencia = recibido - esperado
                 return (
