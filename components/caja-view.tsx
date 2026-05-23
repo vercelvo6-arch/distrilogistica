@@ -106,6 +106,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     repasos: "",
     fiados: "",
     agotados: "",
+    erroresFacturacion: "",
   })
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
@@ -1444,6 +1445,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       repasos: totalRepasosAgrupado.toString(),
       fiados: totalFiadoAgrupado.toString(),
       agotados: totalAgotadosAgrupado.toString(),
+      erroresFacturacion: totalErroresFacturacionAgrupado.toString(),
     })
 
     setAgrupadoData(agrupado)
@@ -1527,11 +1529,16 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const agotadosFinal = Number(formData.agotados) || 0
     const descuentoFinal = Number(formData.descuento) || 0
 
-    const erroresFactInput = document.getElementById('erroresFactAgrupado') as HTMLInputElement
-    const erroresFacturacionFinal = Number(erroresFactInput?.value) || 0
+    const erroresFacturacionFinal = Number(formData.erroresFacturacion) || 0
 
-    // El efectivo esperado es el entregado calculado (igual que en la vista principal)
-    const totalEsperadoCalculado = agrupadoData.totales.entregado || 0
+    // Efectivo esperado = Cargue - todas las novedades
+    const totalEsperadoCalculado = (agrupadoData.totales.cargue || 0) -
+      (Number(formData.fiados) || 0) -
+      (Number(formData.repasos) || 0) -
+      (Number(formData.devolucionesParciales) || 0) -
+      (Number(formData.agotados) || 0) -
+      (Number(formData.descuento) || 0) -
+      erroresFacturacionFinal
 
     const payload = {
       planillaIds: agrupadoData.planillaIds,
@@ -3213,12 +3220,9 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 <div>
                   <Label className="text-xs text-orange-700 font-medium">Errores Facturación</Label>
                   <Input
-                    id="erroresFactAgrupado"
                     type="number"
-                    defaultValue={agrupadoData?.totales?.erroresFacturacion || 0}
-                    onChange={(e) => {
-                      // Guardar en formData si lo necesitas
-                    }}
+                    value={formData.erroresFacturacion || "0"}
+                    onChange={(e) => setFormData({ ...formData, erroresFacturacion: e.target.value })}
                     className="mt-1 font-semibold border-orange-300"
                   />
                 </div>
@@ -3328,14 +3332,14 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 <span className="text-xs text-green-600 font-medium">Efectivo Esperado</span>
                 <p className="font-bold text-green-700">
                   {formatCOP(
-  (agrupadoData?.totales.cargue || 0) -
-  (Number(formData.fiados) || 0) -
-  (Number(formData.repasos) || 0) -
-  (Number(formData.devolucionesParciales) || 0) -
-  (Number(formData.agotados) || 0) -
-  (Number(formData.descuento) || 0) -
-  (Number((document.getElementById('erroresFactAgrupado') as HTMLInputElement)?.value) || 0)
-)}
+                    (agrupadoData?.totales.cargue || 0) -
+                    (Number(formData.fiados) || 0) -
+                    (Number(formData.repasos) || 0) -
+                    (Number(formData.devolucionesParciales) || 0) -
+                    (Number(formData.agotados) || 0) -
+                    (Number(formData.descuento) || 0) -
+                    (Number(formData.erroresFacturacion) || 0)
+                  )}
                 </p>
               </div>
             </div>
@@ -3344,12 +3348,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               <span className="font-semibold">Diferencia:</span>
               {(() => {
                 const esperado = (agrupadoData?.totales.cargue || 0) -
-  (Number(formData.fiados) || 0) -
-  (Number(formData.repasos) || 0) -
-  (Number(formData.devolucionesParciales) || 0) -
-  (Number(formData.agotados) || 0) -
-  (Number(formData.descuento) || 0) -
-  (Number((document.getElementById('erroresFactAgrupado') as HTMLInputElement)?.value) || 0)
+                  (Number(formData.fiados) || 0) -
+                  (Number(formData.repasos) || 0) -
+                  (Number(formData.devolucionesParciales) || 0) -
+                  (Number(formData.agotados) || 0) -
+                  (Number(formData.descuento) || 0) -
+                  (Number(formData.erroresFacturacion) || 0)
                 const recibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
                 const diferencia = recibido - esperado
                 return (
