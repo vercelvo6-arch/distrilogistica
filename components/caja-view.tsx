@@ -106,7 +106,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     repasos: "",
     fiados: "",
     agotados: "",
-    erroresFacturacion: "",
   })
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
@@ -1445,7 +1444,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       repasos: totalRepasosAgrupado.toString(),
       fiados: totalFiadoAgrupado.toString(),
       agotados: totalAgotadosAgrupado.toString(),
-      erroresFacturacion: totalErroresFacturacionAgrupado.toString(),
     })
 
     setAgrupadoData(agrupado)
@@ -1529,16 +1527,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const agotadosFinal = Number(formData.agotados) || 0
     const descuentoFinal = Number(formData.descuento) || 0
 
-    const erroresFacturacionFinal = Number(formData.erroresFacturacion) || 0
+    const erroresFactInput = document.getElementById('erroresFactAgrupado') as HTMLInputElement
+    const erroresFacturacionFinal = Number(erroresFactInput?.value) || 0
 
-    // Efectivo esperado = Cargue - todas las novedades
-    const totalEsperadoCalculado = (agrupadoData.totales.cargue || 0) -
-      (Number(formData.fiados) || 0) -
-      (Number(formData.repasos) || 0) -
-      (Number(formData.devolucionesParciales) || 0) -
-      (Number(formData.agotados) || 0) -
-      (Number(formData.descuento) || 0) -
-      erroresFacturacionFinal
+    // El efectivo esperado es el entregado calculado (igual que en la vista principal)
+    const totalEsperadoCalculado = agrupadoData.totales.entregado || 0
 
     const payload = {
       planillaIds: agrupadoData.planillaIds,
@@ -2430,7 +2423,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                               </div>
 
                               {/* Totales con mejor espaciado y fondos de colores */}
-                              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
+                              <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 mt-3">
                                 <div className="text-center p-2 bg-blue-50 rounded">
                                   <span className="text-xs text-blue-600 font-medium">Cargue</span>
                                   <p className="font-bold text-blue-700">{formatCOP(route.totalAmount)}</p>
@@ -2454,6 +2447,16 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                 <div className="text-center p-2 bg-gray-100 rounded">
                                   <span className="text-xs text-gray-600 font-medium">Agotados</span>
                                   <p className="font-bold text-gray-700">{formatCOP(totals.agotados)}</p>
+                                </div>
+                                <div className="text-center p-2 bg-purple-50 rounded">
+                                  <span className="text-xs text-purple-600 font-medium">Cobros CxC</span>
+                                  <p className="font-bold text-purple-700">
+                                    {formatCOP(
+                                      route.orders
+                                        ?.filter((o: any) => o?.esCobro && o?.estado === 'pagado')
+                                        .reduce((sum: number, o: any) => sum + Number(o.total || 0), 0) || 0
+                                    )}
+                                  </p>
                                 </div>
                               </div>
 
@@ -2861,36 +2864,48 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
 
                                               {order.esCobro ? (
                                                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
-                                                  <div className="w-full mb-1 p-2 bg-purple-50 rounded text-xs text-purple-700 font-medium">
-                                                    💰 Cobro de fiado — ¿qué pasó?
-                                                  </div>
-                                                  <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleOrderStatusChange(order.id, "entregado")}
-                                                    className="flex-1 sm:flex-none border-green-400 text-green-700 hover:bg-green-50"
-                                                    disabled={route.cuadradoEnCaja}
-                                                  >
-                                                    ✅ Cobrado (pagó todo)
-                                                  </Button>
-                                                  <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => { setSelectedCobro(order); setMontoAbonoCobro(""); setShowAbonoCobroModal(true) }}
-                                                    className="flex-1 sm:flex-none border-amber-400 text-amber-700 hover:bg-amber-50"
-                                                    disabled={route.cuadradoEnCaja}
-                                                  >
-                                                    💵 Abono parcial
-                                                  </Button>
-                                                  <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => handleNoPagoCobro(order.id, route.id)}
-                                                    className="flex-1 sm:flex-none border-gray-400 text-gray-600 hover:bg-gray-50"
-                                                    disabled={route.cuadradoEnCaja}
-                                                  >
-                                                    ↩️ No pagó
-                                                  </Button>
+                                                  {order.estado === "pagado" ? (
+                                                    <div className="w-full p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                      <div className="flex items-center justify-between">
+                                                        <span className="text-sm font-bold text-green-700">✅ COBRO RECIBIDO</span>
+                                                        <span className="text-sm font-bold text-green-700">{formatCOP(Number(order.total))}</span>
+                                                      </div>
+                                                      <p className="text-xs text-green-600 mt-1">El fiado original fue actualizado como pagado</p>
+                                                    </div>
+                                                  ) : (
+                                                    <>
+                                                      <div className="w-full mb-1 p-2 bg-purple-50 rounded text-xs text-purple-700 font-medium">
+                                                        💰 Cobro de fiado — ¿qué pasó?
+                                                      </div>
+                                                      <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleOrderStatusChange(order.id, "entregado")}
+                                                        className="flex-1 sm:flex-none border-green-400 text-green-700 hover:bg-green-50"
+                                                        disabled={route.cuadradoEnCaja}
+                                                      >
+                                                        ✅ Cobrado (pagó todo)
+                                                      </Button>
+                                                      <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => { setSelectedCobro(order); setMontoAbonoCobro(""); setShowAbonoCobroModal(true) }}
+                                                        className="flex-1 sm:flex-none border-amber-400 text-amber-700 hover:bg-amber-50"
+                                                        disabled={route.cuadradoEnCaja}
+                                                      >
+                                                        💵 Abono parcial
+                                                      </Button>
+                                                      <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleNoPagoCobro(order.id, route.id)}
+                                                        className="flex-1 sm:flex-none border-gray-400 text-gray-600 hover:bg-gray-50"
+                                                        disabled={route.cuadradoEnCaja}
+                                                      >
+                                                        ↩️ No pagó
+                                                      </Button>
+                                                    </>
+                                                  )}
                                                 </div>
                                               ) : (
                                                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
@@ -3220,9 +3235,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 <div>
                   <Label className="text-xs text-orange-700 font-medium">Errores Facturación</Label>
                   <Input
+                    id="erroresFactAgrupado"
                     type="number"
-                    value={formData.erroresFacturacion || "0"}
-                    onChange={(e) => setFormData({ ...formData, erroresFacturacion: e.target.value })}
+                    defaultValue={agrupadoData?.totales?.erroresFacturacion || 0}
+                    onChange={(e) => {
+                      // Guardar en formData si lo necesitas
+                    }}
                     className="mt-1 font-semibold border-orange-300"
                   />
                 </div>
@@ -3331,15 +3349,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               <div className="text-center p-2 bg-green-50 rounded">
                 <span className="text-xs text-green-600 font-medium">Efectivo Esperado</span>
                 <p className="font-bold text-green-700">
-                  {formatCOP(
-                    (agrupadoData?.totales.cargue || 0) -
-                    (Number(formData.fiados) || 0) -
-                    (Number(formData.repasos) || 0) -
-                    (Number(formData.devolucionesParciales) || 0) -
-                    (Number(formData.agotados) || 0) -
-                    (Number(formData.descuento) || 0) -
-                    (Number(formData.erroresFacturacion) || 0)
-                  )}
+                  {formatCOP(agrupadoData?.totales.entregado || 0)}
                 </p>
               </div>
             </div>
@@ -3347,13 +3357,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             <div className="border-t pt-4 flex justify-between items-center">
               <span className="font-semibold">Diferencia:</span>
               {(() => {
-                const esperado = (agrupadoData?.totales.cargue || 0) -
-                  (Number(formData.fiados) || 0) -
-                  (Number(formData.repasos) || 0) -
-                  (Number(formData.devolucionesParciales) || 0) -
-                  (Number(formData.agotados) || 0) -
-                  (Number(formData.descuento) || 0) -
-                  (Number(formData.erroresFacturacion) || 0)
+                const esperado = agrupadoData?.totales.entregado || 0
                 const recibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
                 const diferencia = recibido - esperado
                 return (
