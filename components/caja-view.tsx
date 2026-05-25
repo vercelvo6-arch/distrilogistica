@@ -1353,7 +1353,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
-  const handleAgruparRutas = () => {
+  const handleAgruparRutas = async () => {
     if (selectedRoutes.length === 0) {
       toast({
         title: "Error",
@@ -1364,6 +1364,27 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
 
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
+
+    // ✅ Recargar novedades frescas antes de calcular totales
+    try {
+      const novedadesMap: Record<number, any[]> = { ...novedadesPorPlanilla }
+      await Promise.all(
+        rutasSeleccionadas.map(async (planilla) => {
+          try {
+            const response = await fetch(`/api/novedades?planillaId=${planilla.id}`)
+            if (response.ok) {
+              const data = await response.json()
+              novedadesMap[planilla.id] = data.novedades || []
+            }
+          } catch (error) {
+            console.error("[CAJA] Error recargando novedades planilla", planilla.id, error)
+          }
+        })
+      )
+      setNovedadesPorPlanilla(novedadesMap)
+    } catch (error) {
+      console.error("[CAJA] Error recargando novedades:", error)
+    }
 
     const entregadoresSet = new Set(rutasSeleccionadas.map((r) => r.entregador))
 
