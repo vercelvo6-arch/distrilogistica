@@ -41,7 +41,6 @@ export async function POST(request: NextRequest) {
     // 2️⃣ Buscar el fiado original — primero por pedido_id, luego por nombre
     const clienteSinCobro = pedidoCobro.cliente.replace(/\s*\(COBRO\)\s*/gi, '').trim();
     
-    // Intentar buscar por pedido_id asociado
     let fiadoOriginal: any = null
 
     const porPedidoId = await sql`
@@ -54,7 +53,6 @@ export async function POST(request: NextRequest) {
     `
     fiadoOriginal = porPedidoId[0] || null
 
-    // Si no encontró por pedido_id, buscar por nombre
     if (!fiadoOriginal) {
       const porNombre = await sql`
         SELECT f.id, f.saldo_pendiente, f.monto_pagado, f.monto_total,
@@ -117,34 +115,33 @@ export async function POST(request: NextRequest) {
     console.log('[COBRO COMPLETADO] ✅ Fiado actualizado, estado:', nuevoEstado);
 
     // 5️⃣ Registrar en historial de abonos
-    // ✅ FIX: usar pedido_id no fiado_id
     await sql`
       INSERT INTO abonos_fiados (
-        pedido_id,
-        monto_abono,
-        fecha_abono,
-        metodo_pago,
-        observaciones,
-        registrado_por,
-        created_at
+        pedido_id, monto_abono, fecha_abono, metodo_pago,
+        observaciones, registrado_por, created_at
       ) VALUES (
         ${fiadoOriginal.id},
         ${montoCobrado},
         NOW(),
         ${metodoPago || 'efectivo'},
-        ${pagoCompleto ? 'Pago completo registrado desde cobro en planilla' : 'Abono parcial registrado desde cobro en planilla'},
+        ${pagoCompleto 
+          ? 'Pago completo registrado desde cobro en planilla' 
+          : 'Abono parcial registrado desde cobro en planilla'},
         ${session.user?.id || 'Sistema'},
         NOW()
       )
     `;
 
-    console.log('[COBRO COMPLETADO] ✅ Abono registrado en historial');
+    // 6️⃣ ✅ FIX: marcar pedido de cobro como PAGADO (no eliminarlo)
+    // Así sigue en el cargue y es visible en el cuadre
+    await sql`
+      UPDATE pedidos SET
+        estado = 'pagado',
+        updated_at = NOW()
+      WHERE id = ${cobroId}
+    `;
 
-    // 6️⃣ Eliminar el pedido de cobro de la planilla
-    await sql`DELETE FROM pedido_productos WHERE pedido_id = ${cobroId}`;
-    await sql`DELETE FROM pedidos WHERE id = ${cobroId}`;
-
-    console.log('[COBRO COMPLETADO] ✅ Pedido de cobro eliminado de planilla');
+    console.log('[COBRO COMPLETADO] ✅ Pedido de cobro marcado como pagado (visible en cargue)');
 
     return NextResponse.json({
       success: true,
