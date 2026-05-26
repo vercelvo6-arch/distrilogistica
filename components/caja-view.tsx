@@ -1079,7 +1079,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             ...sheet,
             orders: sheet.orders.map(o =>
               o.id === orderId
-                ? { ...o, estado: newStatus }
+                ? { ...o, estado: "pagado" }
                 : o
             )
           }))
@@ -1692,11 +1692,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   try {
     setSubmittingAbonoCobro(true)
     
+    // ✅ FIX: usar fiado_tabla_id para el abono — no el id del pedido de cobro
+    const fiadoId = selectedCobro.fiado_tabla_id || selectedCobro.id
+
     const response = await fetch("/api/fiados/registrar-abono", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        pedidoId: selectedCobro.id,
+        pedidoId: fiadoId,
         montoAbono: monto,
         metodoPago: "efectivo",
         observaciones: "Abono registrado desde cobro en planilla",
@@ -1705,27 +1708,31 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || "Error al registrar abono")
+
+    // ✅ FIX: marcar el pedido de cobro como pagado (no eliminarlo)
+    // para que siga en el cargue visible
+    await fetch("/api/pedidos/actualizar-estado", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pedidoId: selectedCobro.id, estado: "pagado" }),
+    })
     
     toast({ 
       title: "Abono Registrado", 
       description: `Abono de ${formatCOP(monto)} registrado. Saldo pendiente: ${formatCOP(data.saldo_pendiente)}` 
     })
-    
-    await fetch("/api/fiados/marcar-cobro-completado", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cobroId: selectedCobro.id }),
-    })
-    
-    // ✅ ACTUALIZAR EL EFECTIVO RECIBIDO AUTOMÁTICAMENTE
-    const efectivoActual = Number(formData.efectivoRecibido) || 0
-    const ajuste = monto - selectedCobro.total
-    const nuevoEfectivo = efectivoActual + ajuste
-    
-    setFormData(prev => ({
-      ...prev,
-      efectivoRecibido: nuevoEfectivo.toString()
-    }))
+
+    // Actualizar estado local del pedido de cobro a pagado
+    setRouteSheets(prevSheets =>
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(o =>
+          o.id === selectedCobro.id
+            ? { ...o, estado: "pagado", montoPagado: monto }
+            : o
+        )
+      }))
+    )
     
     setShowAbonoCobroModal(false)
     setSelectedCobro(null)
@@ -1745,17 +1752,51 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
 const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
   try {
-    const response = await fetch("/api/pedidos/eliminar", {
+    // ✅ LÓGICA CORRECTA:
+    // 1. El pedido de cobro queda en planilla con estado "devolucion" → resta del cargue
+    // 2. El fiado original se libera → planilla_asignado_id = NULL → vuelve al admin
+
+    // Paso 1: marcar pedido de cobro como devolucion
+    const r1 = await fetch("/api/pedidos/actualizar-estado", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pedidoId: orderId, planillaId }),
+      body: JSON.stringify({ pedidoId: orderId, estado: "devolucion" }),
     })
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || "Error al eliminar cobro")
-    toast({ title: "Cobro Removido", description: "El cobro fue eliminado. El fiado original sigue pendiente." })
+    if (!r1.ok) {
+      const d1 = await r1.json()
+      throw new Error(d1.error || "Error al actualizar pedido de cobro")
+    }
+
+    // Paso 2: liberar el fiado original → vuelve al admin
+    const r2 = await fetch("/api/fiados/liberar-cobro", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pedidoCobroId: orderId }),
+    })
+    if (!r2.ok) {
+      const d2 = await r2.json()
+      throw new Error(d2.error || "Error al liberar fiado")
+    }
+
+    // Actualizar estado local
+    setRouteSheets(prevSheets =>
+      prevSheets.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(o =>
+          o.id === orderId
+            ? { ...o, estado: "devolucion" }
+            : o
+        )
+      }))
+    )
+
+    toast({ 
+      title: "Cobro No Recibido", 
+      description: "El fiado volvió al admin pendiente de cobro. El pedido quedó registrado como devolución en el cargue." 
+    })
     await loadData()
   } catch (err) {
-    toast({ title: "Error", description: err instanceof Error ? err.message : "Error al remover cobro", variant: "destructive" })
+    toast({ title: "Error", description: err instanceof Error ? err.message : "Error al procesar no pago", variant: "destructive" })
   }
 }
 
