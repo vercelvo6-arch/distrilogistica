@@ -368,6 +368,8 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     if (!selectedFiado) return
 
     const montoAbono = parseFloat(abonoForm.monto)
+    // FIX: forzar Number para evitar comparación string vs number desde la BD
+    const saldoPendiente = Number(selectedFiado.saldo_pendiente)
     
     if (!montoAbono || montoAbono <= 0) {
       toast({
@@ -378,10 +380,10 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       return
     }
 
-    if (montoAbono > selectedFiado.saldo_pendiente) {
+    if (montoAbono > saldoPendiente) {
       toast({
         title: "Error",
-        description: `El abono no puede ser mayor al saldo pendiente (${formatCOP(selectedFiado.saldo_pendiente)})`,
+        description: `El abono no puede ser mayor al saldo pendiente (${formatCOP(saldoPendiente)})`,
         variant: "destructive",
       })
       return
@@ -812,7 +814,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                   type="number"
                   step="0.01"
                   min="0"
-                  max={selectedFiado.saldo_pendiente}
+                  max={Number(selectedFiado.saldo_pendiente)}
                   value={abonoForm.monto}
                   onChange={(e) => setAbonoForm({ ...abonoForm, monto: e.target.value })}
                   placeholder="0.00"
