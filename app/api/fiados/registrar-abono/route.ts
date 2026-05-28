@@ -26,10 +26,10 @@ export async function POST(request: NextRequest) {
 
     // =============================================
     // DETECTAR SI ES FIADO DIRECTO O PEDIDO DE COBRO
-    // Los fiados directos tienen IDs numéricos o de tabla fiados
-    // Los pedidos de cobro tienen IDs tipo 'PED...'
+    // FIX: Los UUIDs contienen '-' pero son IDs de fiados directos, NO pedidos de cobro.
+    // Solo son pedidos de cobro los que empiezan con 'PED'.
     // =============================================
-    const esPedidoCobro = String(pedidoId).startsWith('PED') || String(pedidoId).includes('-')
+    const esPedidoCobro = String(pedidoId).startsWith('PED')
 
     if (!esPedidoCobro) {
       // ── FLUJO DIRECTO: abono sobre tabla fiados ──
@@ -37,11 +37,10 @@ export async function POST(request: NextRequest) {
 
       const fiadoId = Number(pedidoId)
       
-      // Buscar en tabla fiados por id numérico
-      // También puede venir como pedido_id (string de pedido asociado)
       let fiado: any = null
 
-      if (!isNaN(fiadoId)) {
+      // Buscar por id numérico si aplica
+      if (!isNaN(fiadoId) && fiadoId > 0) {
         const result = await sql`
           SELECT * FROM fiados 
           WHERE id = ${fiadoId}
@@ -51,11 +50,22 @@ export async function POST(request: NextRequest) {
         fiado = result[0] || null
       }
 
-      // Si no encontró por id numérico, buscar por pedido_id
+      // Si no encontró por id numérico, buscar por pedido_id (UUID o string)
       if (!fiado) {
         const result = await sql`
           SELECT * FROM fiados 
-          WHERE pedido_id = ${pedidoId}
+          WHERE pedido_id = ${String(pedidoId)}
+            AND (eliminado IS NULL OR eliminado = false)
+          LIMIT 1
+        `
+        fiado = result[0] || null
+      }
+
+      // También buscar directamente por id como string (por si el id de fiados es UUID)
+      if (!fiado) {
+        const result = await sql`
+          SELECT * FROM fiados 
+          WHERE id::text = ${String(pedidoId)}
             AND (eliminado IS NULL OR eliminado = false)
           LIMIT 1
         `
@@ -82,7 +92,6 @@ export async function POST(request: NextRequest) {
       const pagoCompleto = nuevoSaldo <= 0
       const nuevoEstado = pagoCompleto ? 'pagado_completo' : 'abono_parcial'
 
-      // Actualizar fiado
       if (pagoCompleto) {
         await sql`
           UPDATE fiados SET
@@ -124,7 +133,9 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        mensaje: pagoCompleto ? "¡Fiado pagado completamente! 🎉" : `Abono registrado. Saldo pendiente: $${nuevoSaldo.toLocaleString()}`,
+        mensaje: pagoCompleto 
+          ? "¡Fiado pagado completamente! 🎉" 
+          : `Abono registrado. Saldo pendiente: $${nuevoSaldo.toLocaleString()}`,
         fiado_id: fiado.id,
         monto_abonado: montoAbonoNum,
         monto_pagado: nuevoMontoPagado,
@@ -135,7 +146,7 @@ export async function POST(request: NextRequest) {
     }
 
     // =============================================
-    // FLUJO ORIGINAL: pedido de cobro en planilla
+    // FLUJO ORIGINAL: pedido de cobro en planilla (empieza con 'PED')
     // =============================================
     const [pedidoCobro] = await sql`
       SELECT p.id, p.cliente, p.total, p.es_cobro, p.planilla_id
