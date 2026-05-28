@@ -106,6 +106,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     repasos: "",
     fiados: "",
     agotados: "",
+    erroresFacturacion: "",
   })
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
@@ -176,6 +177,44 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       loadHistorial()
     }
   }, [selectedView])
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // FIX 1: reloadNovedades con delay — evita condición de carrera entre
+  // la escritura en BD al validar una novedad y el fetch de novedades.
+  // Se usa en onNovedadActualizada de CardNovedadesInteractivo en lugar
+  // de loadData() completo, recargando solo la planilla afectada.
+  // ─────────────────────────────────────────────────────────────────────────
+  const reloadNovedades = async (planillaId?: number) => {
+    // Delay para que BD confirme la escritura antes de leer
+    await new Promise(resolve => setTimeout(resolve, 400))
+    if (planillaId) {
+      try {
+        const response = await fetch(`/api/novedades?planillaId=${planillaId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setNovedadesPorPlanilla(prev => ({ ...prev, [planillaId]: data.novedades || [] }))
+        }
+      } catch (error) {
+        console.error("[CAJA] Error recargando novedades planilla", planillaId, error)
+      }
+    } else {
+      // Fallback: recargar todas
+      setRouteSheets(prev => {
+        Promise.all(prev.map(async (planilla) => {
+          try {
+            const r = await fetch(`/api/novedades?planillaId=${planilla.id}`)
+            if (r.ok) return [planilla.id, (await r.json()).novedades || []] as [number, NovedadPedido[]]
+          } catch {}
+          return [planilla.id, []] as [number, NovedadPedido[]]
+        })).then(results => {
+          const map: Record<number, NovedadPedido[]> = {}
+          results.forEach(([id, novs]) => { map[id] = novs })
+          setNovedadesPorPlanilla(map)
+        })
+        return prev
+      })
+    }
+  }
 
   async function loadData() {
     try {
@@ -472,12 +511,28 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
         // TERCERO: Entregado es total del pedido menos novedades
         const entregadoDelPedido = totalPedido - totalNovedades
-        if (entregadoDelPedido > 0) {
-          entregado += entregadoDelPedido
-        }
 
-        if (order.descuento) {
-          entregado -= Number(order.descuento)
+        // FIX: Si el pedido tiene estado especial (fiado/repaso/devolucion) en BD
+        // pero NO hay novedad del tipo correspondiente (solo hay agotados/devoluciones),
+        // contabilizarlo correctamente según su estado.
+        const tieneNovedadFiado = novedadesDelPedido.some(n => n.tipo_novedad === 'fiado_parcial')
+
+        if (!tieneNovedadFiado && order.estado === 'fiado') {
+          const montoPagadoReal = Number(order.montoPagado) || 0
+          const saldoFiado = entregadoDelPedido - montoPagadoReal
+          if (saldoFiado > 0) {
+            fiado += saldoFiado
+            entregado += montoPagadoReal
+          } else if (montoPagadoReal > 0) {
+            entregado += montoPagadoReal
+          }
+        } else if (!tieneNovedadFiado && order.estado === 'repaso') {
+          repasos += entregadoDelPedido
+        } else if (!tieneNovedadFiado && order.estado === 'devolucion') {
+          devoluciones += entregadoDelPedido
+        } else if (!tieneNovedadFiado && entregadoDelPedido > 0) {
+          entregado += entregadoDelPedido
+          if (order.descuento) entregado -= Number(order.descuento)
         }
       } else {
         // ── CANAL PEDIDO: sin novedad validada, caja opera normal ──
@@ -2344,25 +2399,27 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <div key={route.id} className="space-y-2">
                           <p className="text-xs text-gray-500 font-medium">Ruta {route.ruta}</p>
                           <div className="grid grid-cols-2 gap-2">
+                            {/* FIX: reloadNovedades(route.id) recarga solo esta planilla
+                                con un delay de 400ms para evitar condición de carrera */}
                             <CardNovedadesInteractivo
                               planillaId={String(route.id)}
                               tipo="agotado"
-                              onNovedadActualizada={() => loadData()}
+                              onNovedadActualizada={() => reloadNovedades(route.id)}
                             />
                             <CardNovedadesInteractivo
                               planillaId={String(route.id)}
                               tipo="devolucion"
-                              onNovedadActualizada={() => loadData()}
+                              onNovedadActualizada={() => reloadNovedades(route.id)}
                             />
                             <CardNovedadesInteractivo
                               planillaId={String(route.id)}
                               tipo="fiado_parcial"
-                              onNovedadActualizada={() => loadData()}
+                              onNovedadActualizada={() => reloadNovedades(route.id)}
                             />
                             <CardNovedadesInteractivo
                               planillaId={String(route.id)}
                               tipo="error_facturacion"
-                              onNovedadActualizada={() => loadData()}
+                              onNovedadActualizada={() => reloadNovedades(route.id)}
                             />
                           </div>
                         </div>
