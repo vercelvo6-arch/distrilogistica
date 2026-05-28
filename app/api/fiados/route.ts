@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
     const fechaFin = searchParams.get('fechaFin')
     const entregador = searchParams.get('entregador')
     const planillaId = searchParams.get('planilla_id')
+    // NUEVO: parámetro para incluir fiados pagados en la vista admin
+    const incluirPagados = searchParams.get('incluirPagados') === 'true'
 
     const sql = getDB()
 
@@ -49,6 +51,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ fiados: fiadosAsignados, resumen: [] })
     }
 
+    // Estados a incluir según el toggle del frontend
+    // Si incluirPagados=true → mostrar también pagado_completo para revisión administrativa
+    const estadosFiados = incluirPagados
+      ? ['pendiente', 'abono_parcial', 'pagado_completo']
+      : ['pendiente', 'abono_parcial']
+
+    const estadosPedidos = incluirPagados
+      ? ['fiado', 'pagado']
+      : ['fiado']
+
     // ========================================
     // CONSULTA 1: Tabla "pedidos"
     // ========================================
@@ -80,7 +92,7 @@ export async function GET(request: NextRequest) {
             AND cobro.estado = 'pendiente'
             AND LOWER(TRIM(cobro.cliente)) = LOWER(TRIM(p.cliente || ' (COBRO)'))
           )
-          WHERE p.estado IN ('fiado', 'pagado')
+          WHERE p.estado = ANY(${estadosPedidos})
             AND COALESCE(p.es_cobro, false) = false
             AND pl.fecha >= ${fechaInicio}
             AND pl.fecha <= ${fechaFin}
@@ -113,7 +125,7 @@ export async function GET(request: NextRequest) {
             AND cobro.estado = 'pendiente'
             AND LOWER(TRIM(cobro.cliente)) = LOWER(TRIM(p.cliente || ' (COBRO)'))
           )
-          WHERE p.estado IN ('fiado', 'pagado')
+          WHERE p.estado = ANY(${estadosPedidos})
             AND COALESCE(p.es_cobro, false) = false
             AND pl.fecha >= ${fechaInicio}
             AND pl.fecha <= ${fechaFin}
@@ -145,7 +157,7 @@ export async function GET(request: NextRequest) {
             AND cobro.estado = 'pendiente'
             AND LOWER(TRIM(cobro.cliente)) = LOWER(TRIM(p.cliente || ' (COBRO)'))
           )
-          WHERE p.estado IN ('fiado', 'pagado')
+          WHERE p.estado = ANY(${estadosPedidos})
             AND COALESCE(p.es_cobro, false) = false
             AND pl.entregador = ${entregador}
             AND cobro.id IS NULL
@@ -176,7 +188,7 @@ export async function GET(request: NextRequest) {
             AND cobro.estado = 'pendiente'
             AND LOWER(TRIM(cobro.cliente)) = LOWER(TRIM(p.cliente || ' (COBRO)'))
           )
-          WHERE p.estado IN ('fiado', 'pagado')
+          WHERE p.estado = ANY(${estadosPedidos})
             AND COALESCE(p.es_cobro, false) = false
             AND cobro.id IS NULL
           ORDER BY pl.fecha DESC, p.cliente ASC
@@ -190,7 +202,6 @@ export async function GET(request: NextRequest) {
 
     // ========================================
     // CONSULTA 2: Tabla "fiados"
-    // ✅ FIX: usar + interval '1 day' para incluir timestamps del día final
     // ========================================
     let fiadosTabla: any[] = []
     
@@ -219,7 +230,7 @@ export async function GET(request: NextRequest) {
             AND f.fecha_fiado < ${fechaFin}::date + interval '1 day'
             AND f.entregador = ${entregador}
             AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
-            AND f.estado IN ('pendiente', 'abono_parcial')
+            AND f.estado = ANY(${estadosFiados})
             AND (f.eliminado IS NULL OR f.eliminado = false)
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
@@ -246,7 +257,7 @@ export async function GET(request: NextRequest) {
           WHERE f.fecha_fiado >= ${fechaInicio}::date
             AND f.fecha_fiado < ${fechaFin}::date + interval '1 day'
             AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
-            AND f.estado IN ('pendiente', 'abono_parcial')
+            AND f.estado = ANY(${estadosFiados})
             AND (f.eliminado IS NULL OR f.eliminado = false)
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
@@ -272,7 +283,7 @@ export async function GET(request: NextRequest) {
           FROM fiados f
           WHERE f.entregador = ${entregador}
             AND (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
-            AND f.estado IN ('pendiente', 'abono_parcial')
+            AND f.estado = ANY(${estadosFiados})
             AND (f.eliminado IS NULL OR f.eliminado = false)
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
@@ -297,7 +308,7 @@ export async function GET(request: NextRequest) {
             f.id::text as fiado_tabla_id
           FROM fiados f
           WHERE (f.planilla_asignado_id IS NULL OR f.planilla_asignado_id = '')
-            AND f.estado IN ('pendiente', 'abono_parcial')
+            AND f.estado = ANY(${estadosFiados})
             AND (f.eliminado IS NULL OR f.eliminado = false)
           ORDER BY f.fecha_fiado DESC, f.cliente ASC
         `
@@ -350,6 +361,7 @@ export async function GET(request: NextRequest) {
 
     // ========================================
     // CALCULAR RESUMEN POR ENTREGADOR
+    // Solo contar los que tienen saldo pendiente (no los pagados)
     // ========================================
     const resumenMap = new Map<string, { total_fiados: number; monto_total: number }>()
     
@@ -357,7 +369,7 @@ export async function GET(request: NextRequest) {
       const entregadorNombre = fiado.entregador || 'Sin asignar'
       const saldo = Number(fiado.saldo_pendiente)
       
-      if (saldo > 0) {
+      if (saldo > 0 && fiado.estado !== 'pagado_completo') {
         if (!resumenMap.has(entregadorNombre)) {
           resumenMap.set(entregadorNombre, { total_fiados: 0, monto_total: 0 })
         }
