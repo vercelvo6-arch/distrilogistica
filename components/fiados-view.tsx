@@ -108,6 +108,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
   // Filtros
   const [entregadorFilter, setEntregadorFilter] = useState("all")
+  const [mostrarPagados, setMostrarPagados] = useState(false)
   const [fechaInicio, setFechaInicio] = useState(() => {
     const date = new Date()
     date.setDate(1)
@@ -118,7 +119,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   useEffect(() => {
     loadFiados()
     loadEntregadores()
-  }, [fechaInicio, fechaFin, entregadorFilter])
+  }, [fechaInicio, fechaFin, entregadorFilter, mostrarPagados])
 
   const loadEntregadores = async () => {
     try {
@@ -140,7 +141,8 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       const params = new URLSearchParams({
         fechaInicio,
         fechaFin,
-        ...(entregadorFilter !== 'all' && { entregador: entregadorFilter })
+        ...(entregadorFilter !== 'all' && { entregador: entregadorFilter }),
+        ...(mostrarPagados && { incluirPagados: 'true' })
       })
 
       const response = await fetch(`/api/fiados?${params}`)
@@ -578,6 +580,17 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                 </Select>
               </div>
               <div className="flex gap-2 w-full sm:w-auto">
+                <Button
+                  onClick={() => setMostrarPagados(!mostrarPagados)}
+                  variant={mostrarPagados ? "default" : "outline"}
+                  className={mostrarPagados
+                    ? "flex-1 sm:flex-none bg-green-600 hover:bg-green-700"
+                    : "flex-1 sm:flex-none border-green-300 text-green-700 hover:bg-green-50"
+                  }
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {mostrarPagados ? "Ocultando pagados" : "Ver pagados"}
+                </Button>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -711,13 +724,13 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                             {formatCOP(saldo)}
                           </TableCell>
                           <TableCell>
-                            {isParcial ? (
+                            {fiado.estado === 'pagado_completo' || fiado.estado === 'pagado' ? (
+                              <Badge variant="default" className="bg-green-100 text-green-700 border-green-300">
+                                ✓ pagado
+                              </Badge>
+                            ) : isParcial ? (
                               <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
                                 parcial
-                              </Badge>
-                            ) : fiado.estado === "pagado" ? (
-                              <Badge variant="default" className="bg-green-100 text-green-700">
-                                pagado
                               </Badge>
                             ) : (
                               <Badge variant="secondary" className="bg-orange-100 text-orange-700">
