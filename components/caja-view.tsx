@@ -1606,14 +1606,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     const erroresFacturacionFinal = Number(formData.erroresFacturacion) || 0
 
-    // Efectivo esperado = Cargue - todas las novedades
-    const totalEsperadoCalculado = (agrupadoData.totales.cargue || 0) -
-      (Number(formData.fiados) || 0) -
-      (Number(formData.repasos) || 0) -
-      (Number(formData.devolucionesParciales) || 0) -
-      (Number(formData.agotados) || 0) -
-      (Number(formData.descuento) || 0) -
-      erroresFacturacionFinal
+    // FIX: Efectivo esperado = entregado calculado por calculateRouteTotals
+    // (ya descuenta descuentos internamente — no restarlos dos veces)
+    const totalEsperadoCalculado = agrupadoData.totales.entregado
 
     const payload = {
       planillaIds: agrupadoData.planillaIds,
@@ -3488,15 +3483,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               <div className="text-center p-2 bg-green-50 rounded">
                 <span className="text-xs text-green-600 font-medium">Efectivo Esperado</span>
                 <p className="font-bold text-green-700">
-                  {formatCOP(
-                    (agrupadoData?.totales.cargue || 0) -
-                    (Number(formData.fiados) || 0) -
-                    (Number(formData.repasos) || 0) -
-                    (Number(formData.devolucionesParciales) || 0) -
-                    (Number(formData.agotados) || 0) -
-                    (Number(formData.descuento) || 0) -
-                    (Number(formData.erroresFacturacion) || 0)
-                  )}
+                  {formatCOP(agrupadoData?.totales.entregado || 0)}
                 </p>
               </div>
             </div>
@@ -3504,13 +3491,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             <div className="border-t pt-4 flex justify-between items-center">
               <span className="font-semibold">Diferencia:</span>
               {(() => {
-                const esperado = (agrupadoData?.totales.cargue || 0) -
-                  (Number(formData.fiados) || 0) -
-                  (Number(formData.repasos) || 0) -
-                  (Number(formData.devolucionesParciales) || 0) -
-                  (Number(formData.agotados) || 0) -
-                  (Number(formData.descuento) || 0) -
-                  (Number(formData.erroresFacturacion) || 0)
+                const esperado = agrupadoData?.totales.entregado || 0
                 const recibido = Number(formData.efectivoRecibido || 0) + (formData.tieneConsignacion ? Number(formData.montoConsignacion || 0) : 0)
                 const diferencia = recibido - esperado
                 return (
