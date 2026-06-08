@@ -99,7 +99,7 @@ export async function POST(request: Request) {
         COALESCE(SUM(af.monto_abono), 0)   AS cobros_efectivo,
         COALESCE(SUM(af.monto_nequi), 0)   AS cobros_nequi
       FROM abonos_fiados af
-      WHERE af.planilla_cobro_id = ANY(${planillaIds::int[]})
+      WHERE af.planilla_cobro_id = ANY(${planillaIds})
     `
 
     const t = totales[0]
