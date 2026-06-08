@@ -24,65 +24,58 @@ export async function POST(request: NextRequest) {
       montoConsignacion,
       fechaConsignacion,
       observaciones,
-      descuento,           
+      descuento,
       motivoDescuento,
-      agotados
+      agotados,
     } = body
 
     if (!planillaId || efectivoEsperado === undefined || efectivoRecibido === undefined) {
-      return NextResponse.json(
-        { error: 'Datos incompletos' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
     }
 
     if (tieneConsignacion && (!numeroConsignacion || !banco || !montoConsignacion)) {
-      return NextResponse.json(
-        { error: 'Datos de consignación incompletos' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Datos de consignación incompletos' }, { status: 400 })
     }
 
     const sql = getDB()
 
-    const planilla = await sql`
+    // ── 1. Verificar planilla ─────────────────────────────────────────────────
+    const [planilla] = await sql`
       SELECT id, estado, entregador, tipo_ruta, fecha, total_devolucion
-      FROM planillas 
+      FROM planillas
       WHERE id = ${planillaId}
     `
 
-    if (planilla.length === 0) {
-      return NextResponse.json(
-        { error: 'Planilla no encontrada' },
-        { status: 404 }
-      )
+    if (!planilla) {
+      return NextResponse.json({ error: 'Planilla no encontrada' }, { status: 404 })
     }
 
-    if (planilla[0].estado !== 'completado' && planilla[0].estado !== 'alistado') {
+    if (!['completado', 'alistado', 'en_ruta'].includes(planilla.estado)) {
       return NextResponse.json(
-        { error: 'La planilla debe estar completada o alistada para cuadrar en caja' },
+        { error: 'La planilla debe estar en ruta, completada o alistada para cuadrar' },
         { status: 400 }
       )
     }
 
+    // ── 2. Verificar que no esté ya cuadrada ──────────────────────────────────
     const yaCuadrada = await sql`
-      SELECT id FROM recepciones_caja WHERE planilla_id = ${planillaId}
+      SELECT id FROM cuadres_caja
+      WHERE planillas_ids @> ARRAY[${planillaId}]::text[]
+      LIMIT 1
     `
 
     if (yaCuadrada.length > 0) {
-      return NextResponse.json(
-        { error: 'Esta planilla ya fue cuadrada en caja' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Esta planilla ya fue cuadrada en caja' }, { status: 400 })
     }
 
+    // ── 3. Validar consignación no duplicada ──────────────────────────────────
     if (tieneConsignacion && numeroConsignacion) {
-      const consignacionExiste = await sql`
-        SELECT id FROM recepciones_caja 
+      const [consExiste] = await sql`
+        SELECT id FROM cuadres_caja
         WHERE numero_consignacion = ${numeroConsignacion}
+        LIMIT 1
       `
-
-      if (consignacionExiste.length > 0) {
+      if (consExiste) {
         return NextResponse.json(
           { error: 'Este número de consignación ya fue registrado' },
           { status: 400 }
@@ -90,215 +83,154 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const efectivoEsperadoAjustado = Number(efectivoEsperado) - Number(descuento || 0)
-    const diferenciaEfectivo = Number(efectivoRecibido) - efectivoEsperadoAjustado
-    const estado = diferenciaEfectivo === 0 ? 'cuadrado' : 'con_diferencia'
-
-    const timestamp = Date.now()
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
-    const recepcionId = `REC${timestamp}${random}`
-
-    // ✅ PASO 1: GUARDAR FIADOS Y REPASOS ANTES DEL CUADRE
-    console.log('[API recibir-efectivo] 📝 Guardando pedidos con estado especial...')
-    
-    const pedidosConEstadoEspecial = await sql`
+    // ── 4. Guardar fiados nuevos (sin escribir en tabla repasos) ──────────────
+    const pedidosEspeciales = await sql`
       SELECT id, estado, total, cliente, monto_pagado, saldo_pendiente
       FROM pedidos
       WHERE planilla_id = ${planillaId}
         AND estado IN ('fiado', 'repaso')
     `
 
-    for (const pedido of pedidosConEstadoEspecial) {
+    for (const pedido of pedidosEspeciales) {
       if (pedido.estado === 'fiado') {
-        // Guardar fiado
-        const yaExisteFiado = await sql`
-          SELECT id FROM fiados WHERE pedido_id = ${pedido.id}
+        const [yaExiste] = await sql`
+          SELECT id FROM fiados WHERE pedido_id = ${pedido.id} LIMIT 1
         `
-        
-        if (yaExisteFiado.length === 0) {
+        if (!yaExiste) {
           await sql`
             INSERT INTO fiados (
-              pedido_id,
-              cliente,
-              monto_total,
-              monto_pagado,
-              saldo_pendiente,
-              estado,
-              fecha_fiado,
-              entregador,
-              ruta
+              pedido_id, cliente, monto_total, monto_pagado,
+              saldo_pendiente, estado, fecha_fiado, entregador, ruta
             ) VALUES (
-              ${pedido.id},
-              ${pedido.cliente},
-              ${pedido.total},
+              ${pedido.id}, ${pedido.cliente}, ${pedido.total},
               ${pedido.monto_pagado || 0},
               ${pedido.saldo_pendiente || pedido.total},
-              ${pedido.saldo_pendiente > 0 ? 'pendiente' : 'pagado_completo'},
-              ${planilla[0].fecha},
-              ${planilla[0].entregador},
-              ${planilla[0].tipo_ruta}
+              ${Number(pedido.saldo_pendiente) > 0 ? 'pendiente' : 'pagado_completo'},
+              ${planilla.fecha}, ${planilla.entregador}, ${planilla.tipo_ruta}
             )
           `
-          console.log('[API recibir-efectivo] ✓ Fiado guardado:', pedido.cliente)
-        }
-      } else if (pedido.estado === 'repaso') {
-        // Guardar repaso
-        const yaExisteRepaso = await sql`
-          SELECT id FROM repasos WHERE pedido_id = ${pedido.id}
-        `
-        
-        if (yaExisteRepaso.length === 0) {
-          await sql`
-            INSERT INTO repasos (
-              pedido_id,
-              cliente,
-              total,
-              estado,
-              fecha_repaso,
-              entregador_origen,
-              ruta_origen,
-              planilla_origen_id
-            ) VALUES (
-              ${pedido.id},
-              ${pedido.cliente},
-              ${pedido.total},
-              'pendiente',
-              ${planilla[0].fecha},
-              ${planilla[0].entregador},
-              ${planilla[0].tipo_ruta},
-              ${planillaId}
-            )
-          `
-          console.log('[API recibir-efectivo] ✓ Repaso guardado:', pedido.cliente)
         }
       }
+      // Repasos: quedan como pedidos con estado='repaso' — no se mueven a tabla repasos
     }
 
-    console.log('[API recibir-efectivo] ✅ Pedidos especiales guardados')
+    // ── 5. Calcular cuadre ────────────────────────────────────────────────────
+    const descuentoVal    = Number(descuento || 0)
+    const consignadoVal   = Number(montoConsignacion || 0)
+    const efectivoReal    = Number(efectivoRecibido)
+    const esperadoAjust   = Number(efectivoEsperado) - descuentoVal
+    const totalRecibido   = efectivoReal + consignadoVal
+    const diferencia      = Math.round((totalRecibido - esperadoAjust) * 100) / 100
+    const estado          = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
-    const recepcion = await sql`
-      INSERT INTO recepciones_caja (
-        id,
-        planilla_id,
-        efectivo_esperado,
-        efectivo_recibido,
-        diferencia_efectivo,
-        tiene_consignacion,
-        numero_consignacion,
-        banco,
-        monto_consignacion,
-        fecha_consignacion,
-        observaciones,
-        recibido_por,
-        estado,
-        descuento,              
-        motivo_descuento,
-        agotados
+    // ── 6. Guardar en cuadres_caja (fuente única) ─────────────────────────────
+    const [cuadre] = await sql`
+      INSERT INTO cuadres_caja (
+        entregador, fecha_cuadre, fecha_desde, fecha_hasta,
+        planillas_ids, rutas_nombres, tipo_cuadre,
+        total_cargue, total_esperado, total_efectivo,
+        total_consignado, diferencia, estado,
+        observaciones, tiene_consignacion,
+        numero_consignacion, banco,
+        descuento, motivo_descuento, agotados,
+        cuadrado_por, created_at
       ) VALUES (
-        ${recepcionId},
-        ${planillaId},
-        ${efectivoEsperadoAjustado},
-        ${efectivoRecibido},
-        ${diferenciaEfectivo},
+        ${planilla.entregador},
+        NOW()::date,
+        ${planilla.fecha},
+        ${planilla.fecha},
+        ARRAY[${planillaId}]::text[],
+        ARRAY[${planilla.tipo_ruta}],
+        'individual',
+        0,
+        ${esperadoAjust},
+        ${efectivoReal},
+        ${consignadoVal},
+        ${diferencia},
+        ${estado},
+        ${observaciones || null},
         ${tieneConsignacion || false},
         ${numeroConsignacion || null},
         ${banco || null},
-        ${montoConsignacion || null},
-        ${fechaConsignacion || null},
-        ${observaciones || null},
-        ${session.user.id},
-        ${estado},
-        ${descuento || 0},              
+        ${descuentoVal},
         ${motivoDescuento || null},
-        ${agotados || 0}
+        ${Number(agotados || 0)},
+        ${session.user.id},
+        NOW()
       )
-      RETURNING *
+      RETURNING id
     `
 
-    // ✅ MARCAR PLANILLA COMO CUADRADA (SIN CAMBIAR ESTADO)
+    // ── 7. Marcar planilla como cuadrada ──────────────────────────────────────
     await sql`
-      UPDATE planillas 
-      SET 
-        cuadrado_en_caja = true,
+      UPDATE planillas SET
+        cuadrado_en_caja  = true,
+        cuadre_caja_id    = ${cuadre.id},
         fecha_cuadre_caja = NOW(),
-        updated_at = NOW()
+        updated_at        = NOW()
       WHERE id = ${planillaId}
     `
 
-    console.log('[API recibir-efectivo] ✓ Planilla actualizada como cuadrada')
-
-    // ✅ CÁLCULO DE COMISIÓN
-    const configComision = await sql`
-      SELECT porcentaje_comision 
-      FROM comisiones_config 
-      WHERE entregador = ${planilla[0].entregador} 
-        AND activo = true
+    // ── 8. Comisión ───────────────────────────────────────────────────────────
+    const [config] = await sql`
+      SELECT porcentaje_comision FROM comisiones_config
+      WHERE entregador = ${planilla.entregador} AND activo = true
+      LIMIT 1
     `
 
-    if (configComision.length > 0) {
-      const porcentaje = Number(configComision[0].porcentaje_comision)
-      const totalDevoluciones = Number(planilla[0].total_devolucion) || 0
-      
-      const baseComisionable = Math.round(Number(efectivoRecibido) * 100) / 100
-      const montoComision = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
+    if (config) {
+      const porcentaje       = Number(config.porcentaje_comision)
+      const baseComisionable = Math.round(efectivoReal * 100) / 100
+      const montoComision    = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
 
-      const yaExisteComision = await sql`
-        SELECT id FROM comisiones WHERE planilla_id = ${planillaId}
+      const [yaExisteComision] = await sql`
+        SELECT id FROM comisiones WHERE cuadre_agrupado_id = ${cuadre.id} LIMIT 1
       `
 
-      if (yaExisteComision.length === 0) {
+      if (!yaExisteComision) {
         await sql`
           INSERT INTO comisiones (
-            entregador,
-            fecha,
-            planilla_id,
-            total_entregas_efectivas,
-            total_devoluciones,
-            base_comisionable,
-            porcentaje_aplicado,
-            monto_comision,
-            estado
+            entregador, fecha, planilla_id,
+            total_entregas_efectivas, total_devoluciones,
+            base_comisionable, porcentaje_aplicado,
+            monto_comision, estado, cuadre_agrupado_id
           ) VALUES (
-            ${planilla[0].entregador},
+            ${planilla.entregador},
             (NOW() AT TIME ZONE 'America/Bogota')::date,
             ${planillaId},
-            ${efectivoRecibido},
-            ${totalDevoluciones},
+            ${efectivoReal},
+            ${Number(planilla.total_devolucion) || 0},
             ${baseComisionable},
             ${porcentaje},
             ${montoComision},
-            'pendiente'
+            'pendiente',
+            ${cuadre.id}
           )
         `
-
-        console.log('[API recibir-efectivo] ✓ Comisión calculada y registrada:', {
-          entregador: planilla[0].entregador,
-          base: baseComisionable,
-          porcentaje: porcentaje,
-          comision: montoComision
-        })
-      } else {
-        console.log('[API recibir-efectivo] ℹ Comisión ya existe para esta planilla')
       }
-    } else {
-      console.log('[API recibir-efectivo] ⚠ No hay configuración de comisión para:', planilla[0].entregador)
     }
 
     return NextResponse.json({
       success: true,
-      recepcion: recepcion[0],
-      mensaje: diferenciaEfectivo === 0 
-        ? 'Efectivo cuadrado correctamente' 
-        : `Recepción registrada con diferencia de ${diferenciaEfectivo > 0 ? '+' : ''}${diferenciaEfectivo}`
+      cuadreId: cuadre.id,
+      // Mantener compatibilidad con el frontend que espera "recepcion"
+      recepcion: {
+        id: cuadre.id,
+        planilla_id: planillaId,
+        efectivo_esperado: esperadoAjust,
+        efectivo_recibido: efectivoReal,
+        diferencia_efectivo: diferencia,
+        estado,
+      },
+      mensaje: diferencia === 0
+        ? 'Efectivo cuadrado correctamente'
+        : `Recepción registrada con diferencia de ${diferencia > 0 ? '+' : ''}${diferencia}`,
     })
 
   } catch (error) {
-    console.error('[API recibir-efectivo] Error:', error)
+    console.error('[recibir-efectivo] Error:', error)
     return NextResponse.json(
-      { 
-        error: 'Error al registrar recepción',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Error al registrar recepción', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
@@ -317,28 +249,27 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB()
 
+    // Leer desde cuadres_caja — fuente única
     const recepciones = await sql`
-      SELECT 
-        r.*,
-        p.entregador,
-        p.tipo_ruta,
-        p.fecha as fecha_planilla,
-        u.nombre as recibido_por_nombre
-      FROM recepciones_caja r
-      JOIN planillas p ON r.planilla_id = p.id
-      JOIN usuarios u ON r.recibido_por = u.id
-      ORDER BY r.fecha_recepcion DESC
+      SELECT
+        c.*,
+        c.planillas_ids[1] as planilla_id,
+        c.total_efectivo    as efectivo_recibido,
+        c.total_esperado    as efectivo_esperado,
+        c.diferencia        as diferencia_efectivo,
+        c.total_consignado  as monto_consignacion,
+        u.nombre            as recibido_por_nombre
+      FROM cuadres_caja c
+      LEFT JOIN usuarios u ON u.id::text = c.cuadrado_por::text
+      WHERE c.tipo_cuadre = 'individual'
+      ORDER BY c.fecha_cuadre DESC
+      LIMIT 100
     `
 
-    return NextResponse.json({
-      recepciones
-    })
+    return NextResponse.json({ recepciones })
 
   } catch (error) {
-    console.error('[API recibir-efectivo GET] Error:', error)
-    return NextResponse.json(
-      { error: 'Error al cargar historial' },
-      { status: 500 }
-    )
+    console.error('[recibir-efectivo GET] Error:', error)
+    return NextResponse.json({ error: 'Error al cargar historial' }, { status: 500 })
   }
 }
