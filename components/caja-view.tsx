@@ -153,8 +153,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // Estado para tracking de cobros de fiados asignados
   const [totalCobrosAsignados, setTotalCobrosAsignados] = useState(0)
   const [showAbonoCobroModal, setShowAbonoCobroModal] = useState(false)
-  const [selectedCobro, setSelectedCobro] = useState<Order | null>(null)
-  const [montoAbonoCobro, setMontoAbonoCobro] = useState("")
+  const [selectedCobro, setSelectedCobro] = useState<any | null>(null)
+  const [montoEfectivoCobro, setMontoEfectivoCobro] = useState("")
+  const [montoNequiCobro, setMontoNequiCobro] = useState("")
+  const [referenciaNequiCobro, setReferenciaNequiCobro] = useState("")
   const [submittingAbonoCobro, setSubmittingAbonoCobro] = useState(false)
   
 
@@ -1729,71 +1731,74 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const handleAbonarCobro = async () => {
   if (!selectedCobro) return
-  const monto = Number(montoAbonoCobro)
-  if (!monto || monto <= 0 || monto > selectedCobro.total) {
-    toast({ 
-      title: "Error", 
-      description: `El monto debe estar entre $1 y ${formatCOP(selectedCobro.total)}`, 
-      variant: "destructive" 
+
+  const efectivo = Number(montoEfectivoCobro) || 0
+  const nequi    = Number(montoNequiCobro) || 0
+  const total    = efectivo + nequi
+
+  if (total <= 0) {
+    toast({
+      title: "Error",
+      description: "Ingresa al menos un monto en efectivo o Nequi",
+      variant: "destructive",
     })
     return
   }
-  
+
+  if (total > selectedCobro.saldo_pendiente) {
+    toast({
+      title: "Error",
+      description: `El total no puede superar el saldo pendiente (${formatCOP(selectedCobro.saldo_pendiente)})`,
+      variant: "destructive",
+    })
+    return
+  }
+
+  if (nequi > 0 && !referenciaNequiCobro.trim()) {
+    toast({
+      title: "Error",
+      description: "Ingresa la referencia del pago por Nequi",
+      variant: "destructive",
+    })
+    return
+  }
+
   try {
     setSubmittingAbonoCobro(true)
-    
-    // ✅ FIX: usar fiado_tabla_id para el abono — no el id del pedido de cobro
-    const fiadoId = selectedCobro.fiado_tabla_id || selectedCobro.id
 
     const response = await fetch("/api/fiados/registrar-abono", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        pedidoId: fiadoId,
-        montoAbono: monto,
-        metodoPago: "efectivo",
-        observaciones: "Abono registrado desde cobro en planilla",
+        fiadoId:         selectedCobro.id,
+        montoEfectivo:   efectivo,
+        montoNequi:      nequi,
+        referenciaPago:  referenciaNequiCobro.trim() || null,
+        entregadorCobro: selectedCobro.entregador_asignado || null,
+        observaciones:   "Abono registrado desde cuadre de caja",
       }),
     })
-    
+
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || "Error al registrar abono")
 
-    // ✅ FIX: marcar el pedido de cobro como pagado (no eliminarlo)
-    // para que siga en el cargue visible
-    await fetch("/api/pedidos/actualizar-estado", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pedidoId: selectedCobro.id, estado: "pagado" }),
-    })
-    
-    toast({ 
-      title: "Abono Registrado", 
-      description: `Abono de ${formatCOP(monto)} registrado. Saldo pendiente: ${formatCOP(data.saldo_pendiente)}` 
+    toast({
+      title: data.pago_completo ? "Cobro Completado" : "Abono Registrado",
+      description: data.mensaje,
     })
 
-    // Actualizar estado local del pedido de cobro a pagado
-    setRouteSheets(prevSheets =>
-      prevSheets.map(sheet => ({
-        ...sheet,
-        orders: sheet.orders.map(o =>
-          o.id === selectedCobro.id
-            ? { ...o, estado: "pagado", montoPagado: monto }
-            : o
-        )
-      }))
-    )
-    
     setShowAbonoCobroModal(false)
     setSelectedCobro(null)
-    setMontoAbonoCobro("")
-    
+    setMontoEfectivoCobro("")
+    setMontoNequiCobro("")
+    setReferenciaNequiCobro("")
+
     await loadData()
   } catch (err) {
-    toast({ 
-      title: "Error", 
-      description: err instanceof Error ? err.message : "Error al registrar abono", 
-      variant: "destructive" 
+    toast({
+      title: "Error",
+      description: err instanceof Error ? err.message : "Error al registrar abono",
+      variant: "destructive",
     })
   } finally {
     setSubmittingAbonoCobro(false)
@@ -3860,7 +3865,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
       <Dialog open={showAbonoCobroModal} onOpenChange={setShowAbonoCobroModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Registrar Abono de Cobro</DialogTitle>
+            <DialogTitle>Registrar Cobro CxC</DialogTitle>
             <DialogDescription>
               {selectedCobro && `Cliente: ${selectedCobro.cliente}`}
             </DialogDescription>
@@ -3869,42 +3874,83 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             {selectedCobro && (
               <>
                 <div className="flex justify-between items-center p-3 bg-purple-50 rounded border border-purple-200">
-                  <span className="text-sm text-purple-700">Monto total del cobro:</span>
-                  <span className="font-bold text-lg text-purple-700">{formatCOP(selectedCobro.total)}</span>
+                  <span className="text-sm text-purple-700">Saldo pendiente:</span>
+                  <span className="font-bold text-lg text-purple-700">{formatCOP(selectedCobro.saldo_pendiente)}</span>
                 </div>
                 <div>
-                  <Label htmlFor="montoAbonoCobro">¿Cuánto abonó?</Label>
+                  <Label htmlFor="montoEfectivoCobro">Efectivo recibido</Label>
                   <Input
-                    id="montoAbonoCobro"
+                    id="montoEfectivoCobro"
                     type="number"
-                    min={1}
-                    max={selectedCobro.total}
-                    value={montoAbonoCobro}
-                    onChange={(e) => setMontoAbonoCobro(e.target.value)}
+                    min={0}
+                    value={montoEfectivoCobro}
+                    onChange={(e) => setMontoEfectivoCobro(e.target.value)}
                     placeholder="0"
                     autoFocus
                   />
                 </div>
-                {montoAbonoCobro && Number(montoAbonoCobro) > 0 && (
-                  <div className="flex justify-between items-center p-3 bg-amber-50 rounded border border-amber-200">
-                    <span className="text-sm text-amber-700 font-medium">Saldo que queda:</span>
-                    <span className="font-bold text-lg text-amber-700">
-                      {formatCOP(selectedCobro.total - Number(montoAbonoCobro))}
-                    </span>
+                <div>
+                  <Label htmlFor="montoNequiCobro">Nequi / Transferencia</Label>
+                  <Input
+                    id="montoNequiCobro"
+                    type="number"
+                    min={0}
+                    value={montoNequiCobro}
+                    onChange={(e) => setMontoNequiCobro(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                {Number(montoNequiCobro) > 0 && (
+                  <div>
+                    <Label htmlFor="referenciaNequiCobro">
+                      Referencia Nequi <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="referenciaNequiCobro"
+                      type="text"
+                      value={referenciaNequiCobro}
+                      onChange={(e) => setReferenciaNequiCobro(e.target.value)}
+                      placeholder="Número de referencia"
+                    />
                   </div>
                 )}
-                <p className="text-xs text-gray-500">
-                  El abono se registrará en el fiado original y el cobro quedará procesado.
-                </p>
+                {(Number(montoEfectivoCobro) > 0 || Number(montoNequiCobro) > 0) && (
+                  <>
+                    <div className="flex justify-between items-center p-3 bg-blue-50 rounded border border-blue-200">
+                      <span className="text-sm text-blue-700">Total abono:</span>
+                      <span className="font-bold text-blue-700">
+                        {formatCOP((Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0))}
+                      </span>
+                    </div>
+                    {(Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0) < selectedCobro.saldo_pendiente && (
+                      <div className="flex justify-between items-center p-3 bg-amber-50 rounded border border-amber-200">
+                        <span className="text-sm text-amber-700">Saldo que queda:</span>
+                        <span className="font-bold text-amber-700">
+                          {formatCOP(selectedCobro.saldo_pendiente - (Number(montoEfectivoCobro) || 0) - (Number(montoNequiCobro) || 0))}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAbonoCobroModal(false)} disabled={submittingAbonoCobro}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAbonoCobroModal(false)
+                setSelectedCobro(null)
+                setMontoEfectivoCobro("")
+                setMontoNequiCobro("")
+                setReferenciaNequiCobro("")
+              }}
+              disabled={submittingAbonoCobro}
+            >
               Cancelar
             </Button>
             <Button onClick={handleAbonarCobro} disabled={submittingAbonoCobro}>
-              {submittingAbonoCobro ? "Registrando..." : "Confirmar Abono"}
+              {submittingAbonoCobro ? "Registrando..." : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>
