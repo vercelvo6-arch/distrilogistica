@@ -45,6 +45,7 @@ export function CardNovedadesInteractivo({
   const [showModal, setShowModal] = useState(false)
   const [resumen, setResumen] = useState<ResumenTipo | null>(null)
   const [novedades, setNovedades] = useState<Novedad[]>([])
+  const [todasNovedades, setTodasNovedades] = useState<Novedad[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -54,19 +55,23 @@ export function CardNovedadesInteractivo({
   async function loadResumen() {
     try {
       const response = await fetch(`/api/novedades/resumen/${planillaId}`)
-      if (!response.ok) {
-        setLoading(false)
-        return
-      }
+      if (!response.ok) { setLoading(false); return }
 
       const data = await response.json()
       const resumenTipo = data.resumen[tipo]
       setResumen(resumenTipo)
 
-      const novedadesFiltradas = (data.novedadesPendientes || []).filter(
+      // Pendientes (no validadas)
+      const pendientes = (data.novedadesPendientes || []).filter(
         (n: Novedad) => n.tipo_novedad === tipo
       )
-      setNovedades(novedadesFiltradas)
+      setNovedades(pendientes)
+
+      // Todas (incluyendo validadas) — para permitir eliminar
+      const todas = (data.todasNovedades || data.novedadesPendientes || []).filter(
+        (n: Novedad) => n.tipo_novedad === tipo
+      )
+      setTodasNovedades(todas)
     } catch (error) {
       console.error("[CardNovedades] Error cargando resumen:", error)
     } finally {
@@ -85,8 +90,24 @@ export function CardNovedadesInteractivo({
       toast({ title: "Validado", description: "Novedad validada exitosamente" })
       await loadResumen()
       onNovedadActualizada?.()
-    } catch (error) {
-      toast({ title: "Error", description: "No se pudo validar la novedad", variant: "destructive" })
+    } catch {
+      toast({ title: "Error", description: "No se pudo validar", variant: "destructive" })
+    }
+  }
+
+  async function handleEliminar(novedadId: string) {
+    try {
+      const response = await fetch("/api/novedades/eliminar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ novedadId }),
+      })
+      if (!response.ok) throw new Error("Error al eliminar")
+      toast({ title: "Eliminado", description: "Novedad eliminada" })
+      await loadResumen()
+      onNovedadActualizada?.()
+    } catch {
+      toast({ title: "Error", description: "No se pudo eliminar", variant: "destructive" })
     }
   }
 
@@ -98,10 +119,10 @@ export function CardNovedadesInteractivo({
         body: JSON.stringify({ novedadId, nuevoTipo }),
       })
       if (!response.ok) throw new Error("Error al cambiar tipo")
-      toast({ title: "Tipo Cambiado", description: "La novedad fue reclasificada exitosamente" })
+      toast({ title: "Tipo Cambiado", description: "Novedad reclasificada" })
       await loadResumen()
       onNovedadActualizada?.()
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "No se pudo cambiar el tipo", variant: "destructive" })
     }
   }
@@ -168,60 +189,96 @@ export function CardNovedadesInteractivo({
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {getIcon()} {getTitulo()} - {novedades.length} pendiente{novedades.length !== 1 ? "s" : ""}
+              {getIcon()} {getTitulo()} — {resumen.cantidad} novedad{resumen.cantidad !== 1 ? "es" : ""}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 mt-4">
-            {novedades.length === 0 ? (
-              <p className="text-center text-gray-500 py-8">
-                ✅ Todas las novedades de este tipo fueron validadas
-              </p>
-            ) : (
-              novedades.map((novedad) => (
-                <Card key={novedad.id} className="p-4 bg-gray-50">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="font-semibold">{novedad.cliente}</p>
-                      <p className="text-sm text-gray-600">{novedad.descripcion || "Sin descripción"}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Registró: {novedad.registrado_por} · {new Date(novedad.created_at).toLocaleString("es-CO")}
-                      </p>
+            {/* Pendientes de validar */}
+            {novedades.length > 0 && (
+              <>
+                <p className="text-xs font-medium text-yellow-700 uppercase">Pendientes de validar</p>
+                {novedades.map((novedad) => (
+                  <Card key={novedad.id} className="p-4 bg-yellow-50 border-yellow-200">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-semibold">{novedad.cliente}</p>
+                        <p className="text-sm text-gray-600">{novedad.descripcion || "Sin descripción"}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {novedad.registrado_por} · {new Date(novedad.created_at).toLocaleString("es-CO")}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-red-600">{formatCOP(novedad.monto_novedad)}</p>
+                        {tipo === "fiado" && novedad.monto_pagado > 0 && (
+                          <>
+                            <p className="text-sm text-green-600">Pagó: {formatCOP(novedad.monto_pagado)}</p>
+                            <p className="text-sm text-orange-600 font-medium">
+                              Debe: {formatCOP(novedad.monto_novedad - novedad.monto_pagado)}
+                            </p>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-red-600">{formatCOP(novedad.monto_novedad)}</p>
-                      {tipo === "fiado" && novedad.monto_pagado > 0 && (
-                        <>
-                          <p className="text-sm text-green-600">Pagó: {formatCOP(novedad.monto_pagado)}</p>
-                          <p className="text-sm text-orange-600 font-medium">
-                            Debe: {formatCOP(novedad.monto_novedad - novedad.monto_pagado)}
-                          </p>
-                        </>
-                      )}
+                    <div className="flex gap-2 mt-3">
+                      <Button size="sm" onClick={() => handleValidar(novedad.id)} className="flex-1">
+                        ✓ Validar
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleEliminar(novedad.id)}
+                        className="border-red-300 text-red-600 hover:bg-red-50">
+                        🗑 Eliminar
+                      </Button>
+                      <Select onValueChange={(value) => { if (value) handleCambiarTipo(novedad.id, value) }} defaultValue="">
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="🔄 Cambiar a..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tipo !== "agotado" && <SelectItem value="agotado">⚫ Agotado</SelectItem>}
+                          {tipo !== "devolucion" && <SelectItem value="devolucion">🔴 Devolución</SelectItem>}
+                          {tipo !== "fiado" && <SelectItem value="fiado">🟠 Fiado</SelectItem>}
+                          {tipo !== "error_facturacion" && <SelectItem value="error_facturacion">🟡 Error Fact.</SelectItem>}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </div>
+                  </Card>
+                ))}
+              </>
+            )}
 
-                  <div className="flex gap-2 mt-3">
-                    <Button size="sm" onClick={() => handleValidar(novedad.id)} className="flex-1">
-                      ✓ Validar
-                    </Button>
-                    <Select
-                      onValueChange={(value) => { if (value) handleCambiarTipo(novedad.id, value) }}
-                      defaultValue=""
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="🔄 Cambiar a..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {tipo !== "agotado" && <SelectItem value="agotado">⚫ Agotado</SelectItem>}
-                        {tipo !== "devolucion" && <SelectItem value="devolucion">🔴 Devolución</SelectItem>}
-                        {tipo !== "fiado" && <SelectItem value="fiado">🟠 Fiado</SelectItem>}
-                        {tipo !== "error_facturacion" && <SelectItem value="error_facturacion">🟡 Error Fact.</SelectItem>}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </Card>
-              ))
+            {/* Validadas — con opción de eliminar */}
+            {todasNovedades.filter(n => n.validado).length > 0 && (
+              <>
+                <p className="text-xs font-medium text-green-700 uppercase mt-4">Validadas</p>
+                {todasNovedades.filter(n => n.validado).map((novedad) => (
+                  <Card key={novedad.id} className="p-4 bg-green-50 border-green-200">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold">{novedad.cliente}</p>
+                        <p className="text-sm text-gray-600">{novedad.descripcion || "Sin descripción"}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {novedad.registrado_por} · {new Date(novedad.created_at).toLocaleString("es-CO")}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold">{formatCOP(novedad.monto_novedad)}</p>
+                        <Badge variant="outline" className="bg-green-100 text-green-700 text-xs">✓ Validada</Badge>
+                      </div>
+                    </div>
+                    <div className="flex justify-end mt-2">
+                      <Button size="sm" variant="outline" onClick={() => handleEliminar(novedad.id)}
+                        className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50">
+                        ↩ Revertir / Eliminar
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </>
+            )}
+
+            {novedades.length === 0 && todasNovedades.filter(n => n.validado).length === 0 && (
+              <p className="text-center text-gray-500 py-8">
+                ✅ No hay novedades de este tipo
+              </p>
             )}
           </div>
         </DialogContent>
