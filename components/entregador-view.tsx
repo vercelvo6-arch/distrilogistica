@@ -1149,6 +1149,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   })
                 )}
               </div>
+          </div>
           </main>
         </div>
 
