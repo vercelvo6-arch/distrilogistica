@@ -1149,6 +1149,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   })
                 )}
               </div>
+            </main>
+          </div>
 
       {/* Modal de novedad unificado (Fiado / Devolución / Agotado) */}
       <Dialog open={showNovedadModal} onOpenChange={setShowNovedadModal}>
