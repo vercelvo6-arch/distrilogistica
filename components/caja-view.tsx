@@ -2845,25 +2845,28 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                                   </Button>
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600"
                                                     onClick={async () => {
+                                                      const monto = calculateOrderEffectiveTotal(order)
+                                                      if (!monto || monto <= 0) {
+                                                        toast({ title: "Error", description: "No se puede calcular el monto del pedido", variant: "destructive" })
+                                                        return
+                                                      }
                                                       try {
-                                                        await fetch("/api/novedades", {
+                                                        const res = await fetch("/api/novedades", {
                                                           method: "POST",
                                                           headers: { "Content-Type": "application/json" },
                                                           body: JSON.stringify({
                                                             pedidoId: order.id,
-                                                            planillaId: route.id,
                                                             tipoNovedad: "agotado",
-                                                            montoNovedad: effectiveTotal,
+                                                            montoNovedad: monto,
                                                             descripcion: "Agotado registrado desde caja",
-                                                            registradoPor: user.nombre,
-                                                            tipoRegistro: "caja",
-                                                            validado: true,
                                                           }),
                                                         })
+                                                        const data = await res.json()
+                                                        if (!res.ok) throw new Error(data.error)
+                                                        toast({ title: "Agotado registrado", description: `${order.cliente} — ${formatCOP(monto)}` })
                                                         await loadData()
-                                                        toast({ title: "Agotado registrado", description: order.cliente })
-                                                      } catch {
-                                                        toast({ title: "Error", description: "No se pudo registrar", variant: "destructive" })
+                                                      } catch (err: any) {
+                                                        toast({ title: "Error", description: err.message, variant: "destructive" })
                                                       }
                                                     }}
                                                     disabled={route.cuadradoEnCaja}>
