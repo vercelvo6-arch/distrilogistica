@@ -291,7 +291,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           ? Number(item.cantidadEntregada)
           : cantOriginal
 
-      if (cantEntregada === 0 || item.estadoProducto === "agotado") return
+      if (item.estadoProducto === "agotado") return
+      if (cantEntregada === 0) return
 
       const subtotalReal =
         item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
