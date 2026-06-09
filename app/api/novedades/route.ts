@@ -181,12 +181,8 @@ export async function POST(request: NextRequest) {
         WHERE id = ${pedidoId}
       `
     } else if (tipoNovedad === 'agotado') {
-      await sql`
-        UPDATE pedidos SET
-          estado     = 'devolucion',
-          updated_at = NOW()
-        WHERE id = ${pedidoId}
-      `
+      // Agotado NO cambia el estado del pedido — queda como estaba
+      // Solo queda registrado en novedades_pedido
     }
 
     return NextResponse.json({
