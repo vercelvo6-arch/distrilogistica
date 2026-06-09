@@ -18,7 +18,6 @@ export async function GET(
     }
 
     const { planillaId } = await params;
-
     if (!planillaId) {
       return NextResponse.json({ error: "planillaId requerido" }, { status: 400 });
     }
@@ -41,14 +40,11 @@ export async function GET(
     };
 
     for (const novedad of todasLasNovedades) {
-      // ✅ Normalizar fiado_parcial → fiado para compatibilidad con datos anteriores
       const tipo = novedad.tipo_novedad === 'fiado_parcial' ? 'fiado' : novedad.tipo_novedad;
       if (!resumenPorTipo[tipo]) continue;
-
       const monto = Number(novedad.monto_novedad || 0);
       resumenPorTipo[tipo].clientes.add(novedad.pedido_id);
       resumenPorTipo[tipo].cantidad++;
-
       if (esVerdadero(novedad.validado)) {
         resumenPorTipo[tipo].validadas += monto;
         if (tipo === 'fiado') {
@@ -57,7 +53,6 @@ export async function GET(
       } else {
         resumenPorTipo[tipo].pendientes += monto;
       }
-
       resumenPorTipo[tipo].total =
         resumenPorTipo[tipo].validadas + resumenPorTipo[tipo].pendientes;
     }
@@ -83,6 +78,7 @@ export async function GET(
         total_validadas: totalNovedades - totalPendientes,
       },
       novedadesPendientes,
+      todasNovedades: todasLasNovedades, // ← agregado para permitir revertir validadas
     });
 
   } catch (error: any) {
