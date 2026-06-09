@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
     const {
       entregador,
-      planillaIds: planillaIdsDirectos, // cuando vienen del frontend directamente
+      planillaIds: planillaIdsDirectos,
       fechaDesde,
       fechaHasta,
       rutasFiltro,
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       observaciones,
       descuento,
       motivoDescuento,
+      cobrosVinculados, // ← cobros CxC con montos y referencias
     } = body
 
     if (!entregador) {
@@ -45,11 +46,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // ─── 1. OBTENER PLANILLAS ─────────────────────────────────────────────────────
+    // ─── 1. OBTENER PLANILLAS ─────────────────────────────────────────────────
     let planillas: any[]
 
     if (planillaIdsDirectos?.length) {
-      // Vinieron del frontend directamente
       planillas = await sql`
         SELECT id, tipo_ruta, fecha, total_cargue, total_entregado,
                total_fiado, total_devolucion, total_repaso, total_agotados
@@ -71,29 +71,37 @@ export async function POST(request: Request) {
     }
 
     if (planillas.length === 0) {
+      return NextResponse.json({ error: 'No hay planillas para cuadrar' }, { status: 404 })
+    }
+
+    const planillaIds = planillas.map((p: any) => p.id)
+
+    // ─── 2. VERIFICAR QUE NO ESTÉN YA CUADRADAS ──────────────────────────────
+    const yaCuadradas = await sql`
+      SELECT id FROM cuadres_caja
+      WHERE planillas_ids && ${planillaIds}::text[]
+      LIMIT 1
+    `
+    if (yaCuadradas.length > 0) {
       return NextResponse.json(
-        { error: 'No hay planillas para cuadrar' },
-        { status: 404 }
+        { error: 'Una o más planillas ya fueron cuadradas anteriormente' },
+        { status: 409 }
       )
     }
 
-    // ─── 2. CALCULAR TOTALES DESDE PEDIDOS (fuente de verdad) ────────────────────
-    const planillaIds = planillas.map((p: any) => p.id)
-
+    // ─── 3. CALCULAR TOTALES ──────────────────────────────────────────────────
     const totales = await sql`
       SELECT
-        COALESCE(SUM(p.total), 0)                                                AS total_cargue,
+        COALESCE(SUM(p.total), 0) AS total_cargue,
         COALESCE(SUM(CASE WHEN p.estado IN ('entregado','pagado') THEN p.total - COALESCE(p.descuento,0) ELSE 0 END), 0) AS total_entregado,
         COALESCE(SUM(CASE WHEN p.estado = 'fiado' AND COALESCE(p.es_cobro,false) = false THEN p.saldo_pendiente ELSE 0 END), 0) AS total_fiados_nuevos,
         COALESCE(SUM(CASE WHEN p.estado = 'devolucion' THEN p.total ELSE 0 END), 0) AS total_devoluciones,
-        COALESCE(SUM(CASE WHEN p.estado = 'repaso' THEN p.total ELSE 0 END), 0)     AS total_repasos,
-        COALESCE(SUM(COALESCE(p.descuento,0)), 0)                                AS total_descuentos,
+        COALESCE(SUM(CASE WHEN p.estado = 'repaso' THEN p.total ELSE 0 END), 0) AS total_repasos,
+        COALESCE(SUM(COALESCE(p.descuento,0)), 0) AS total_descuentos,
         COALESCE(SUM(
           CASE WHEN p.estado IN ('entregado','pagado','fiado')
-            THEN (
-              SELECT COALESCE(SUM(pp.total),0) FROM pedido_productos pp
-              WHERE pp.pedido_id = p.id AND pp.estado_producto = 'agotado'
-            )
+            THEN (SELECT COALESCE(SUM(pp.total),0) FROM pedido_productos pp
+                  WHERE pp.pedido_id = p.id AND pp.estado_producto = 'agotado')
           ELSE 0 END
         ), 0) AS total_agotados
       FROM pedidos p
@@ -101,224 +109,243 @@ export async function POST(request: Request) {
         AND COALESCE(p.es_cobro, false) = false
     `
 
-    // ─── 3. CALCULAR COBROS CxC ASIGNADOS A ESTAS PLANILLAS ─────────────────────
-    // Fuente: tabla fiados con planilla_asignado_id en estas planillas
-    const cobros = await sql`
-      SELECT
-        COALESCE(SUM(f.monto_total), 0)    AS total_cobros_asignados,
-        COALESCE(SUM(f.monto_pagado), 0)   AS total_cobrado,
-        COALESCE(SUM(f.saldo_pendiente), 0) AS total_no_cobrado
-      FROM fiados f
-      WHERE f.planilla_asignado_id = ANY(${planillaIds})
-        AND f.eliminado = false
-    `
-
-    // Cobros por medio de pago (de abonos_fiados registrados hoy en estas planillas)
-    const cobrosPorMedio = await sql`
-      SELECT
-        COALESCE(SUM(af.monto_abono), 0)   AS cobros_efectivo,
-        COALESCE(SUM(af.monto_nequi), 0)   AS cobros_nequi
-      FROM abonos_fiados af
-      WHERE af.planilla_cobro_id::text = ANY(${planillaIds})
-    `
-
     const t = totales[0]
-    const c = cobros[0]
-    const cm = cobrosPorMedio[0]
+    const totalCargue       = Number(t.total_cargue)
+    const totalEntregado    = Number(t.total_entregado)
+    const totalFiadosNuevos = Number(t.total_fiados_nuevos)
+    const totalDevoluciones = Number(t.total_devoluciones)
+    const totalRepasos      = Number(t.total_repasos)
+    const totalDescuentos   = Number(t.total_descuentos)
+    const totalAgotados     = Number(t.total_agotados)
 
-    const totalCargue        = Number(t.total_cargue)
-    const totalEntregado     = Number(t.total_entregado)
-    const totalFiadosNuevos  = Number(t.total_fiados_nuevos)
-    const totalDevoluciones  = Number(t.total_devoluciones)
-    const totalRepasos       = Number(t.total_repasos)
-    const totalDescuentos    = Number(t.total_descuentos)
-    const totalAgotados      = Number(t.total_agotados)
-    const totalCobrosAsig    = Number(c.total_cobros_asignados)
-    const cobrosEfectivo     = Number(cm.cobros_efectivo)
-    const cobrosNequi        = Number(cm.cobros_nequi)
-    const totalCobros        = cobrosEfectivo + cobrosNequi
+    // ─── 4. CALCULAR COBROS VINCULADOS ────────────────────────────────────────
+    const cobros = cobrosVinculados || []
+    const cobrosEfectivo = cobros.reduce((s: number, c: any) => s + (Number(c.montoEfectivo) || 0), 0)
+    const cobrosNequi    = cobros.reduce((s: number, c: any) => s + (Number(c.montoNequi) || 0), 0)
+    const totalCobros    = cobrosEfectivo + cobrosNequi
 
-    // ─── 4. FÓRMULA DE CUADRE ────────────────────────────────────────────────────
-    // Efectivo Esperado = Entregado - Descuentos - Agotados + Cobros efectivo
-    // Nequi Esperado    = Cobros nequi
-    const efectivoEsperado = Math.round(
-      (totalEntregado - totalDescuentos - totalAgotados + cobrosEfectivo) * 100
-    ) / 100
-    const nequiEsperado = cobrosNequi
+    // ─── 5. FÓRMULA DE CUADRE ─────────────────────────────────────────────────
+    const efectivoEsperado = Math.round((totalEntregado - totalDescuentos - totalAgotados + cobrosEfectivo) * 100) / 100
+    const nequiEsperado    = cobrosNequi
 
-    const efectivoReal    = Number(efectivoRecibido) || 0
-    const nequiReal       = Number(nequiRecibido) || 0
-    // Soportar tanto consignaciones múltiples como monto único
-    const consignado      = consignacionesArray?.length
+    const billetesVal          = Number(billetes) || 0
+    const monedasVal           = Number(monedas) || 0
+    const consignadoVal        = consignacionesArray?.length
       ? consignacionesArray.reduce((s: number, c: any) => s + Number(c.monto || 0), 0)
       : Number(montoConsignacion) || 0
-    const billetesVal     = Number(billetes) || 0
-    const monedasVal      = Number(monedas) || 0
-    // Total recibido: si vienen billetes/monedas usar esos, sino usar efectivoRecibido
-    const totalFisicoRecibido = (billetesVal + monedasVal + consignado) || efectivoReal
-    const descuentoVal    = Number(descuento) || 0
+    const nequiReal            = Number(nequiRecibido) || 0
+    const totalFisicoRecibido  = (billetesVal + monedasVal + consignadoVal) || Number(efectivoRecibido) || 0
+    const descuentoVal         = Number(descuento) || 0
+    const totalRecibido        = totalFisicoRecibido + nequiReal
+    const totalEsperado        = efectivoEsperado + nequiEsperado
+    const diferencia           = Math.round((totalRecibido - totalEsperado - descuentoVal) * 100) / 100
+    const estado               = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
+    const tipoCuadre           = planillaIds.length === 1 ? 'individual' : 'agrupado'
 
-    const totalRecibido   = totalFisicoRecibido + nequiReal
-    const totalEsperado   = efectivoEsperado + nequiEsperado
-    const diferencia      = Math.round((totalRecibido - totalEsperado - descuentoVal) * 100) / 100
-    const estado          = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
+    // ─── 6. TRANSACCIÓN: TODO O NADA ─────────────────────────────────────────
+    await sql`BEGIN`
 
-    // ─── 5. GUARDAR FIADOS NUEVOS ─────────────────────────────────────────────────
-    const pedidosFiados = await sql`
-      SELECT p.id, p.cliente, p.direccion, p.telefono, p.total,
-             COALESCE(p.monto_pagado,0) AS monto_pagado,
-             COALESCE(p.saldo_pendiente, p.total - COALESCE(p.monto_pagado,0)) AS saldo_pendiente,
-             p.observaciones, pl.fecha, pl.entregador, pl.tipo_ruta
-      FROM pedidos p
-      JOIN planillas pl ON p.planilla_id = pl.id
-      WHERE p.estado = 'fiado'
-        AND COALESCE(p.es_cobro, false) = false
-        AND p.planilla_id = ANY(${planillaIds})
-    `
-
-    for (const pedido of pedidosFiados) {
-      const saldo = Math.max(0, Number(pedido.saldo_pendiente))
-      await sql`
-        INSERT INTO fiados (
-          pedido_id, cliente, direccion, telefono,
-          monto_total, monto_pagado, saldo_pendiente,
-          fecha_fiado, entregador, ruta, estado, observaciones
-        ) VALUES (
-          ${pedido.id}, ${pedido.cliente}, ${pedido.direccion || null},
-          ${pedido.telefono || null}, ${Number(pedido.total)},
-          ${Number(pedido.monto_pagado)}, ${saldo},
-          ${pedido.fecha}, ${pedido.entregador}, ${pedido.tipo_ruta},
-          ${saldo > 0 ? 'pendiente' : 'pagado_completo'},
-          ${pedido.observaciones || null}
-        )
-        ON CONFLICT DO NOTHING
+    try {
+      // 6a. Guardar fiados nuevos
+      const pedidosFiados = await sql`
+        SELECT p.id, p.cliente, p.direccion, p.telefono, p.total,
+               COALESCE(p.monto_pagado,0) AS monto_pagado,
+               COALESCE(p.saldo_pendiente, p.total - COALESCE(p.monto_pagado,0)) AS saldo_pendiente,
+               p.observaciones, pl.fecha, pl.entregador, pl.tipo_ruta
+        FROM pedidos p
+        JOIN planillas pl ON p.planilla_id = pl.id
+        WHERE p.estado = 'fiado'
+          AND COALESCE(p.es_cobro, false) = false
+          AND p.planilla_id = ANY(${planillaIds})
       `
-    }
+      for (const pedido of pedidosFiados) {
+        const saldo = Math.max(0, Number(pedido.saldo_pendiente))
+        await sql`
+          INSERT INTO fiados (
+            pedido_id, cliente, direccion, telefono,
+            monto_total, monto_pagado, saldo_pendiente,
+            fecha_fiado, entregador, ruta, estado, observaciones
+          ) VALUES (
+            ${pedido.id}, ${pedido.cliente}, ${pedido.direccion || null},
+            ${pedido.telefono || null}, ${Number(pedido.total)},
+            ${Number(pedido.monto_pagado)}, ${saldo},
+            ${pedido.fecha}, ${pedido.entregador}, ${pedido.tipo_ruta},
+            ${saldo > 0 ? 'pendiente' : 'pagado_completo'},
+            ${pedido.observaciones || null}
+          )
+          ON CONFLICT DO NOTHING
+        `
+      }
 
-    // ─── 6. MARCAR PEDIDOS DE REPASO (sin tabla repasos) ─────────────────────────
-    // Los repasos quedan como pedidos con estado='repaso' — no se mueven a otra tabla
-    // El coordinador los verá en la siguiente planilla si los reasigna
+      // 6b. Registrar abonos de cobros CxC
+      for (const cobro of cobros) {
+        const efectivo = Number(cobro.montoEfectivo) || 0
+        const nequi    = Number(cobro.montoNequi) || 0
+        if (!cobro.id || efectivo + nequi <= 0) continue
 
-    // ─── 7. GUARDAR CUADRE ───────────────────────────────────────────────────────
-    const tipoCuadre = planillaIds.length === 1 ? 'individual' : 'agrupado'
+        const fiadoId = Number(cobro.id)
 
-    const result = await sql`
-      INSERT INTO cuadres_caja (
-        entregador, fecha_cuadre, fecha_desde, fecha_hasta,
-        planillas_ids, rutas_nombres, rutas_cuadre, tipo_cuadre,
-        total_cargue, total_esperado, total_efectivo, nequi_recibido,
-        total_consignado, diferencia, estado, observaciones,
-        tiene_consignacion, numero_consignacion, banco,
-        descuento, motivo_descuento,
-        agotados, fiado, devoluciones, repasos, errores_facturacion,
-        cobros_efectivo, cobros_nequi, total_cobros,
-        cuadrado_por
-      ) VALUES (
-        ${entregador},
-        NOW()::date,
-        ${fechaDesde}::date,
-        ${fechaHasta}::date,
-        ${planillaIds},
-        ${planillas.map((p: any) => p.tipo_ruta)},
-        ${rutasFiltro || planillas.map((p: any) => p.tipo_ruta)},
-        ${tipoCuadre},
-        ${totalCargue},
-        ${totalEsperado},
-        ${totalFisicoRecibido},
-        ${nequiReal},
-        ${consignado},
-        ${diferencia},
-        ${estado},
-        ${observaciones || null},
-        ${tieneConsignacion || false},
-        ${numeroConsignacion || null},
-        ${banco || null},
-        ${descuentoVal},
-        ${motivoDescuento || null},
-        ${totalAgotados},
-        ${totalFiadosNuevos},
-        ${totalDevoluciones},
-        ${totalRepasos},
-        0,
-        ${cobrosEfectivo},
-        ${cobrosNequi},
-        ${totalCobros},
-        null
-      )
-      RETURNING id
-    `
+        // Obtener fiado actual
+        const [fiado] = await sql`
+          SELECT id, monto_total, monto_pagado, saldo_pendiente, estado
+          FROM fiados
+          WHERE id = ${fiadoId}
+            AND (eliminado IS NULL OR eliminado = false)
+            AND estado IN ('pendiente', 'abono_parcial')
+        `
+        if (!fiado) continue
 
-    const cuadreId = result[0].id
+        const totalAbono       = efectivo + nequi
+        const saldoActual      = Number(fiado.saldo_pendiente)
+        const nuevoMontoPagado = Number(fiado.monto_pagado) + totalAbono
+        const nuevoSaldo       = Math.max(0, Math.round((saldoActual - totalAbono) * 100) / 100)
+        const pagoCompleto     = nuevoSaldo <= 0
 
-    // ─── 8. MARCAR PLANILLAS COMO CUADRADAS ──────────────────────────────────────
-    await sql`
-      UPDATE planillas
-      SET cuadrado_en_caja = true,
-          cuadre_caja_id   = ${cuadreId},
-          fecha_cuadre     = NOW(),
-          updated_at       = NOW()
-      WHERE id = ANY(${planillaIds})
-    `
+        // Actualizar fiado
+        await sql`
+          UPDATE fiados SET
+            monto_pagado        = ${nuevoMontoPagado},
+            saldo_pendiente     = ${nuevoSaldo},
+            estado              = ${pagoCompleto ? 'pagado_completo' : 'abono_parcial'},
+            entregador_asignado = ${entregador},
+            updated_at          = NOW()
+          WHERE id = ${fiadoId}
+        `
 
-    // ─── 9. COMISIÓN ──────────────────────────────────────────────────────────────
-    const configComision = await sql`
-      SELECT porcentaje_comision FROM comisiones_config
-      WHERE entregador = ${entregador} AND activo = true
-      LIMIT 1
-    `
+        // Registrar abono
+        await sql`
+          INSERT INTO abonos_fiados (
+            pedido_id, monto_abono, monto_nequi, metodo_pago,
+            referencia_pago, fecha_abono, observaciones,
+            entregador_cobro, origen_tabla, created_at
+          ) VALUES (
+            ${String(fiadoId)},
+            ${efectivo},
+            ${nequi},
+            ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
+            ${cobro.referencia?.trim() || null},
+            NOW(),
+            ${'Cobro registrado en cuadre de caja'},
+            ${entregador},
+            'fiados',
+            NOW()
+          )
+        `
+      }
 
-    if (configComision.length > 0) {
-      const porcentaje       = Number(configComision[0].porcentaje_comision)
-      // Base comisionable = lo entregado efectivamente (sin cobros CxC)
-      const baseComisionable = Math.round(totalEntregado * 100) / 100
-      const montoComision    = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
-
-      await sql`
-        INSERT INTO comisiones (
-          entregador, fecha, planilla_id,
-          total_entregas_efectivas, total_devoluciones,
-          base_comisionable, porcentaje_aplicado, monto_comision,
-          estado, cuadre_agrupado_id
+      // 6c. Guardar cuadre
+      const [cuadreResult] = await sql`
+        INSERT INTO cuadres_caja (
+          entregador, fecha_cuadre, fecha_desde, fecha_hasta,
+          planillas_ids, rutas_nombres, rutas_cuadre, tipo_cuadre,
+          total_cargue, total_esperado, total_efectivo, nequi_recibido,
+          total_consignado, diferencia, estado, observaciones,
+          tiene_consignacion, numero_consignacion, banco,
+          descuento, motivo_descuento,
+          agotados, fiado, devoluciones, repasos, errores_facturacion,
+          cobros_efectivo, cobros_nequi, total_cobros,
+          cuadrado_por
         ) VALUES (
           ${entregador},
-          (NOW() AT TIME ZONE 'America/Bogota')::date,
-          NULL,
-          ${totalEntregado},
+          NOW()::date,
+          ${planillas[0].fecha},
+          ${planillas[planillas.length - 1].fecha},
+          ${planillaIds},
+          ${planillas.map((p: any) => p.tipo_ruta)},
+          ${planillas.map((p: any) => p.tipo_ruta)},
+          ${tipoCuadre},
+          ${totalCargue},
+          ${totalEsperado},
+          ${totalFisicoRecibido},
+          ${nequiReal},
+          ${consignadoVal},
+          ${diferencia},
+          ${estado},
+          ${observaciones || null},
+          ${(consignacionesArray?.length > 0) || tieneConsignacion || false},
+          ${consignacionesArray?.[0]?.numero || numeroConsignacion || null},
+          ${consignacionesArray?.[0]?.banco || banco || null},
+          ${descuentoVal},
+          ${motivoDescuento || null},
+          ${totalAgotados},
+          ${totalFiadosNuevos},
           ${totalDevoluciones},
-          ${baseComisionable},
-          ${porcentaje},
-          ${montoComision},
-          'pendiente',
-          ${cuadreId}
+          ${totalRepasos},
+          0,
+          ${cobrosEfectivo},
+          ${cobrosNequi},
+          ${totalCobros},
+          null
         )
+        RETURNING id
       `
-    }
 
-    return NextResponse.json({
-      success: true,
-      cuadreId,
-      tipoCuadre,
-      resumen: {
-        totalCargue,
-        totalEntregado,
-        totalFiadosNuevos,
-        totalDevoluciones,
-        totalRepasos,
-        totalAgotados,
-        totalDescuentos,
-        cobrosEfectivo,
-        cobrosNequi,
-        totalCobros,
-        efectivoEsperado,
-        nequiEsperado,
-        efectivoRecibido: efectivoReal,
-        nequiRecibido:    nequiReal,
-        diferencia,
-        estado,
-      },
-      planillasCuadradas: planillaIds.length,
-      fiadosGuardados:    pedidosFiados.length,
-    })
+      const cuadreId = cuadreResult.id
+
+      // 6d. Marcar planillas como cuadradas
+      await sql`
+        UPDATE planillas
+        SET cuadrado_en_caja = true,
+            cuadre_caja_id   = ${cuadreId},
+            fecha_cuadre     = NOW(),
+            updated_at       = NOW()
+        WHERE id = ANY(${planillaIds})
+      `
+
+      // 6e. Comisión
+      const [configComision] = await sql`
+        SELECT porcentaje_comision FROM comisiones_config
+        WHERE entregador = ${entregador} AND activo = true
+        LIMIT 1
+      `
+      if (configComision) {
+        const porcentaje       = Number(configComision.porcentaje_comision)
+        const baseComisionable = Math.round(totalEntregado * 100) / 100
+        const montoComision    = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
+        await sql`
+          INSERT INTO comisiones (
+            entregador, fecha, planilla_id,
+            total_entregas_efectivas, total_devoluciones,
+            base_comisionable, porcentaje_aplicado, monto_comision,
+            estado, cuadre_agrupado_id
+          ) VALUES (
+            ${entregador},
+            (NOW() AT TIME ZONE 'America/Bogota')::date,
+            NULL,
+            ${totalEntregado},
+            ${totalDevoluciones},
+            ${baseComisionable},
+            ${porcentaje},
+            ${montoComision},
+            'pendiente',
+            ${cuadreId}
+          )
+        `
+      }
+
+      await sql`COMMIT`
+
+      return NextResponse.json({
+        success: true,
+        cuadreId,
+        tipoCuadre,
+        mensaje: `Cuadre registrado correctamente — ${planillaIds.length} planilla(s), ${cobros.filter((c: any) => (Number(c.montoEfectivo)||0) + (Number(c.montoNequi)||0) > 0).length} cobro(s) procesado(s)`,
+        resumen: {
+          totalCargue, totalEntregado, totalFiadosNuevos,
+          totalDevoluciones, totalRepasos, totalAgotados,
+          cobrosEfectivo, cobrosNequi, totalCobros,
+          efectivoEsperado, nequiEsperado,
+          totalFisicoRecibido, nequiReal,
+          diferencia, estado,
+        },
+        planillasCuadradas: planillaIds.length,
+        fiadosGuardados:    pedidosFiados.length,
+      })
+
+    } catch (txError) {
+      await sql`ROLLBACK`
+      throw txError
+    }
 
   } catch (error) {
     console.error('[CUADRE CAJA POST] ERROR:', error)
@@ -334,9 +361,9 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url)
-    const entregador  = searchParams.get('entregador')
-    const fechaDesde  = searchParams.get('fechaDesde')
-    const fechaHasta  = searchParams.get('fechaHasta')
+    const entregador = searchParams.get('entregador')
+    const fechaDesde = searchParams.get('fechaDesde')
+    const fechaHasta = searchParams.get('fechaHasta')
 
     const sql = getDB()
 
@@ -356,12 +383,4 @@ export async function GET(request: Request) {
   } catch (error) {
     return handleDBError(error, 'CUADRE CAJA GET')
   }
-}
-
-// ─── ENDPOINT DE PREVIEW ─────────────────────────────────────────────────────
-// GET /api/cuadres-caja/preview?entregador=X&fechaDesde=Y&fechaHasta=Z
-// Retorna el resumen calculado SIN guardar — para que caja vea los números antes de cuadrar
-export async function preview(request: Request) {
-  // Mismo cálculo que POST secciones 1-4, pero sin escribir nada
-  // Implementar si se necesita pre-visualización en el modal
 }
