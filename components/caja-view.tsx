@@ -1699,32 +1699,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
     }
 
-    // 2. Registrar abonos de cobros CxC vinculados
-    for (const cobro of cobrosVinculados) {
-      const efectivo = Number(cobro.montoEfectivo) || 0
-      const nequi    = Number(cobro.montoNequi) || 0
-      if (efectivo + nequi <= 0) continue
-      if (!cobro.id) continue
-      const res = await fetch("/api/fiados/registrar-abono", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fiadoId:         Number(cobro.id),
-          montoEfectivo:   efectivo,
-          montoNequi:      nequi,
-          referenciaPago:  cobro.referencia?.trim() || null,
-          entregadorCobro: agrupadoData.entregador,
-          observaciones:   "Registrado en cuadre agrupado",
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        console.warn('[CUADRE] Cobro no registrado:', cobro.id, err.error)
-        // No detener el cuadre por un cobro fallido — continuar
-      }
-    }
-
-    // 3. Calcular totales
+    // 2. Calcular totales
     const totalCobrosEfectivo    = cobrosVinculados.reduce((s, c) => s + (Number(c.montoEfectivo) || 0), 0)
     const totalBilletes          = Number(formData.billetes || 0)
     const totalMonedas           = Number(formData.monedas || 0)
@@ -1754,6 +1729,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       devoluciones:       devolucionesFinal,
       repasos:            repasosFinal,
       erroresFacturacion: erroresFacturacionFinal,
+      cobrosVinculados:   cobrosVinculados.map(c => ({
+        id:            c.id,
+        montoEfectivo: Number(c.montoEfectivo) || 0,
+        montoNequi:    Number(c.montoNequi) || 0,
+        referencia:    c.referencia?.trim() || null,
+      })),
     }
 
     const response = await fetch("/api/cuadres-caja", {
@@ -2003,31 +1984,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
     try {
       setSubmitting(true)
 
-      // 1. Registrar abono por cada cobro vinculado
-      for (const cobro of cobrosVinculados) {
-        const efectivo = Number(cobro.montoEfectivo) || 0
-        const nequi    = Number(cobro.montoNequi) || 0
-        if (efectivo + nequi <= 0) continue
-        if (!cobro.id) continue
-        const res = await fetch("/api/fiados/registrar-abono", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fiadoId:         Number(cobro.id),
-            montoEfectivo:   efectivo,
-            montoNequi:      nequi,
-            referenciaPago:  cobro.referencia?.trim() || null,
-            entregadorCobro: selectedPlanilla.entregador,
-            observaciones:   "Registrado en cuadre de caja",
-          }),
-        })
-        if (!res.ok) {
-          const err = await res.json()
-          console.warn('[CUADRE] Cobro no registrado:', cobro.id, err.error)
-        }
-      }
-
-      // 2. Calcular totales
+      // 1. Calcular totales
       const totals              = calculateRouteTotals(selectedPlanilla)
       const totalCobrosEfectivo = cobrosVinculados.reduce((s, c) => s + (Number(c.montoEfectivo) || 0), 0)
       const totalBilletes       = Number(formData.billetes || 0)
@@ -2038,7 +1995,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
       const novedades           = totals.fiado + totals.devoluciones + totals.repasos + totals.agotados + totals.erroresFacturacion + Number(formData.descuento || 0)
       const totalEsperado       = cargue - novedades + totalCobrosEfectivo
 
-      // 3. Registrar el cuadre
+      // 2. Registrar el cuadre (cobros incluidos en el payload — transacción única)
       const response = await fetch("/api/caja/recibir-efectivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2054,6 +2011,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           descuento:         Number(formData.descuento || 0),
           motivoDescuento:   formData.motivoDescuento || null,
           agotados:          totals.agotados || 0,
+          cobrosVinculados:  cobrosVinculados.map(c => ({
+            id:            c.id,
+            montoEfectivo: Number(c.montoEfectivo) || 0,
+            montoNequi:    Number(c.montoNequi) || 0,
+            referencia:    c.referencia?.trim() || null,
+          })),
         }),
       })
 
