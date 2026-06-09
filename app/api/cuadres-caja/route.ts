@@ -243,7 +243,7 @@ export async function POST(request: Request) {
         ${cobrosEfectivo},
         ${cobrosNequi},
         ${totalCobros},
-        ${session.user.id}
+        null
       )
       RETURNING id
     `
