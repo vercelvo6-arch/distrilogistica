@@ -1394,6 +1394,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       ? totalPedido
       : Number(novedadCajaMonto) || 0
 
+    console.log('[NOVEDAD CAJA]', { tipo: novedadCajaTipo, monto, totalPedido, order: novedadCajaOrder?.id })
+
     if (novedadCajaTipo !== "agotado" && (monto < 0 || monto > totalPedido)) {
       toast({ title: "Error", description: `El monto debe estar entre $0 y ${formatCOP(totalPedido)}`, variant: "destructive" })
       return
