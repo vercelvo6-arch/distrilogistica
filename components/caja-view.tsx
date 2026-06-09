@@ -2844,6 +2844,32 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                                     Devolución
                                                   </Button>
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600"
+                                                    onClick={async () => {
+                                                      try {
+                                                        await fetch("/api/novedades", {
+                                                          method: "POST",
+                                                          headers: { "Content-Type": "application/json" },
+                                                          body: JSON.stringify({
+                                                            pedidoId: order.id,
+                                                            planillaId: route.id,
+                                                            tipoNovedad: "agotado",
+                                                            montoNovedad: effectiveTotal,
+                                                            descripcion: "Agotado registrado desde caja",
+                                                            registradoPor: user.nombre,
+                                                            tipoRegistro: "caja",
+                                                            validado: true,
+                                                          }),
+                                                        })
+                                                        await loadData()
+                                                        toast({ title: "Agotado registrado", description: order.cliente })
+                                                      } catch {
+                                                        toast({ title: "Error", description: "No se pudo registrar", variant: "destructive" })
+                                                      }
+                                                    }}
+                                                    disabled={route.cuadradoEnCaja}>
+                                                    Agotado
+                                                  </Button>
+                                                  <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600"
                                                     onClick={() => handleOpenEliminarPedidoModal(order.id, order.cliente, effectiveTotal, route.id)}>
                                                     <Trash2 className="h-3 w-3 mr-1" />
                                                     Eliminar
