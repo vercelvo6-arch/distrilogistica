@@ -161,6 +161,34 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
+    // Actualizar estado del pedido según el tipo de novedad
+    if (esFiado) {
+      const montoPagadoNum = Number(montoPagado || 0)
+      const saldoPendiente = Number(montoNovedad)
+      await sql`
+        UPDATE pedidos SET
+          estado          = 'fiado',
+          monto_pagado    = ${montoPagadoNum},
+          saldo_pendiente = ${saldoPendiente},
+          updated_at      = NOW()
+        WHERE id = ${pedidoId}
+      `
+    } else if (tipoNovedad === 'devolucion') {
+      await sql`
+        UPDATE pedidos SET
+          estado     = 'devolucion',
+          updated_at = NOW()
+        WHERE id = ${pedidoId}
+      `
+    } else if (tipoNovedad === 'agotado') {
+      await sql`
+        UPDATE pedidos SET
+          estado     = 'devolucion',
+          updated_at = NOW()
+        WHERE id = ${pedidoId}
+      `
+    }
+
     return NextResponse.json({
       success: true,
       novedad,
