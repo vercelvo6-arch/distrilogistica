@@ -124,6 +124,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const [reasignandoRuta, setReasignandoRuta] = useState<number | null>(null)
 
+  // Modal de novedad unificado en caja
+  const [showNovedadCajaModal, setShowNovedadCajaModal] = useState(false)
+  const [novedadCajaOrder, setNovedadCajaOrder] = useState<any>(null)
+  const [novedadCajaTipo, setNovedadCajaTipo] = useState<"fiado" | "devolucion" | "agotado" | null>(null)
+  const [novedadCajaMonto, setNovedadCajaMonto] = useState("")
+  const [submittingNovedadCaja, setSubmittingNovedadCaja] = useState(false)
+
   // Estado para eliminar pedidos
   const [showEliminarPedidoModal, setShowEliminarPedidoModal] = useState(false)
   const [pedidoAEliminar, setPedidoAEliminar] = useState<{ orderId: string; cliente: string; total: number; planillaId: number } | null>(null)
@@ -1368,6 +1375,57 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const actualizarConsignacion = (id: string, campo: string, valor: string) => {
     setConsignaciones(prev => prev.map(c => c.id === id ? { ...c, [campo]: valor } : c))
+  }
+
+  const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado") => {
+    setNovedadCajaOrder(order)
+    setNovedadCajaTipo(tipo)
+    setNovedadCajaMonto("")
+    setShowNovedadCajaModal(true)
+  }
+
+  const handleSubmitNovedadCaja = async () => {
+    if (!novedadCajaOrder || !novedadCajaTipo) return
+    const totalPedido = calculateOrderEffectiveTotal(novedadCajaOrder)
+    const monto = novedadCajaTipo === "agotado" && !novedadCajaMonto
+      ? totalPedido
+      : Number(novedadCajaMonto) || 0
+
+    if (monto <= 0 || monto > totalPedido) {
+      toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(totalPedido)}`, variant: "destructive" })
+      return
+    }
+
+    try {
+      setSubmittingNovedadCaja(true)
+
+      const tipoApi = novedadCajaTipo === "fiado" ? "fiado_parcial" : novedadCajaTipo
+
+      const res = await fetch("/api/novedades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pedidoId:     novedadCajaOrder.id,
+          tipoNovedad:  tipoApi,
+          montoNovedad: monto,
+          montoPagado:  novedadCajaTipo === "fiado" ? totalPedido - monto : 0,
+          descripcion:  `${novedadCajaTipo} registrado desde caja`,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      toast({ title: "Registrado", description: `${novedadCajaOrder.cliente} — ${formatCOP(monto)}` })
+      setShowNovedadCajaModal(false)
+      setNovedadCajaOrder(null)
+      setNovedadCajaTipo(null)
+      setNovedadCajaMonto("")
+      await loadData()
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" })
+    } finally {
+      setSubmittingNovedadCaja(false)
+    }
   }
 
   const loadCobrosDisponibles = async (entregador: string) => {
@@ -2832,7 +2890,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                               {!route.cuadradoEnCaja && (
                                                 <div className="flex flex-wrap gap-1 pt-1">
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-orange-300 text-orange-700"
-                                                    onClick={() => handleOrderStatusChange(order.id, "fiado")}>
+                                                    onClick={() => handleAbrirNovedadCaja(order, "fiado")}>
                                                     Fiado
                                                   </Button>
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-blue-300 text-blue-700"
@@ -2840,36 +2898,11 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                                     Repaso
                                                   </Button>
                                                   <Button variant="destructive" size="sm" className="h-7 text-xs"
-                                                    onClick={() => handleOrderStatusChange(order.id, "devolucion")}>
+                                                    onClick={() => handleAbrirNovedadCaja(order, "devolucion")}>
                                                     Devolución
                                                   </Button>
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600"
-                                                    onClick={async () => {
-                                                      const monto = calculateOrderEffectiveTotal(order)
-                                                      if (!monto || monto <= 0) {
-                                                        toast({ title: "Error", description: "No se puede calcular el monto del pedido", variant: "destructive" })
-                                                        return
-                                                      }
-                                                      try {
-                                                        const res = await fetch("/api/novedades", {
-                                                          method: "POST",
-                                                          headers: { "Content-Type": "application/json" },
-                                                          body: JSON.stringify({
-                                                            pedidoId: order.id,
-                                                            tipoNovedad: "agotado",
-                                                            montoNovedad: monto,
-                                                            descripcion: "Agotado registrado desde caja",
-                                                          }),
-                                                        })
-                                                        const data = await res.json()
-                                                        if (!res.ok) throw new Error(data.error)
-                                                        toast({ title: "Agotado registrado", description: `${order.cliente} — ${formatCOP(monto)}` })
-                                                        await loadData()
-                                                      } catch (err: any) {
-                                                        toast({ title: "Error", description: err.message, variant: "destructive" })
-                                                      }
-                                                    }}
-                                                    disabled={route.cuadradoEnCaja}>
+                                                    onClick={() => handleAbrirNovedadCaja(order, "agotado")}>
                                                     Agotado
                                                   </Button>
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600"
@@ -3858,6 +3891,64 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Modal de novedad unificado en caja */}
+      <Dialog open={showNovedadCajaModal} onOpenChange={setShowNovedadCajaModal}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {novedadCajaTipo === "fiado" ? "Registrar Fiado"
+                : novedadCajaTipo === "devolucion" ? "Registrar Devolución"
+                : "Registrar Agotado"}
+            </DialogTitle>
+            <DialogDescription>
+              {novedadCajaOrder && `${novedadCajaOrder.cliente} — ${formatCOP(calculateOrderEffectiveTotal(novedadCajaOrder))}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {novedadCajaOrder && (
+              <>
+                <div className="p-3 bg-gray-50 rounded flex justify-between">
+                  <span className="text-sm text-gray-600">Total pedido:</span>
+                  <span className="font-bold">{formatCOP(calculateOrderEffectiveTotal(novedadCajaOrder))}</span>
+                </div>
+                <div>
+                  <Label>
+                    {novedadCajaTipo === "fiado" ? "¿Cuánto abonó el cliente?"
+                      : novedadCajaTipo === "devolucion" ? "¿Cuánto devuelve?"
+                      : "Monto agotado (dejar vacío para todo el pedido)"}
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={calculateOrderEffectiveTotal(novedadCajaOrder)}
+                    value={novedadCajaMonto}
+                    onChange={(e) => setNovedadCajaMonto(e.target.value)}
+                    placeholder={novedadCajaTipo === "agotado" ? "Todo el pedido" : "0"}
+                    autoFocus
+                  />
+                </div>
+                {novedadCajaMonto && Number(novedadCajaMonto) > 0 && novedadCajaTipo === "fiado" && (
+                  <div className="p-3 bg-orange-50 rounded flex justify-between">
+                    <span className="text-xs text-orange-600">Saldo que queda fiado:</span>
+                    <span className="font-bold text-orange-700">
+                      {formatCOP(calculateOrderEffectiveTotal(novedadCajaOrder) - Number(novedadCajaMonto))}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNovedadCajaModal(false)} disabled={submittingNovedadCaja}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmitNovedadCaja} disabled={submittingNovedadCaja}>
+              {submittingNovedadCaja ? "Registrando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal para abono de cobro */}
       <Dialog open={showAbonoCobroModal} onOpenChange={setShowAbonoCobroModal}>
         <DialogContent className="max-w-md">
