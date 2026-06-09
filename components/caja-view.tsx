@@ -567,8 +567,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
               ? Number(item.cantidadEntregada)
               : cantOriginal
-          if (cantEntregada === 0) {
+          if (cantEntregada === 0 && item.estadoProducto === 'agotado') {
              agotadosEnPedido += subtotalOriginal
+             return
+          }
+          if (cantEntregada === 0 && item.estadoProducto !== 'agotado') {
              return
           }
 
