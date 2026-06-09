@@ -360,7 +360,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const completedRoutes = routeSheets.filter(
-    (s) => (s.estado === 'alistado' || s.estado === 'completado') && !s.cuadradoEnCaja
+    (s) => (s.estado === 'alistado' || s.estado === 'completado' || s.estado === 'en_ruta') && !s.cuadradoEnCaja
   )
 
   const entregadores = todosEntregadores.length > 0
