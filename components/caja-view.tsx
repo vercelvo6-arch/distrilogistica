@@ -1704,11 +1704,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       const efectivo = Number(cobro.montoEfectivo) || 0
       const nequi    = Number(cobro.montoNequi) || 0
       if (efectivo + nequi <= 0) continue
-      await fetch("/api/fiados/registrar-abono", {
+      if (!cobro.id) continue
+      const res = await fetch("/api/fiados/registrar-abono", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fiadoId:         cobro.id,
+          fiadoId:         Number(cobro.id),
           montoEfectivo:   efectivo,
           montoNequi:      nequi,
           referenciaPago:  cobro.referencia?.trim() || null,
@@ -1716,6 +1717,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           observaciones:   "Registrado en cuadre agrupado",
         }),
       })
+      if (!res.ok) {
+        const err = await res.json()
+        console.warn('[CUADRE] Cobro no registrado:', cobro.id, err.error)
+        // No detener el cuadre por un cobro fallido — continuar
+      }
     }
 
     // 3. Calcular totales
@@ -2002,11 +2008,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
         const efectivo = Number(cobro.montoEfectivo) || 0
         const nequi    = Number(cobro.montoNequi) || 0
         if (efectivo + nequi <= 0) continue
-        await fetch("/api/fiados/registrar-abono", {
+        if (!cobro.id) continue
+        const res = await fetch("/api/fiados/registrar-abono", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            fiadoId:         cobro.id,
+            fiadoId:         Number(cobro.id),
             montoEfectivo:   efectivo,
             montoNequi:      nequi,
             referenciaPago:  cobro.referencia?.trim() || null,
@@ -2014,6 +2021,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             observaciones:   "Registrado en cuadre de caja",
           }),
         })
+        if (!res.ok) {
+          const err = await res.json()
+          console.warn('[CUADRE] Cobro no registrado:', cobro.id, err.error)
+        }
       }
 
       // 2. Calcular totales
