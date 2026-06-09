@@ -25,13 +25,9 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB();
 
-    // Por pedido
     if (pedidoId) {
       const novedades = await sql`
-        SELECT
-          n.*,
-          p.cliente,
-          p.total AS total_pedido
+        SELECT n.*, p.cliente, p.total AS total_pedido
         FROM novedades_pedido n
         JOIN pedidos p ON n.pedido_id = p.id
         WHERE n.pedido_id = ${pedidoId}
@@ -40,14 +36,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
-    // Por planilla singular — IDs son strings tipo PLN1777...
     if (planillaId) {
       const novedades = await sql`
-        SELECT
-          n.*,
-          p.cliente,
-          p.total AS total_pedido,
-          p.planilla_id
+        SELECT n.*, p.cliente, p.total AS total_pedido, p.planilla_id
         FROM novedades_pedido n
         JOIN pedidos p ON n.pedido_id = p.id
         WHERE p.planilla_id = ${planillaId}
@@ -56,29 +47,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
-    // Por múltiples planillas
     if (planillaIds) {
-      const ids = planillaIds
-        .split(",")
-        .map((id) => id.trim())
-        .filter((id) => id);
-
-      if (ids.length === 0) {
-        return NextResponse.json({ novedades: [] });
-      }
+      const ids = planillaIds.split(",").map(id => id.trim()).filter(id => id);
+      if (ids.length === 0) return NextResponse.json({ novedades: [] });
 
       const novedades = await sql`
-        SELECT
-          n.*,
-          p.cliente,
-          p.total AS total_pedido,
-          p.planilla_id
+        SELECT n.*, p.cliente, p.total AS total_pedido, p.planilla_id
         FROM novedades_pedido n
         JOIN pedidos p ON n.pedido_id = p.id
         WHERE p.planilla_id = ANY(${ids})
         ORDER BY n.created_at DESC
       `;
-
       return NextResponse.json({ novedades: normalizarNovedades(novedades) });
     }
 
@@ -103,14 +82,22 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { pedidoId, tipoNovedad, montoNovedad, descripcion, montoPagado } = body;
 
-    if (!pedidoId || !tipoNovedad || !montoNovedad) {
+    // ── Validaciones ────────────────────────────────────────────────────────
+    if (!pedidoId || !tipoNovedad) {
       return NextResponse.json(
-        { error: "Faltan campos requeridos: pedidoId, tipoNovedad, montoNovedad" },
+        { error: "Faltan campos requeridos: pedidoId, tipoNovedad" },
         { status: 400 }
       );
     }
 
-    // ✅ fiado incluido como tipo válido
+    // montoNovedad puede ser 0 solo para fiado_parcial (cliente abonó el total)
+    if (montoNovedad === undefined || montoNovedad === null) {
+      return NextResponse.json(
+        { error: "montoNovedad es requerido" },
+        { status: 400 }
+      );
+    }
+
     const tiposValidos = ["agotado", "devolucion", "fiado_parcial", "fiado", "error_facturacion"];
     if (!tiposValidos.includes(tipoNovedad)) {
       return NextResponse.json(
@@ -119,9 +106,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (Number(montoNovedad) <= 0) {
+    const esFiado = tipoNovedad === 'fiado_parcial' || tipoNovedad === 'fiado'
+
+    // Solo rechazar monto 0 si NO es fiado (para fiado, monto 0 = cliente no abonó nada)
+    if (Number(montoNovedad) <= 0 && !esFiado) {
       return NextResponse.json(
         { error: "El monto de la novedad debe ser mayor a 0" },
+        { status: 400 }
+      );
+    }
+
+    // Para fiado, montoNovedad es el saldo que queda fiado — debe ser >= 0
+    if (esFiado && Number(montoNovedad) < 0) {
+      return NextResponse.json(
+        { error: "El saldo fiado no puede ser negativo" },
         { status: 400 }
       );
     }
@@ -139,9 +137,6 @@ export async function POST(request: NextRequest) {
     }
 
     const tipoRegistro = session.user?.rol === "entregador" ? "entregador" : "caja";
-
-    // ✅ monto_pagado aplica tanto para fiado como fiado_parcial
-    const esFiado = tipoNovedad === 'fiado_parcial' || tipoNovedad === 'fiado'
 
     const [novedad] = await sql`
       INSERT INTO novedades_pedido (
