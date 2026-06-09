@@ -8,13 +8,7 @@ import type { RouteSheet, User, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import {
   updatePedidoEstado,
-  updateCantidadEntregada,
-  updateSubtotalAjustado,
-  updateDescuentoPedido,
-  updateMotivoDescuentoPedido,
-  updateMotivoAjuste,
 } from "@/lib/actions/planillas"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -27,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ModalNovedadesEntregador } from "@/components/novedades/modal-novedades-entregador"
 
 interface EntregadorViewProps {
   onLogout: () => void
@@ -54,16 +47,24 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [searchCliente, setSearchCliente] = useState("")
   const [vistaPlana, setVistaPlana] = useState(true) // true = todos los clientes, false = por rutas
 
-  const [showFiadoModal, setShowFiadoModal] = useState(false)
-  const [selectedOrderForFiado, setSelectedOrderForFiado] = useState<Order | null>(null)
-  const [montoPagadoFiado, setMontoPagadoFiado] = useState("")
-  const [totalEfectivoFiado, setTotalEfectivoFiado] = useState(0)
+  // Modal de novedad unificado
+  const [showNovedadModal, setShowNovedadModal] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
+  const [tipoNovedad, setTipoNovedad] = useState<"fiado" | "devolucion" | "agotado" | null>(null)
+  const [montoNovedad, setMontoNovedad] = useState("")
+  const [submittingNovedad, setSubmittingNovedad] = useState(false)
 
-  // Estados para modal de novedades
-  const [selectedOrderForNovedades, setSelectedOrderForNovedades] = useState<Order | null>(null)
-  const [selectedPlanillaId, setSelectedPlanillaId] = useState<string>("")
+  // Cobros CxC asignados al entregador
+  const [cobrosAsignados, setCobrosAsignados] = useState<any[]>([])
+  const [showCobroModal, setShowCobroModal] = useState(false)
+  const [selectedCobro, setSelectedCobro] = useState<any | null>(null)
+  const [resultadoCobro, setResultadoCobro] = useState<"total" | "abono" | "nopago" | null>(null)
+  const [montoEfectivoCobro, setMontoEfectivoCobro] = useState("")
+  const [montoNequiCobro, setMontoNequiCobro] = useState("")
+  const [referenciaCobro, setReferenciaCobro] = useState("")
+  const [submittingCobro, setSubmittingCobro] = useState(false)
 
-  // ✅ Estado para novedades
+  // Estado para novedades
   const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, any[]>>({})
 
   const entregador = user.nombre
@@ -132,7 +133,18 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
       setRouteSheets(planillas)
 
-      // ✅ FIX: Solo cargar novedades de las planillas del entregador actual
+      // Cargar cobros CxC asignados al entregador
+      try {
+        const cobrosRes = await fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}`)
+        if (cobrosRes.ok) {
+          const cobrosData = await cobrosRes.json()
+          setCobrosAsignados(cobrosData.cobros || [])
+        }
+      } catch (e) {
+        console.error("[ENTREGADOR] Error cargando cobros:", e)
+      }
+
+      // Solo cargar novedades de las planillas del entregador actual
       // Una sola petición en vez de 150+
       const misPlanilas = planillas.filter(
         (p) => p.entregador === entregador &&
@@ -583,199 +595,191 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
   }
 
-  const handleDescuentoChange = async (orderId: string, descuento: number) => {
+  // ── HANDLERS NUEVOS ────────────────────────────────────────────────────────
+
+  const handleAbrirNovedad = (order: any, tipo: "fiado" | "devolucion" | "agotado") => {
+    setSelectedOrder(order)
+    setTipoNovedad(tipo)
+    setMontoNovedad("")
+    setShowNovedadModal(true)
+  }
+
+  const handleConfirmarEntregado = async (order: any) => {
     try {
-      setRouteSheets(prevSheets =>
-        prevSheets.map(sheet => ({
-          ...sheet,
-          orders: sheet.orders.map(order =>
-            order.id === orderId
-              ? { ...order, descuento: descuento }
-              : order
-          )
-        }))
-      )
-
-      await updateDescuentoPedido(orderId, descuento)
-
-      toast({
-        title: "Descuento aplicado",
-        description: `Descuento de ${formatCOP(descuento)} registrado`,
-      })
-    } catch (err) {
-      console.error("[ENTREGADOR] Error updating descuento:", err)
-      await loadData()
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el descuento",
-        variant: "destructive",
-      })
+      await updatePedidoEstado(order.id, "entregado")
+      setRouteSheets(prev => prev.map(s => ({
+        ...s,
+        orders: s.orders.map(o => o.id === order.id ? { ...o, estado: "entregado" as const } : o)
+      })))
+      toast({ title: "Entregado", description: `${order.cliente} marcado como entregado` })
+    } catch {
+      toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" })
     }
   }
 
-  const handleMotivoDescuentoChange = async (orderId: string, motivo: string) => {
-    try {
-      setRouteSheets(prevSheets =>
-        prevSheets.map(sheet => ({
-          ...sheet,
-          orders: sheet.orders.map(order =>
-            order.id === orderId
-              ? { ...order, motivoDescuento: motivo }
-              : order
-          )
-        }))
-      )
+  const handleSubmitNovedad = async () => {
+    if (!selectedOrder || !tipoNovedad) return
 
-      await updateMotivoDescuentoPedido(orderId, motivo)
-    } catch (err) {
-      console.error("[ENTREGADOR] Error updating motivo descuento:", err)
-      await loadData()
+    const totalPedido = calculateOrderEffectiveTotal(selectedOrder)
+    const monto = tipoNovedad === "agotado" ? totalPedido : Number(montoNovedad) || 0
+
+    if (tipoNovedad !== "agotado" && (monto <= 0 || monto > totalPedido)) {
+      toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(totalPedido)}`, variant: "destructive" })
+      return
+    }
+
+    try {
+      setSubmittingNovedad(true)
+
+      if (tipoNovedad === "fiado") {
+        const saldo = totalPedido - monto
+        await updatePedidoEstado(selectedOrder.id, "fiado", monto, saldo)
+        setRouteSheets(prev => prev.map(s => ({
+          ...s,
+          orders: s.orders.map(o => o.id === selectedOrder.id
+            ? { ...o, estado: "fiado" as const, montoPagado: monto, saldoPendiente: saldo }
+            : o)
+        })))
+        toast({ title: "Fiado registrado", description: `Abonó ${formatCOP(monto)} — Debe ${formatCOP(saldo)}` })
+
+      } else if (tipoNovedad === "devolucion") {
+        await updatePedidoEstado(selectedOrder.id, "devolucion")
+        await fetch("/api/novedades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pedidoId: selectedOrder.id,
+            planillaId: selectedOrder.planillaId,
+            tipoNovedad: "devolucion",
+            montoNovedad: monto,
+            descripcion: `Devolución registrada por entregador`,
+            registradoPor: entregador,
+            tipoRegistro: "entregador",
+          }),
+        })
+        setRouteSheets(prev => prev.map(s => ({
+          ...s,
+          orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, estado: "devolucion" as const } : o)
+        })))
+        toast({ title: "Devolución registrada", description: formatCOP(monto) })
+
+      } else if (tipoNovedad === "agotado") {
+        await updatePedidoEstado(selectedOrder.id, "devolucion")
+        await fetch("/api/novedades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pedidoId: selectedOrder.id,
+            planillaId: selectedOrder.planillaId,
+            tipoNovedad: "agotado",
+            montoNovedad: monto,
+            descripcion: "Producto agotado",
+            registradoPor: entregador,
+            tipoRegistro: "entregador",
+          }),
+        })
+        setRouteSheets(prev => prev.map(s => ({
+          ...s,
+          orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, estado: "devolucion" as const } : o)
+        })))
+        toast({ title: "Agotado registrado", description: formatCOP(monto) })
+      }
+
+      setShowNovedadModal(false)
+      setSelectedOrder(null)
+      setTipoNovedad(null)
+      setMontoNovedad("")
+    } catch {
+      toast({ title: "Error", description: "No se pudo registrar la novedad", variant: "destructive" })
+    } finally {
+      setSubmittingNovedad(false)
     }
   }
 
-  const handleMotivoAjusteChange = async (orderId: string, codigo: string, motivoAjuste: string) => {
-    try {
-      setRouteSheets(prevSheets =>
-        prevSheets.map(sheet => ({
-          ...sheet,
-          orders: sheet.orders.map(order => {
-            if (order.id !== orderId) return order
-
-            return {
-              ...order,
-              items: order.items.map(item =>
-                item.codigo === codigo
-                  ? { ...item, motivoAjuste: motivoAjuste || null }
-                  : item
-              )
-            }
-          })
-        }))
-      )
-
-      await updateMotivoAjuste(orderId, codigo, motivoAjuste || null)
-
-      const mensaje = motivoAjuste === 'devuelto'
-        ? "Producto marcado como devolución"
-        : motivoAjuste === 'error_facturacion'
-          ? "Producto marcado como error de facturación"
-          : "Producto restaurado a normal"
-
-      toast({
-        title: "Estado actualizado",
-        description: mensaje,
-      })
-    } catch (err) {
-      console.error("[ENTREGADOR] Error updating motivo ajuste:", err)
-      await loadData()
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el estado del producto",
-        variant: "destructive",
-      })
-    }
+  const handleAbrirCobro = (cobro: any) => {
+    setSelectedCobro(cobro)
+    setResultadoCobro(null)
+    setMontoEfectivoCobro("")
+    setMontoNequiCobro("")
+    setReferenciaCobro("")
+    setShowCobroModal(true)
   }
 
-  const handleOrderStatusChange = async (orderId: string, newStatus: Order["estado"]) => {
-    const order = todosLosClientes.find(o => o.id === orderId)
-      ?? routeSheets.flatMap(sheet => sheet.orders).find(o => o.id === orderId)
+  const handleSubmitCobro = async () => {
+    if (!selectedCobro || !resultadoCobro) return
 
-    if (newStatus === "fiado") {
-      if (order) {
-        const totalEfectivo = calculateOrderEffectiveTotal(order)
-        setSelectedOrderForFiado(order)
-        setTotalEfectivoFiado(totalEfectivo)
-        setMontoPagadoFiado("")
-        setShowFiadoModal(true)
+    if (resultadoCobro === "nopago") {
+      try {
+        setSubmittingCobro(true)
+        await fetch("/api/fiados/liberar-cobro", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fiadoId: selectedCobro.id }),
+        })
+        setCobrosAsignados(prev => prev.filter(c => c.id !== selectedCobro.id))
+        toast({ title: "Cobro no recibido", description: "Devuelto al admin" })
+        setShowCobroModal(false)
+      } catch {
+        toast({ title: "Error", description: "No se pudo procesar", variant: "destructive" })
+      } finally {
+        setSubmittingCobro(false)
       }
       return
     }
 
-    try {
-      setRouteSheets(prevSheets =>
-        prevSheets.map(sheet => ({
-          ...sheet,
-          orders: sheet.orders.map(order =>
-            order.id === orderId
-              ? { ...order, estado: newStatus }
-              : order
-          )
-        }))
-      )
+    const efectivo = Number(montoEfectivoCobro) || 0
+    const nequi    = Number(montoNequiCobro) || 0
+    const total    = efectivo + nequi
 
-      await updatePedidoEstado(orderId, newStatus)
-
-      toast({
-        title: "Actualizado",
-        description: `Pedido marcado como ${newStatus}`,
-      })
-    } catch (err) {
-      console.error("[ENTREGADOR] Error updating order status:", err)
-      await loadData()
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar el pedido",
-        variant: "destructive",
-      })
+    if (total <= 0) {
+      toast({ title: "Error", description: "Ingresa al menos un monto", variant: "destructive" })
+      return
     }
-  }
-
-  const handleSubmitFiado = async () => {
-    if (!selectedOrderForFiado) return
-
-    const montoPagado = Number(montoPagadoFiado) || 0
-    const totalPedido = totalEfectivoFiado
-
-    if (montoPagado < 0 || montoPagado > totalPedido) {
-      toast({
-        title: "Error",
-        description: `El monto debe estar entre $0 y ${formatCOP(totalPedido)}`,
-        variant: "destructive",
-      })
+    if (nequi > 0 && !referenciaCobro.trim()) {
+      toast({ title: "Error", description: "Ingresa la referencia del Nequi", variant: "destructive" })
       return
     }
 
     try {
-      const saldoPendiente = totalPedido - montoPagado
-
-      setRouteSheets(prevSheets =>
-        prevSheets.map(sheet => ({
-          ...sheet,
-          orders: sheet.orders.map(order =>
-            order.id === selectedOrderForFiado.id
-              ? {
-                  ...order,
-                  estado: "fiado" as const,
-                  montoPagado: montoPagado,
-                  saldoPendiente: saldoPendiente
-                }
-              : order
-          )
-        }))
-      )
-
-      await updatePedidoEstado(selectedOrderForFiado.id, "fiado", montoPagado, saldoPendiente)
-
-      toast({
-        title: "Fiado Registrado",
-        description: `Pagó: ${formatCOP(montoPagado)} | Debe: ${formatCOP(saldoPendiente)}`,
+      setSubmittingCobro(true)
+      const res = await fetch("/api/fiados/registrar-abono", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fiadoId:        selectedCobro.id,
+          montoEfectivo:  efectivo,
+          montoNequi:     nequi,
+          referenciaPago: referenciaCobro.trim() || null,
+          entregadorCobro: entregador,
+          observaciones:  "Registrado por entregador en ruta",
+        }),
       })
-
-      setShowFiadoModal(false)
-      setSelectedOrderForFiado(null)
-      setMontoPagadoFiado("")
-      setTotalEfectivoFiado(0)
-    } catch (err) {
-      console.error("[ENTREGADOR] Error al registrar fiado:", err)
-      await loadData()
-      toast({
-        title: "Error",
-        description: "No se pudo registrar el fiado",
-        variant: "destructive",
-      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setCobrosAsignados(prev => prev.filter(c => c.id !== selectedCobro.id))
+      toast({ title: data.pago_completo ? "Cobro completado" : "Abono registrado", description: data.mensaje })
+      setShowCobroModal(false)
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" })
+    } finally {
+      setSubmittingCobro(false)
     }
   }
 
+  // Placeholder para evitar error de compilación — ya no se usa
+  const handleSubmitFiado = async () => { /* reemplazado por handleSubmitNovedad */ }
+  const handleOrderStatusChange = async (orderId: string, newStatus: any) => { /* reemplazado */ }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _unused = { handleSubmitFiado, handleOrderStatusChange }
+
+  const handleDescuentoChange = async () => { /* no aplica al entregador */ }
+  const handleMotivoDescuentoChange = async () => { /* no aplica */ }
+  const handleMotivoAjusteChange = async () => { /* no aplica */ }
+
+  // NOTA: toast referenciado en bloque eliminado — lo manejamos arriba
+  const _toast = { 
+        title: "Error",
   const totalCargue = filteredRoutes.reduce((sum, r) => sum + (r?.totalAmount || 0), 0)
 
   let totalEntregado = 0
@@ -993,803 +997,309 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 </p>
               </Card>
 
-              {/* VISTA PLANA - TODOS LOS CLIENTES */}
-              {vistaPlana && (
-                <Card className="p-4">
-                  <h2 className="text-lg font-semibold mb-4">Todos los Clientes</h2>
-                  {clientesFiltrados.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">
-                      No se encontraron clientes
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {clientesFiltrados.map((order) => {
-                        const isExpanded = expandedOrders.has(order.id)
-                        const novedadesDelPedido = (novedadesPorPlanilla[order.planillaId] || [])
-                          .filter((n: any) => n.pedido_id === order.id)
-                        
-                        let effectiveTotal = 0
-                        let returnedTotal = 0
-                        if (Array.isArray(order.items)) {
-                          order.items.forEach((item: any) => {
-                            if (!item) return
-                            if (item.devuelto || item.motivoAjuste === 'devuelto') {
-                              returnedTotal += Number(item.subtotal) || 0
-                            } else {
-                              const estadoProd = item.estadoProducto || "normal"
-                              if (estadoProd === "agotado") return
-                              if (item.motivoAjuste === 'error_facturacion') return
-                              if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-                                effectiveTotal += Number(item.subtotalAjustado) || 0
-                              } else if (item.cantidadEntregada !== null && item.cantidadEntregada !== undefined) {
-                                effectiveTotal += (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
-                              } else {
-                                effectiveTotal += Number(item.subtotal) || 0
-                              }
-                            }
-                          })
-                        }
-
-                        return (
-                          <Card key={order.id} id={`order-plano-${order.id}`} className="p-3 bg-gray-50">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="font-medium text-sm">{order.cliente}</p>
-                                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                    Ruta {order.rutaNombre}
-                                  </Badge>
-                                  {novedadesDelPedido.length > 0 && (
-                                    <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-300">
-                                      {novedadesDelPedido.length} novedad(es)
-                                    </Badge>
-                                  )}
-                                  <Badge
-                                    variant="outline"
-                                    className={
-                                      order.estado === "entregado"
-                                        ? "bg-green-100 text-green-700 border-green-300"
-                                        : order.estado === "fiado"
-                                          ? "bg-orange-100 text-orange-700 border-orange-300"
-                                          : order.estado === "repaso"
-                                            ? "bg-blue-100 text-blue-700 border-blue-300"
-                                            : "bg-red-100 text-red-700 border-red-300"
-                                    }
-                                  >
-                                    {order.estado.toUpperCase()}
-                                  </Badge>
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  {Array.isArray(order.items) ? order.items.length : 0} productos - {formatCOP(effectiveTotal)}
-                                  {returnedTotal > 0 && (
-                                    <span className="text-red-500 ml-1">Dev: {formatCOP(returnedTotal)}</span>
-                                  )}
-                                </p>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  const newExpanded = new Set(expandedOrders)
-                                  if (newExpanded.has(order.id)) {
-                                    newExpanded.delete(order.id)
-                                  } else {
-                                    newExpanded.add(order.id)
-                                  }
-                                  setExpandedOrders(newExpanded)
-                                }}
-                              >
-                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                              </Button>
-                            </div>
-
-                            {isExpanded && Array.isArray(order.items) && (
-                              <div className="mt-3 pt-3 border-t space-y-4">
-                                {/* Boton gestionar novedades */}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedOrderForNovedades(order)
-                                    setSelectedPlanillaId(String(order.planillaId))
-                                  }}
-                                  className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
-                                >
-                                  Gestionar Novedades
-                                </Button>
-
-                                {/* Tabla de productos */}
-                                <div>
-                                  <p className="text-xs text-gray-500 mb-2">
-                                    Productos del pedido: Edita "Cant. Entregada" para entregas parciales.
-                                  </p>
-                                  <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="border-b">
-                                          <th className="text-left py-1 px-1 w-16">Dev.</th>
-                                          <th className="text-left py-1 px-1">Codigo</th>
-                                          <th className="text-left py-1 px-1">Descripcion</th>
-                                          <th className="text-center py-1 px-1">Cant. Orig</th>
-                                          <th className="text-center py-1 px-1">Cant. Entreg</th>
-                                          <th className="text-right py-1 px-1">Subtotal</th>
-                                          <th className="text-center py-1 px-1">Estado</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {order.items.map((item: any, idx: number) => {
-                                          if (!item) return null
-                                          const cantidadEntregada = Number(item.cantidadEntregada) || Number(item.cantidad) || 0
-                                          const subtotalCalculado = cantidadEntregada * (Number(item.valorUnidad) || 0)
-                                          const subtotalFinal = item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
-                                            ? Number(item.subtotalAjustado)
-                                            : subtotalCalculado
-                                          const estadoProducto = item.estadoProducto || "normal"
-                                          const tieneAjusteManual = item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
-
-                                          return (
-                                            <tr key={idx} className={`border-b ${item.devuelto || item.motivoAjuste === 'devuelto' ? "bg-red-50" : item.motivoAjuste === 'error_facturacion' ? "bg-orange-50" : ""}`}>
-                                              <td className="py-1 px-1">
-                                                <Select
-                                                  value={item.motivoAjuste || "normal"}
-                                                  onValueChange={(value) => handleMotivoAjusteChange(order.id, item.codigo, value === "normal" ? "" : value)}
-                                                >
-                                                  <SelectTrigger className="h-6 w-14 text-xs">
-                                                    <SelectValue placeholder="-" />
-                                                  </SelectTrigger>
-                                                  <SelectContent>
-                                                    <SelectItem value="normal">Normal</SelectItem>
-                                                    <SelectItem value="devuelto">Devolucion</SelectItem>
-                                                    <SelectItem value="error_facturacion">Error Fact.</SelectItem>
-                                                  </SelectContent>
-                                                </Select>
-                                              </td>
-                                              <td className="py-1 px-1">{item.codigo}</td>
-                                              <td className="py-1 px-1">{item.descripcion}</td>
-                                              <td className="text-center py-1 px-1">{item.cantidad}</td>
-                                              <td className="text-center py-1 px-1">
-                                                {!item.devuelto ? (
-                                                  <Input
-                                                    type="number"
-                                                    defaultValue={cantidadEntregada}
-                                                    min={0}
-                                                    max={item.cantidad}
-                                                    onBlur={(e) => {
-                                                      const newCant = Number.parseInt(e.target.value) || 0
-                                                      if (newCant !== cantidadEntregada) {
-                                                        handleCantidadChange(order.id, item.codigo, newCant, item.cantidad)
-                                                      }
-                                                    }}
-                                                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur() }}
-                                                    className="w-16 px-2 py-1 border rounded text-center"
-                                                  />
-                                                ) : (
-                                                  <span>{cantidadEntregada}</span>
-                                                )}
-                                              </td>
-                                              <td className="text-right py-1 px-1">
-                                                {!item.devuelto ? (
-                                                  <div className="flex flex-col items-end gap-1">
-                                                    <Input
-                                                      type="number"
-                                                      defaultValue={subtotalFinal}
-                                                      min={0}
-                                                      onBlur={(e) => {
-                                                        const newSubtotal = Number.parseFloat(e.target.value) || 0
-                                                        if (newSubtotal !== subtotalFinal) {
-                                                          handleSubtotalChange(order.id, item.codigo, newSubtotal)
-                                                        }
-                                                      }}
-                                                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur() }}
-                                                      className={`w-28 px-2 py-1 border rounded text-right font-medium ${tieneAjusteManual ? "border-orange-400 bg-orange-50" : ""}`}
-                                                    />
-                                                    {tieneAjusteManual && (
-                                                      <Badge variant="outline" className="text-[10px] bg-orange-100">Ajustado</Badge>
-                                                    )}
-                                                  </div>
-                                                ) : (
-                                                  <span className="font-medium">{formatCOP(subtotalFinal)}</span>
-                                                )}
-                                              </td>
-                                              <td className="text-center py-1 px-1">
-                                                {estadoProducto === "agotado" && <Badge variant="outline" className="text-[10px] bg-gray-100">Agotado</Badge>}
-                                                {estadoProducto === "parcial" && <Badge variant="outline" className="text-[10px] bg-yellow-100">Parcial</Badge>}
-                                                {estadoProducto === "normal" && !item.devuelto && <Badge variant="outline" className="text-[10px] bg-green-100">Normal</Badge>}
-                                                {item.devuelto && <Badge variant="outline" className="text-[10px] bg-red-100">Devuelto</Badge>}
-                                              </td>
-                                            </tr>
-                                          )
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                  <div className="flex justify-end mt-2 pt-2 border-t">
-                                    <span className="font-medium text-sm">Total:</span>
-                                    <span className="font-bold text-sm ml-2">{formatCOP(effectiveTotal)}</span>
-                                  </div>
-                                </div>
-
-                                {/* Descuentos */}
-                                <div className="pt-3 border-t">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-xs font-medium text-gray-600">Descuento (Opcional)</span>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label className="text-xs text-gray-500">Monto del Descuento</Label>
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        max={effectiveTotal}
-                                        defaultValue={order.descuento || ""}
-                                        placeholder="0"
-                                        onBlur={(e) => handleDescuentoChange(order.id, Number(e.target.value) || 0)}
-                                        className="mt-1"
-                                      />
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs text-gray-500">Motivo del Descuento</Label>
-                                      <Input
-                                        type="text"
-                                        defaultValue={order.motivoDescuento || ""}
-                                        placeholder="Ej: Promocion, averia..."
-                                        onBlur={(e) => handleMotivoDescuentoChange(order.id, e.target.value)}
-                                        className="mt-1"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Estado del Pedido */}
-                                <div className="pt-3 border-t">
-                                  <Label className="text-xs text-gray-600 block mb-2">Estado del Pedido</Label>
-                                  <Select
-                                    value={order.estado}
-                                    onValueChange={(value) => handleOrderStatusChange(order.id, value as Order["estado"])}
-                                  >
-                                    <SelectTrigger className="text-sm">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="entregado">Entregado</SelectItem>
-                                      <SelectItem value="fiado">Fiado</SelectItem>
-                                      <SelectItem value="repaso">Repaso</SelectItem>
-                                      <SelectItem value="devolucion">Devolucion</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </div>
-                            )}
-                          </Card>
-                        )
-                      })}
-                    </div>
-                  )}
+              {/* COBROS CxC */}
+              {cobrosAsignados.length > 0 && (
+                <Card className="p-4 border-purple-200 bg-purple-50 mb-4">
+                  <h2 className="text-sm font-semibold text-purple-700 mb-3">
+                    💳 Cobros CxC asignados ({cobrosAsignados.length})
+                  </h2>
+                  <div className="space-y-2">
+                    {cobrosAsignados.map((cobro) => (
+                      <div key={cobro.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-purple-200">
+                        <div>
+                          <p className="font-medium text-sm text-purple-900">{cobro.cliente}</p>
+                          <p className="text-xs text-purple-600">{cobro.ruta} — Saldo: {formatCOP(cobro.saldo_pendiente)}</p>
+                        </div>
+                        <Button size="sm" onClick={() => handleAbrirCobro(cobro)}
+                          className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-xs">
+                          Registrar
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </Card>
               )}
 
-              {/* VISTA POR RUTAS (original) */}
-              {!vistaPlana && (
-              <Card className="p-6">
-                <h2 className="text-lg font-semibold mb-4">Mis Rutas Pendientes</h2>
+              {/* VISTA POR RUTAS — principal */}
+              <div className="space-y-4">
                 {filteredRoutes.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">
-                    No hay rutas pendientes para la fecha seleccionada
-                  </p>
+                  <Card className="p-8 text-center text-gray-500">No hay rutas activas</Card>
                 ) : (
-                  <div className="space-y-4">
-                    {filteredRoutes.map((route) => {
-                      const totals = calculateRouteTotals(route)
+                  filteredRoutes.map((route) => {
+                    const totals = calculateRouteTotals(route)
+                    const isExpanded = expandedRoutes.has(route.id)
+                    const clientesDeLaRuta = searchCliente.trim()
+                      ? (route.orders || []).filter(o => o.cliente?.toLowerCase().includes(searchCliente.toLowerCase()))
+                      : (route.orders || [])
 
-                      return (
-                        <Card key={route.id} className="p-4">
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-semibold">Ruta {route.ruta}</p>
-                                <p className="text-sm text-gray-500">
-                                  {route.totalOrders} pedidos · Fecha:{" "}
-                                  {new Date(route.fecha).toLocaleDateString("es-CO")}
-                                </p>
-                              </div>
-                              <Button onClick={() => toggleRouteExpansion(route.id)} variant="outline" size="sm">
-                                {expandedRoutes.has(route.id) ? (
-                                  <>
-                                    <ChevronUp className="h-4 w-4 mr-1" />
-                                    Ocultar Clientes
-                                  </>
-                                ) : (
-                                  <>
-                                    <ChevronDown className="h-4 w-4 mr-1" />
-                                    Ver Clientes
-                                  </>
-                                )}
-                              </Button>
+                    return (
+                      <Card key={route.id} className="overflow-hidden">
+                        {/* Cabecera de ruta */}
+                        <div
+                          className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                          onClick={() => toggleRouteExpansion(route.id)}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">Ruta {route.ruta}</p>
+                              <Badge variant="outline" className="text-xs">{route.totalOrders} clientes</Badge>
                             </div>
-
-                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
-                              <div className="text-center p-2 bg-blue-50 rounded">
-                                <span className="text-xs text-blue-600 font-medium">Cargue</span>
-                                <p className="font-bold text-blue-700">{formatCOP(route.totalAmount)}</p>
-                              </div>
-                              <div className="text-center p-2 bg-green-50 rounded">
-                                <span className="text-xs text-green-600 font-medium">Entregado</span>
-                                <p className="font-bold text-green-700">{formatCOP(totals.entregado)}</p>
-                              </div>
-                              <div className="text-center p-2 bg-orange-50 rounded">
-                                <span className="text-xs text-orange-600 font-medium">Fiado</span>
-                                <p className="font-bold text-orange-700">{formatCOP(totals.fiado)}</p>
-                              </div>
-                              <div className="text-center p-2 bg-red-50 rounded">
-                                <span className="text-xs text-red-600 font-medium">Devoluciones</span>
-                                <p className="font-bold text-red-700">{formatCOP(totals.devoluciones)}</p>
-                              </div>
-                              <div className="text-center p-2 bg-blue-50 rounded">
-                                <span className="text-xs text-blue-600 font-medium">Repasos</span>
-                                <p className="font-bold text-blue-700">{formatCOP(totals.repasos)}</p>
-                              </div>
-                              <div className="text-center p-2 bg-gray-100 rounded">
-                                <span className="text-xs text-gray-600 font-medium">Agotados</span>
-                                <p className="font-bold text-gray-700">{formatCOP(totals.agotados)}</p>
-                              </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {new Date(route.fecha).toLocaleDateString("es-CO")}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className="text-xs text-gray-500">Cargue</p>
+                              <p className="font-bold text-blue-700">{formatCOP(route.totalAmount)}</p>
                             </div>
+                            {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                          </div>
+                        </div>
 
-                            <div className="mt-2 p-2 bg-emerald-50 rounded text-center">
-                              <span className="text-xs text-emerald-600 font-medium">Efectivo Esperado:</span>
-                              <span className="font-bold text-emerald-700 ml-2">{formatCOP(totals.entregado)}</span>
-                            </div>
+                        {/* Totales de la ruta */}
+                        <div className="grid grid-cols-4 gap-0 border-t">
+                          <div className="text-center p-2 bg-green-50 border-r">
+                            <p className="text-xs text-green-600">Entregado</p>
+                            <p className="font-bold text-xs text-green-700">{formatCOP(totals.entregado)}</p>
+                          </div>
+                          <div className="text-center p-2 bg-orange-50 border-r">
+                            <p className="text-xs text-orange-600">Fiado</p>
+                            <p className="font-bold text-xs text-orange-700">{formatCOP(totals.fiado)}</p>
+                          </div>
+                          <div className="text-center p-2 bg-red-50 border-r">
+                            <p className="text-xs text-red-600">Devolución</p>
+                            <p className="font-bold text-xs text-red-700">{formatCOP(totals.devoluciones)}</p>
+                          </div>
+                          <div className="text-center p-2 bg-gray-100">
+                            <p className="text-xs text-gray-600">Agotados</p>
+                            <p className="font-bold text-xs text-gray-700">{formatCOP(totals.agotados)}</p>
+                          </div>
+                        </div>
 
-                            {expandedRoutes.has(route.id) && Array.isArray(route.orders) && (
-                              <div className="mt-4 pt-4 border-t">
-                                <h4 className="text-sm font-medium mb-2">Clientes de la ruta:</h4>
-                                <div className="space-y-3">
-                                  {route.orders.map((order) => {
-                                    if (!order) return null
+                        {/* Clientes de la ruta */}
+                        {isExpanded && (
+                          <div className="border-t divide-y">
+                            {clientesDeLaRuta.length === 0 ? (
+                              <p className="p-4 text-sm text-gray-500 text-center">Sin clientes</p>
+                            ) : (
+                              clientesDeLaRuta.map((order) => {
+                                if (!order) return null
+                                const effectiveTotal = calculateOrderEffectiveTotal(order)
+                                const novedadesDelPedido = (novedadesPorPlanilla[route.id] || [])
+                                  .filter((n: any) => n.pedido_id === order.id)
+                                const yaGestionado = ["entregado","fiado","devolucion"].includes(order.estado)
 
-                                    const isExpanded = expandedOrders.has(order.id)
+                                return (
+                                  <div key={order.id} className={`p-3 ${yaGestionado ? "bg-gray-50" : "bg-white"}`}>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <p className="font-medium text-sm truncate">{order.cliente}</p>
+                                          <Badge variant="outline" className={`text-xs shrink-0 ${
+                                            order.estado === "entregado"  ? "bg-green-100 text-green-700 border-green-300"
+                                            : order.estado === "fiado"    ? "bg-orange-100 text-orange-700 border-orange-300"
+                                            : order.estado === "devolucion" ? "bg-red-100 text-red-700 border-red-300"
+                                            : "bg-gray-100 text-gray-600"
+                                          }`}>
+                                            {order.estado === "pendiente" ? "PENDIENTE" : order.estado.toUpperCase()}
+                                          </Badge>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-0.5">{formatCOP(effectiveTotal)}</p>
+                                        {novedadesDelPedido.length > 0 && (
+                                          <p className="text-xs text-purple-600 mt-0.5">
+                                            {novedadesDelPedido.map((n: any) => `${n.tipo_novedad}: ${formatCOP(n.monto_novedad)}`).join(" · ")}
+                                          </p>
+                                        )}
+                                        {order.estado === "fiado" && order.saldoPendiente > 0 && (
+                                          <p className="text-xs text-orange-600 mt-0.5">
+                                            Abonó {formatCOP(order.montoPagado)} — Debe {formatCOP(order.saldoPendiente)}
+                                          </p>
+                                        )}
+                                      </div>
 
-                                    let effectiveTotal = 0
-                                    let returnedTotal = 0
-
-                                    if (Array.isArray(order.items)) {
-                                      order.items.forEach((item) => {
-                                        if (!item) return
-
-                                        if (item.devuelto || item.motivoAjuste === 'devuelto') {
-                                          returnedTotal += Number(item.subtotal) || 0
-                                        } else {
-                                          const estadoProd = item.estadoProducto || "normal"
-                                          if (estadoProd === "agotado") return
-                                          if (item.motivoAjuste === 'error_facturacion') return
-
-                                          if (item.subtotalAjustado !== null && item.subtotalAjustado !== undefined) {
-                                            effectiveTotal += Number(item.subtotalAjustado) || 0
-                                          } else if (
-                                            item.cantidadEntregada !== null &&
-                                            item.cantidadEntregada !== undefined
-                                          ) {
-                                            effectiveTotal +=
-                                              (Number(item.cantidadEntregada) || 0) * (Number(item.valorUnidad) || 0)
-                                          } else {
-                                            effectiveTotal += Number(item.subtotal) || 0
-                                          }
-                                        }
-                                      })
-                                    }
-
-                                    return (
-                                      <Card key={order.id} id={`order-${order.id}`} className="p-3 bg-gray-50">
-                                        <div className="flex justify-between items-start">
-                                          <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                              <p className="font-medium text-sm">{order.cliente}</p>
-
-                                              {/* Badge de novedades */}
-                                              {(() => {
-                                                const novedadesDelPedido = (novedadesPorPlanilla[route.id] || []).filter(
-                                                  (n) => n.pedido_id === order.id
-                                                )
-                                                return novedadesDelPedido.length > 0 ? (
-                                                  <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-300">
-                                                    ⚠️ {novedadesDelPedido.length}
-                                                  </Badge>
-                                                ) : null
-                                              })()}
-
-                                              <Badge
-                                                variant="outline"
-                                                className={
-                                                  order.estado === "entregado"
-                                                    ? "bg-green-100 text-green-700 border-green-300"
-                                                    : order.estado === "fiado"
-                                                      ? "bg-orange-100 text-orange-700 border-orange-300"
-                                                      : order.estado === "repaso"
-                                                        ? "bg-blue-100 text-blue-700 border-blue-300"
-                                                        : "bg-red-100 text-red-700 border-red-300"
-                                                }
-                                              >
-                                                {order.estado.toUpperCase()}
-                                              </Badge>
-                                            </div>
-                                            <p className="text-xs text-gray-500">
-                                              {Array.isArray(order.items) ? order.items.length : 0} productos ·{" "}
-                                              {formatCOP(effectiveTotal)}
-                                              {returnedTotal > 0 && (
-                                                <span className="text-red-500">
-                                                  · Dev: {formatCOP(returnedTotal)}
-                                                </span>
-                                              )}
-                                            </p>
-                                          </div>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => {
-                                              const newExpanded = new Set(expandedOrders)
-                                              if (newExpanded.has(order.id)) {
-                                                newExpanded.delete(order.id)
-                                              } else {
-                                                newExpanded.add(order.id)
-                                              }
-                                              setExpandedOrders(newExpanded)
-                                            }}
-                                          >
-                                            {isExpanded ? (
-                                              <ChevronUp className="h-4 w-4" />
-                                            ) : (
-                                              <ChevronDown className="h-4 w-4" />
-                                            )}
+                                      {!yaGestionado ? (
+                                        <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                                          <Button size="sm" className="h-7 bg-green-600 hover:bg-green-700 text-white text-xs px-2"
+                                            onClick={() => handleConfirmarEntregado(order)}>
+                                            Entregado
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-7 text-xs px-2 border-orange-300 text-orange-700"
+                                            onClick={() => handleAbrirNovedad(order, "fiado")}>
+                                            Fiado
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-7 text-xs px-2 border-red-300 text-red-700"
+                                            onClick={() => handleAbrirNovedad(order, "devolucion")}>
+                                            Devolución
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-7 text-xs px-2 border-gray-300 text-gray-600"
+                                            onClick={() => handleAbrirNovedad(order, "agotado")}>
+                                            Agotado
                                           </Button>
                                         </div>
-
-                                        {isExpanded && Array.isArray(order.items) && (
-                                          <div className="mt-3 pt-3 border-t space-y-4">
-                                            {/* Botón gestionar novedades */}
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              onClick={() => {
-                                                setSelectedOrderForNovedades(order)
-                                                setSelectedPlanillaId(route.id)
-                                              }}
-                                              className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
-                                            >
-                                              📋 Gestionar Novedades
-                                            </Button>
-
-                                            {/* Tabla de productos */}
-                                            <div>
-                                              <p className="text-xs text-gray-500 mb-2">
-                                                Productos del pedido: Edita "Cant. Entregada" para entregas parciales. Para promociones, ajusta el "Subtotal" directamente.
-                                              </p>
-
-                                              <div className="overflow-x-auto">
-                                                <table className="w-full text-xs">
-                                                  <thead>
-                                                    <tr className="border-b">
-                                                      <th className="text-left py-1 px-1 w-16">Dev.</th>
-                                                      <th className="text-left py-1 px-1">Código</th>
-                                                      <th className="text-left py-1 px-1">Descripción</th>
-                                                      <th className="text-center py-1 px-1">Cant. Original</th>
-                                                      <th className="text-center py-1 px-1">Cant. Entregada</th>
-                                                      <th className="text-right py-1 px-1">Subtotal</th>
-                                                      <th className="text-center py-1 px-1">Estado</th>
-                                                    </tr>
-                                                  </thead>
-                                                  <tbody>
-                                                    {order.items.map((item, idx) => {
-                                                      if (!item) return null
-
-                                                      const cantidadEntregada =
-                                                        Number(item.cantidadEntregada) || Number(item.cantidad) || 0
-                                                      const subtotalCalculado =
-                                                        cantidadEntregada * (Number(item.valorUnidad) || 0)
-                                                      const subtotalFinal =
-                                                        item.subtotalAjustado !== null &&
-                                                        item.subtotalAjustado !== undefined
-                                                          ? Number(item.subtotalAjustado)
-                                                          : subtotalCalculado
-                                                      const estadoProducto = item.estadoProducto || "normal"
-                                                      const tieneAjusteManual =
-                                                        item.subtotalAjustado !== null &&
-                                                        item.subtotalAjustado !== undefined
-
-                                                      return (
-                                                        <tr key={idx} className={`border-b ${item.devuelto || item.motivoAjuste === 'devuelto' ? "bg-red-50" : item.motivoAjuste === 'error_facturacion' ? "bg-orange-50" : ""}`}>
-                                                          <td className="py-1 px-1">
-                                                            <Select
-                                                              value={item.motivoAjuste || "normal"}
-                                                              onValueChange={(value) => handleMotivoAjusteChange(order.id, item.codigo, value === "normal" ? "" : value)}
-                                                            >
-                                                              <SelectTrigger className="h-6 w-14 text-xs">
-                                                                <SelectValue placeholder="—" />
-                                                              </SelectTrigger>
-                                                              <SelectContent>
-                                                                <SelectItem value="normal">Normal</SelectItem>
-                                                                <SelectItem value="devuelto">Devolución</SelectItem>
-                                                                <SelectItem value="error_facturacion">Error Fact.</SelectItem>
-                                                              </SelectContent>
-                                                            </Select>
-                                                          </td>
-                                                          <td className="py-1 px-1">{item.codigo}</td>
-                                                          <td className="py-1 px-1">{item.descripcion}</td>
-                                                          <td className="text-center py-1 px-1">{item.cantidad}</td>
-                                                          <td className="text-center py-1 px-1">
-                                                            {!item.devuelto ? (
-                                                              <Input
-                                                                type="number"
-                                                                defaultValue={cantidadEntregada}
-                                                                min={0}
-                                                                max={item.cantidad}
-                                                                onBlur={(e) => {
-                                                                  const newCant = Number.parseInt(e.target.value) || 0
-                                                                  if (newCant !== cantidadEntregada) {
-                                                                    handleCantidadChange(
-                                                                      order.id,
-                                                                      item.codigo,
-                                                                      newCant,
-                                                                      item.cantidad,
-                                                                    )
-                                                                  }
-                                                                }}
-                                                                onKeyDown={(e) => {
-                                                                  if (e.key === "Enter") {
-                                                                    e.currentTarget.blur()
-                                                                  }
-                                                                }}
-                                                                className="w-16 px-2 py-1 border rounded text-center"
-                                                              />
-                                                            ) : (
-                                                              <span>{cantidadEntregada}</span>
-                                                            )}
-                                                          </td>
-                                                          <td className="text-right py-1 px-1">
-                                                            {!item.devuelto ? (
-                                                              <div className="flex flex-col items-end gap-1">
-                                                                <Input
-                                                                  type="number"
-                                                                  defaultValue={subtotalFinal}
-                                                                  min={0}
-                                                                  onBlur={(e) => {
-                                                                    const newSubtotal =
-                                                                      Number.parseFloat(e.target.value) || 0
-                                                                    if (newSubtotal !== subtotalFinal) {
-                                                                      handleSubtotalChange(
-                                                                        order.id,
-                                                                        item.codigo,
-                                                                        newSubtotal,
-                                                                      )
-                                                                    }
-                                                                  }}
-                                                                  onKeyDown={(e) => {
-                                                                    if (e.key === "Enter") {
-                                                                      e.currentTarget.blur()
-                                                                    }
-                                                                  }}
-                                                                  placeholder={formatCOP(subtotalFinal)}
-                                                                  className={`w-28 px-2 py-1 border rounded text-right font-medium ${
-                                                                    tieneAjusteManual
-                                                                      ? "border-orange-400 bg-orange-50"
-                                                                      : ""
-                                                                  }`}
-                                                                />
-                                                                <span className="text-[10px] text-gray-400">
-                                                                  {formatCOP(subtotalFinal)}
-                                                                </span>
-                                                                {tieneAjusteManual && (
-                                                                  <Badge variant="outline" className="text-[10px] bg-orange-100">
-                                                                    Ajustado
-                                                                  </Badge>
-                                                                )}
-                                                              </div>
-                                                            ) : (
-                                                              <div className="flex flex-col items-end gap-1">
-                                                                <span className="font-medium">
-                                                                  {formatCOP(subtotalFinal)}
-                                                                </span>
-                                                                {tieneAjusteManual && (
-                                                                  <Badge variant="outline" className="text-[10px] bg-orange-100">
-                                                                    Ajustado
-                                                                  </Badge>
-                                                                )}
-                                                              </div>
-                                                            )}
-                                                          </td>
-                                                          <td className="text-center py-1 px-1">
-                                                            {estadoProducto === "agotado" && (
-                                                              <Badge variant="outline" className="text-[10px] bg-gray-100">
-                                                                Agotado
-                                                              </Badge>
-                                                            )}
-                                                            {estadoProducto === "parcial" && (
-                                                              <Badge variant="outline" className="text-[10px] bg-yellow-100">
-                                                                Parcial
-                                                              </Badge>
-                                                            )}
-                                                            {estadoProducto === "normal" && !item.devuelto && (
-                                                              <Badge variant="outline" className="text-[10px] bg-green-100">
-                                                                Normal
-                                                              </Badge>
-                                                            )}
-                                                            {item.devuelto && (
-                                                              <Badge variant="outline" className="text-[10px] bg-red-100">
-                                                                Devuelto
-                                                              </Badge>
-                                                            )}
-                                                          </td>
-                                                        </tr>
-                                                      )
-                                                    })}
-                                                  </tbody>
-                                                </table>
-                                              </div>
-
-                                              <div className="flex justify-end mt-2 pt-2 border-t">
-                                                <span className="font-medium text-sm">Total:</span>
-                                                <span className="font-bold text-sm ml-2">
-                                                  {formatCOP(effectiveTotal)}
-                                                </span>
-                                              </div>
-                                            </div>
-
-                                            {/* Descuentos */}
-                                            <div className="pt-3 border-t">
-                                              <div className="flex items-center gap-2 mb-2">
-                                                <span className="text-xs font-medium text-gray-600">
-                                                  Descuento (Opcional)
-                                                </span>
-                                              </div>
-
-                                              <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                  <Label className="text-xs text-gray-500">
-                                                    Monto del Descuento
-                                                  </Label>
-                                                  <Input
-                                                    type="number"
-                                                    min={0}
-                                                    max={effectiveTotal}
-                                                    defaultValue={order.descuento || ""}
-                                                    placeholder="0"
-                                                    onBlur={(e) => {
-                                                      const descuento = Number(e.target.value) || 0
-                                                      if (descuento > effectiveTotal) {
-                                                        toast({
-                                                          title: "Error",
-                                                          description: `El descuento no puede ser mayor al total (${formatCOP(effectiveTotal)})`,
-                                                          variant: "destructive",
-                                                        })
-                                                        e.target.value = "0"
-                                                        return
-                                                      }
-                                                      handleDescuentoChange(order.id, descuento)
-                                                    }}
-                                                    className="mt-1"
-                                                  />
-                                                </div>
-
-                                                <div>
-                                                  <Label className="text-xs text-gray-500">
-                                                    Motivo del Descuento
-                                                  </Label>
-                                                  <Input
-                                                    type="text"
-                                                    defaultValue={order.motivoDescuento || ""}
-                                                    placeholder="Ej: Promoción, avería..."
-                                                    onBlur={(e) => handleMotivoDescuentoChange(order.id, e.target.value)}
-                                                    className="mt-1"
-                                                  />
-                                                </div>
-                                              </div>
-                                            </div>
-
-                                            {/* Estado del Pedido */}
-                                            <div className="pt-3 border-t">
-                                              <Label className="text-xs text-gray-600 block mb-2">
-                                                Estado del Pedido
-                                              </Label>
-                                              <Select
-                                                value={order.estado}
-                                                onValueChange={(value) => handleOrderStatusChange(order.id, value as Order["estado"])}
-                                              >
-                                                <SelectTrigger className="text-sm">
-                                                  <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                  <SelectItem value="entregado">Entregado</SelectItem>
-                                                  <SelectItem value="fiado">Fiado</SelectItem>
-                                                  <SelectItem value="repaso">Repaso</SelectItem>
-                                                  <SelectItem value="devolucion">Devolución</SelectItem>
-                                                </SelectContent>
-                                              </Select>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </Card>
-                                    )
-                                  })}
-                                </div>
-                              </div>
+                                      ) : (
+                                        <span className="text-green-500 text-sm shrink-0">✓</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })
                             )}
                           </div>
-                        </Card>
-                      )
-                    })}
-                  </div>
+                        )}
+                      </Card>
+                    )
+                  })
                 )}
-              </Card>
-              )}
-            </>
-          )}
-        </main>
-      </div>
+              </div>
 
-      {/* Modal de Fiado */}
-      <Dialog open={showFiadoModal} onOpenChange={setShowFiadoModal}>
-        <DialogContent>
+      {/* Modal de novedad unificado (Fiado / Devolución / Agotado) */}
+      <Dialog open={showNovedadModal} onOpenChange={setShowNovedadModal}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Registrar Fiado</DialogTitle>
+            <DialogTitle>
+              {tipoNovedad === "fiado" ? "Registrar Fiado"
+                : tipoNovedad === "devolucion" ? "Registrar Devolución"
+                : "Confirmar Agotado"}
+            </DialogTitle>
             <DialogDescription>
-              {selectedOrderForFiado && `Cliente: ${selectedOrderForFiado.cliente}`}
+              {selectedOrder?.cliente} — {formatCOP(calculateOrderEffectiveTotal(selectedOrder))}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div>
-              <Label className="text-sm font-medium">Total del Pedido</Label>
-              <p className="text-lg font-bold text-gray-900">
-                {formatCOP(totalEfectivoFiado)}
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="montoPagado" className="text-sm font-medium">
-                Monto Pagado
-              </Label>
-              <Input
-                id="montoPagado"
-                type="number"
-                min={0}
-                max={totalEfectivoFiado}
-                value={montoPagadoFiado}
-                onChange={(e) => setMontoPagadoFiado(e.target.value)}
-                placeholder="0"
-                className="mt-1"
-              />
-            </div>
-
-            <div className="p-3 bg-blue-50 rounded">
-              <p className="text-xs text-blue-600 font-medium">Saldo Pendiente:</p>
-              <p className="text-lg font-bold text-blue-700">
-                {formatCOP(Math.max(0, totalEfectivoFiado - (Number(montoPagadoFiado) || 0)))}
-              </p>
-            </div>
+            {tipoNovedad === "agotado" ? (
+              <div className="p-3 bg-gray-50 rounded text-center">
+                <p className="text-sm text-gray-600">Se registrará como agotado por</p>
+                <p className="text-lg font-bold">{formatCOP(calculateOrderEffectiveTotal(selectedOrder))}</p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <Label>
+                    {tipoNovedad === "fiado" ? "¿Cuánto abonó?" : "¿Cuánto devuelve?"}
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={calculateOrderEffectiveTotal(selectedOrder)}
+                    value={montoNovedad}
+                    onChange={(e) => setMontoNovedad(e.target.value)}
+                    placeholder="0"
+                    autoFocus
+                  />
+                </div>
+                {Number(montoNovedad) > 0 && tipoNovedad === "fiado" && (
+                  <div className="p-3 bg-orange-50 rounded">
+                    <p className="text-xs text-orange-600">Saldo que queda fiado:</p>
+                    <p className="font-bold text-orange-700">
+                      {formatCOP(calculateOrderEffectiveTotal(selectedOrder) - Number(montoNovedad))}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFiadoModal(false)}>
+            <Button variant="outline" onClick={() => setShowNovedadModal(false)} disabled={submittingNovedad}>
               Cancelar
             </Button>
-            <Button onClick={handleSubmitFiado} className="bg-blue-600 hover:bg-blue-700">
-              Registrar Fiado
+            <Button onClick={handleSubmitNovedad} disabled={submittingNovedad}>
+              {submittingNovedad ? "Registrando..." : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Novedades */}
-      {selectedOrderForNovedades && selectedPlanillaId !== "" && (
-        <ModalNovedadesEntregador
-          order={selectedOrderForNovedades}
-          planillaId={selectedPlanillaId}
-          onClose={() => {
-            setSelectedOrderForNovedades(null)
-            setSelectedPlanillaId("")
-            loadData()
-          }}
-          onNovedadCreada={() => loadData()}
-        />
-      )}
+      {/* Modal de cobro CxC */}
+      <Dialog open={showCobroModal} onOpenChange={setShowCobroModal}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Cobro CxC</DialogTitle>
+            <DialogDescription>
+              {selectedCobro?.cliente} — Saldo: {formatCOP(selectedCobro?.saldo_pendiente)}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {/* Selector de resultado */}
+            <div className="grid grid-cols-3 gap-2">
+              <Button size="sm" variant={resultadoCobro === "total" ? "default" : "outline"}
+                onClick={() => setResultadoCobro("total")}
+                className="text-xs h-9">
+                Cobrado total
+              </Button>
+              <Button size="sm" variant={resultadoCobro === "abono" ? "default" : "outline"}
+                onClick={() => setResultadoCobro("abono")}
+                className="text-xs h-9">
+                Abono parcial
+              </Button>
+              <Button size="sm" variant={resultadoCobro === "nopago" ? "destructive" : "outline"}
+                onClick={() => setResultadoCobro("nopago")}
+                className="text-xs h-9">
+                No pagó
+              </Button>
+            </div>
+
+            {(resultadoCobro === "total" || resultadoCobro === "abono") && (
+              <>
+                <div>
+                  <Label className="text-xs">Efectivo</Label>
+                  <Input type="number" min={0} placeholder="0"
+                    value={montoEfectivoCobro}
+                    onChange={(e) => {
+                      setMontoEfectivoCobro(e.target.value)
+                      if (resultadoCobro === "total") {
+                        setMontoNequiCobro("")
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Nequi / Transferencia</Label>
+                  <Input type="number" min={0} placeholder="0"
+                    value={montoNequiCobro}
+                    onChange={(e) => setMontoNequiCobro(e.target.value)}
+                  />
+                </div>
+                {Number(montoNequiCobro) > 0 && (
+                  <div>
+                    <Label className="text-xs">Referencia Nequi <span className="text-red-500">*</span></Label>
+                    <Input placeholder="Número de referencia"
+                      value={referenciaCobro}
+                      onChange={(e) => setReferenciaCobro(e.target.value)}
+                    />
+                  </div>
+                )}
+                {((Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0)) > 0 && (
+                  <div className="p-2 bg-purple-50 rounded text-sm">
+                    <span className="text-purple-600">Total cobrado: </span>
+                    <span className="font-bold text-purple-700">
+                      {formatCOP((Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0))}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {resultadoCobro === "nopago" && (
+              <div className="p-3 bg-red-50 rounded text-sm text-red-700">
+                El cobro volverá al admin pendiente de gestión.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCobroModal(false)} disabled={submittingCobro}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmitCobro} disabled={!resultadoCobro || submittingCobro}>
+              {submittingCobro ? "Registrando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
