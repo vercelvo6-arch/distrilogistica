@@ -2889,6 +2889,32 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                               {/* Acciones de estado — solo si no está cuadrado */}
                                               {!route.cuadradoEnCaja && (
                                                 <div className="flex flex-wrap gap-1 pt-1">
+                                                  {/* Botón revertir — si el pedido ya tiene novedad o estado cambiado */}
+                                                  {order.estado !== "pendiente" && order.estado !== "entregado" && (
+                                                    <Button variant="outline" size="sm" className="h-7 text-xs border-gray-400 text-gray-700 bg-gray-50"
+                                                      onClick={async () => {
+                                                        try {
+                                                          // Revertir estado del pedido a pendiente
+                                                          await fetch("/api/pedidos/actualizar-estado", {
+                                                            method: "POST",
+                                                            headers: { "Content-Type": "application/json" },
+                                                            body: JSON.stringify({ pedidoId: order.id, estado: "pendiente" }),
+                                                          })
+                                                          // Borrar última novedad del pedido
+                                                          await fetch(`/api/novedades/revertir`, {
+                                                            method: "POST",
+                                                            headers: { "Content-Type": "application/json" },
+                                                            body: JSON.stringify({ pedidoId: order.id }),
+                                                          })
+                                                          toast({ title: "Revertido", description: `${order.cliente} vuelve a pendiente` })
+                                                          await loadData()
+                                                        } catch {
+                                                          toast({ title: "Error", description: "No se pudo revertir", variant: "destructive" })
+                                                        }
+                                                      }}>
+                                                      ↩ Revertir
+                                                    </Button>
+                                                  )}
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-orange-300 text-orange-700"
                                                     onClick={() => handleAbrirNovedadCaja(order, "fiado")}>
                                                     Fiado
