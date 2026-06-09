@@ -16,11 +16,15 @@ export async function POST(request: Request) {
 
     const {
       entregador,
+      planillaIds: planillaIdsDirectos, // cuando vienen del frontend directamente
       fechaDesde,
       fechaHasta,
-      rutasFiltro,            // string[] opcional — si caja filtra por rutas específicas
+      rutasFiltro,
       efectivoRecibido,
-      nequiRecibido,          // NUEVO — transferencias recibidas separadas
+      billetes,
+      monedas,
+      consignaciones: consignacionesArray,
+      nequiRecibido,
       tieneConsignacion,
       numeroConsignacion,
       banco,
@@ -30,36 +34,52 @@ export async function POST(request: Request) {
       motivoDescuento,
     } = body
 
-    if (!entregador || !fechaDesde || !fechaHasta) {
+    if (!entregador) {
+      return NextResponse.json({ error: 'entregador es requerido' }, { status: 400 })
+    }
+
+    if (!planillaIdsDirectos?.length && (!fechaDesde || !fechaHasta)) {
       return NextResponse.json(
-        { error: 'entregador, fechaDesde y fechaHasta son requeridos' },
+        { error: 'Se requiere planillaIds o fechaDesde + fechaHasta' },
         { status: 400 }
       )
     }
 
-    // ─── 1. OBTENER PLANILLAS PENDIENTES DEL ENTREGADOR EN EL PERÍODO ───────────
-    const planillas = await sql`
-      SELECT id, tipo_ruta, fecha, total_cargue, total_entregado,
-             total_fiado, total_devolucion, total_repaso, total_agotados
-      FROM planillas
-      WHERE entregador = ${entregador}
-        AND fecha BETWEEN ${fechaDesde}::date AND ${fechaHasta}::date
-        AND cuadrado_en_caja = false
-        AND estado = 'en_ruta'
-        ${rutasFiltro?.length ? sql`AND tipo_ruta = ANY(${rutasFiltro})` : sql``}
-      ORDER BY fecha ASC, tipo_ruta ASC
-    `
+    // ─── 1. OBTENER PLANILLAS ─────────────────────────────────────────────────────
+    let planillas: any[]
+
+    if (planillaIdsDirectos?.length) {
+      // Vinieron del frontend directamente
+      planillas = await sql`
+        SELECT id, tipo_ruta, fecha, total_cargue, total_entregado,
+               total_fiado, total_devolucion, total_repaso, total_agotados
+        FROM planillas
+        WHERE id = ANY(${planillaIdsDirectos})
+      `
+    } else {
+      planillas = await sql`
+        SELECT id, tipo_ruta, fecha, total_cargue, total_entregado,
+               total_fiado, total_devolucion, total_repaso, total_agotados
+        FROM planillas
+        WHERE entregador = ${entregador}
+          AND fecha BETWEEN ${fechaDesde}::date AND ${fechaHasta}::date
+          AND cuadrado_en_caja = false
+          AND estado = 'en_ruta'
+          ${rutasFiltro?.length ? sql`AND tipo_ruta = ANY(${rutasFiltro})` : sql``}
+        ORDER BY fecha ASC, tipo_ruta ASC
+      `
+    }
 
     if (planillas.length === 0) {
       return NextResponse.json(
-        { error: 'No hay planillas pendientes de cuadre para este entregador en el período indicado' },
+        { error: 'No hay planillas para cuadrar' },
         { status: 404 }
       )
     }
 
+    // ─── 2. CALCULAR TOTALES DESDE PEDIDOS (fuente de verdad) ────────────────────
     const planillaIds = planillas.map((p: any) => p.id)
 
-    // ─── 2. CALCULAR TOTALES DESDE PEDIDOS (fuente de verdad) ────────────────────
     const totales = await sql`
       SELECT
         COALESCE(SUM(p.total), 0)                                                AS total_cargue,
@@ -128,10 +148,17 @@ export async function POST(request: Request) {
 
     const efectivoReal    = Number(efectivoRecibido) || 0
     const nequiReal       = Number(nequiRecibido) || 0
-    const consignado      = Number(montoConsignacion) || 0
+    // Soportar tanto consignaciones múltiples como monto único
+    const consignado      = consignacionesArray?.length
+      ? consignacionesArray.reduce((s: number, c: any) => s + Number(c.monto || 0), 0)
+      : Number(montoConsignacion) || 0
+    const billetesVal     = Number(billetes) || 0
+    const monedasVal      = Number(monedas) || 0
+    // Total recibido: si vienen billetes/monedas usar esos, sino usar efectivoRecibido
+    const totalFisicoRecibido = (billetesVal + monedasVal + consignado) || efectivoReal
     const descuentoVal    = Number(descuento) || 0
 
-    const totalRecibido   = efectivoReal + nequiReal + consignado
+    const totalRecibido   = totalFisicoRecibido + nequiReal
     const totalEsperado   = efectivoEsperado + nequiEsperado
     const diferencia      = Math.round((totalRecibido - totalEsperado - descuentoVal) * 100) / 100
     const estado          = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
@@ -197,7 +224,7 @@ export async function POST(request: Request) {
         ${tipoCuadre},
         ${totalCargue},
         ${totalEsperado},
-        ${efectivoReal},
+        ${totalFisicoRecibido},
         ${nequiReal},
         ${consignado},
         ${diferencia},
