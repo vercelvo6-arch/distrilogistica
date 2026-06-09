@@ -1394,15 +1394,18 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       ? totalPedido
       : Number(novedadCajaMonto) || 0
 
-    if (monto <= 0 || monto > totalPedido) {
-      toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(totalPedido)}`, variant: "destructive" })
+    if (novedadCajaTipo !== "agotado" && (monto < 0 || monto > totalPedido)) {
+      toast({ title: "Error", description: `El monto debe estar entre $0 y ${formatCOP(totalPedido)}`, variant: "destructive" })
       return
     }
 
     try {
       setSubmittingNovedadCaja(true)
 
-      const tipoApi = novedadCajaTipo === "fiado" ? "fiado_parcial" : novedadCajaTipo
+      // fiado: montoNovedad = saldo que queda fiado, montoPagado = lo que abonó
+      const tipoApi        = novedadCajaTipo === "fiado" ? "fiado_parcial" : novedadCajaTipo
+      const montoNovedad   = novedadCajaTipo === "fiado" ? totalPedido - monto : monto
+      const montoPagado    = novedadCajaTipo === "fiado" ? monto : 0
 
       const res = await fetch("/api/novedades", {
         method: "POST",
@@ -1410,8 +1413,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         body: JSON.stringify({
           pedidoId:     novedadCajaOrder.id,
           tipoNovedad:  tipoApi,
-          montoNovedad: monto,
-          montoPagado:  novedadCajaTipo === "fiado" ? totalPedido - monto : 0,
+          montoNovedad,
+          montoPagado,
           descripcion:  `${novedadCajaTipo} registrado desde caja`,
         }),
       })
