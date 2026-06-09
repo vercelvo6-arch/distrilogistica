@@ -777,9 +777,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const handleMotivoDescuentoChange = async () => { /* no aplica */ }
   const handleMotivoAjusteChange = async () => { /* no aplica */ }
 
-  // NOTA: toast referenciado en bloque eliminado — lo manejamos arriba
-  const _toast = { 
-        title: "Error",
   const totalCargue = filteredRoutes.reduce((sum, r) => sum + (r?.totalAmount || 0), 0)
 
   let totalEntregado = 0
