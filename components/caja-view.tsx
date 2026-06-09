@@ -539,9 +539,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         } else if (!tieneNovedadFiado && order.estado === 'repaso') {
           repasos += entregadoDelPedido
         } else if (!tieneNovedadAgotado && !tieneNovedadDevolucion && order.estado === 'devolucion') {
-          // Solo sumar a devoluciones si no hay novedad de agotado ni devolución registrada
           devoluciones += entregadoDelPedido
-        } else if (!tieneNovedadFiado && !tieneNovedadAgotado && !tieneNovedadDevolucion && entregadoDelPedido > 0) {
+        } else if (!tieneNovedadFiado && entregadoDelPedido > 0) {
+          // Con agotado o devolución parcial: el resto sí se entregó
           entregado += entregadoDelPedido
           if (order.descuento) entregado -= Number(order.descuento)
         }
