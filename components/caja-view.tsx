@@ -523,7 +523,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         // FIX: Si el pedido tiene estado especial (fiado/repaso/devolucion) en BD
         // pero NO hay novedad del tipo correspondiente (solo hay agotados/devoluciones),
         // contabilizarlo correctamente según su estado.
-        const tieneNovedadFiado = novedadesDelPedido.some(n => n.tipo_novedad === 'fiado_parcial')
+        const tieneNovedadFiado    = novedadesDelPedido.some(n => n.tipo_novedad === 'fiado_parcial')
+        const tieneNovedadAgotado  = novedadesDelPedido.some(n => n.tipo_novedad === 'agotado')
+        const tieneNovedadDevolucion = novedadesDelPedido.some(n => n.tipo_novedad === 'devolucion')
 
         if (!tieneNovedadFiado && order.estado === 'fiado') {
           const montoPagadoReal = Number(order.montoPagado) || 0
@@ -536,9 +538,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           }
         } else if (!tieneNovedadFiado && order.estado === 'repaso') {
           repasos += entregadoDelPedido
-        } else if (!tieneNovedadFiado && order.estado === 'devolucion') {
+        } else if (!tieneNovedadAgotado && !tieneNovedadDevolucion && order.estado === 'devolucion') {
+          // Solo sumar a devoluciones si no hay novedad de agotado ni devolución registrada
           devoluciones += entregadoDelPedido
-        } else if (!tieneNovedadFiado && entregadoDelPedido > 0) {
+        } else if (!tieneNovedadFiado && !tieneNovedadAgotado && !tieneNovedadDevolucion && entregadoDelPedido > 0) {
           entregado += entregadoDelPedido
           if (order.descuento) entregado -= Number(order.descuento)
         }
