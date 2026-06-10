@@ -2232,7 +2232,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             )}
                           </div>
                           <p className="text-sm text-gray-500">
-                            {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
+                            {rec.fecha_recepcion 
+                              ? new Date(rec.fecha_recepcion + (rec.fecha_recepcion.includes('T') ? '' : 'T12:00:00')).toLocaleString("es-CO")
+                              : rec.created_at 
+                                ? new Date(rec.created_at).toLocaleString("es-CO")
+                                : 'Sin fecha'
+                            }
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
