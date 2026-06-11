@@ -19,7 +19,6 @@ export async function GET(
       SELECT
         id,
         cliente,
-        tipo_ruta AS ruta,
         monto_total,
         monto_pagado,
         saldo_pendiente,
@@ -39,7 +38,6 @@ export async function GET(
     }
 
     // 2. Abonos con join a planillas para ruta_cobro y entregador que llevó
-    // pedido_id en abonos_fiados es texto que corresponde a fiados.id (integer)
     const abonos = await sql`
       SELECT
         af.id,
@@ -52,9 +50,9 @@ export async function GET(
         af.entregador_cobro,
         af.planilla_cobro_id,
         af.registrado_por,
-        pl.tipo_ruta   AS ruta_cobro,
-        pl.fecha       AS fecha_planilla_cobro,
-        pl.entregador  AS entregador_planilla
+        pl.tipo_ruta        AS ruta_cobro,
+        pl.fecha            AS fecha_planilla_cobro,
+        pl.entregador       AS entregador_planilla
       FROM abonos_fiados af
       LEFT JOIN planillas pl
              ON pl.id::text = af.planilla_cobro_id::text
@@ -62,7 +60,6 @@ export async function GET(
       ORDER BY af.fecha_abono ASC
     `
 
-    // Normalizar fecha_abono a ISO válido (Neon puede devolver "2026-06-09 21:55:13" sin T)
     const abonosNormalizados = abonos.map((a: any) => {
       let fecha_abono_iso: string | null = null
       if (a.fecha_abono) {
