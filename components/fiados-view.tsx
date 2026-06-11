@@ -687,8 +687,8 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
             </Card>
           </div>
 
-          {/* Tabla detallada */}
-          <Card className="p-4 sm:p-6 overflow-x-auto">
+          {/* Detalle de Fiados — cards en lugar de tabla para evitar DOM errors de React 19 */}
+          <Card className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
               <h2 className="text-lg font-semibold">Detalle de Fiados</h2>
               {selectedFiados.size > 0 && (
@@ -699,151 +699,85 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
               )}
             </div>
 
-            <div className="min-w-full overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[50px]"></TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Dirección</TableHead>
-                    <TableHead>Teléfono</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Entregador</TableHead>
-                    <TableHead>Ruta</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Pagado</TableHead>
-                    <TableHead className="text-right">Saldo</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={12} className="text-center py-8">
-                        Cargando...
-                      </TableCell>
-                    </TableRow>
-                  ) : fiados.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
-                        No hay fiados para el período seleccionado
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    fiados.map((fiado) => {
-                      const saldo = Number(fiado.saldo_pendiente || fiado.total)
-                      const isParcial = Number(fiado.monto_pagado) > 0 && saldo > 0
-                      const mostrarBotones = tieneSaldoPendiente(fiado)
+            {loading ? (
+              <p className="text-center py-8 text-gray-400">Cargando...</p>
+            ) : fiados.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">No hay fiados para el período seleccionado</p>
+            ) : (
+              <div className="space-y-2">
+                {fiados.map((fiado) => {
+                  const saldo = Number(fiado.saldo_pendiente || fiado.total)
+                  const isParcial = Number(fiado.monto_pagado) > 0 && saldo > 0
+                  const mostrarBotones = tieneSaldoPendiente(fiado)
+                  const isPagado = fiado.estado === 'pagado_completo' || fiado.estado === 'pagado'
+                  const isSeleccionado = selectedFiados.has(fiado.id)
 
-                      return (
-                        <TableRow key={fiado.id}>
-                          <TableCell>
-                            {/* ✅ FIX: incluye abono_parcial */}
-                            {mostrarBotones && (
-                              <Checkbox
-                                checked={selectedFiados.has(fiado.id)}
-                                onCheckedChange={(checked) => {
-                                  const newSet = new Set(selectedFiados)
-                                  if (checked) {
-                                    newSet.add(fiado.id)
-                                  } else {
-                                    newSet.delete(fiado.id)
-                                  }
-                                  setSelectedFiados(newSet)
-                                }}
-                              />
-                            )}
-                          </TableCell>
-                          <TableCell className="font-medium">{fiado.cliente}</TableCell>
-                          <TableCell className="text-sm">{fiado.direccion || 'N/A'}</TableCell>
-                          <TableCell className="text-sm">{fiado.telefono || 'N/A'}</TableCell>
-                          <TableCell>{new Date(fiado.fecha).toLocaleDateString('es-CO')}</TableCell>
-                          <TableCell>{fiado.entregador}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{fiado.tipo_ruta}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCOP(Number(fiado.total || 0))}
-                          </TableCell>
-                          <TableCell className="text-right text-green-600">
-                            {formatCOP(Number(fiado.monto_pagado || 0))}
-                          </TableCell>
-                          <TableCell className="text-right font-bold text-orange-600">
-                            {formatCOP(saldo)}
-                          </TableCell>
-                          <TableCell>
-                            {fiado.estado === 'pagado_completo' || fiado.estado === 'pagado' ? (
-                              <Badge variant="default" className="bg-green-100 text-green-700 border-green-300">
-                                ✓ pagado
-                              </Badge>
-                            ) : isParcial ? (
-                              <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
-                                parcial
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-orange-100 text-orange-700">
-                                fiado
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex gap-2 justify-center flex-wrap">
-                              {/* ✅ FIX: botones visibles para abono_parcial también */}
-                              {mostrarBotones && (
-                                <>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => openAbonoModal(fiado)}
-                                  >
-                                    <Plus className="h-3 w-3 mr-1" />
-                                    Abono
-                                  </Button>
-                                  {userRole === "administrador" && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => openCobroModal(fiado)}
-                                      className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                                    >
-                                      <ArrowRight className="h-3 w-3 mr-1" />
-                                      Asignar a Cobrar
-                                    </Button>
-                                  )}
-                                </>
+                  return (
+                    <div key={fiado.id} className={`border rounded-lg p-3 ${isSeleccionado ? 'border-orange-400 bg-orange-50' : 'border-gray-200 bg-white'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 rounded border-gray-300 accent-orange-500"
+                            checked={isSeleccionado}
+                            onChange={(e) => {
+                              const newSet = new Set(selectedFiados)
+                              if (e.target.checked) newSet.add(fiado.id)
+                              else newSet.delete(fiado.id)
+                              setSelectedFiados(newSet)
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <span className="font-semibold text-sm text-gray-900">{fiado.cliente}</span>
+                              <Badge variant="outline" className="text-xs">{fiado.tipo_ruta}</Badge>
+                              {isPagado ? (
+                                <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">✓ pagado</Badge>
+                              ) : isParcial ? (
+                                <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 text-xs">parcial</Badge>
+                              ) : (
+                                <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-xs">fiado</Badge>
                               )}
-                              {/* ✅ NUEVO: botón eliminar solo para admin */}
-                              {userRole === "administrador" && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openEliminarModal(fiado)}
-                                  className="border-red-300 text-red-700 hover:bg-red-50"
-                                >
-                                  <Trash2 className="h-3 w-3 mr-1" />
-                                  Eliminar
-                                </Button>
-                              )}
-                              {/* Botón historial de cobros */}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => loadHistorialFiado(fiado)}
-                                className="text-slate-500 hover:text-slate-700"
-                              >
-                                Historial
-                              </Button>
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
+                            <div className="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-0.5">
+                              <span>{fiado.entregador}</span>
+                              <span>{new Date(fiado.fecha).toLocaleDateString('es-CO')}</span>
+                              {fiado.direccion && <span>{fiado.direccion}</span>}
+                              {fiado.telefono && <span>{fiado.telefono}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-xs text-gray-400">Saldo</div>
+                          <div className="font-bold text-orange-600 text-sm">{formatCOP(saldo)}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">de {formatCOP(Number(fiado.total || 0))}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-wrap mt-2 pt-2 border-t border-gray-100">
+                        {mostrarBotones && (
+                          <Button variant="outline" size="sm" onClick={() => openAbonoModal(fiado)}>
+                            <Plus className="h-3 w-3 mr-1" />Abono
+                          </Button>
+                        )}
+                        {mostrarBotones && userRole === "administrador" && (
+                          <Button variant="outline" size="sm" onClick={() => openCobroModal(fiado)} className="border-blue-300 text-blue-700 hover:bg-blue-50">
+                            <ArrowRight className="h-3 w-3 mr-1" />Asignar a Cobrar
+                          </Button>
+                        )}
+                        {userRole === "administrador" && (
+                          <Button variant="outline" size="sm" onClick={() => openEliminarModal(fiado)} className="border-red-300 text-red-700 hover:bg-red-50">
+                            <Trash2 className="h-3 w-3 mr-1" />Eliminar
+                          </Button>
+                        )}
+                        <Button variant="outline" size="sm" onClick={() => loadHistorialFiado(fiado)} className="border-slate-300 text-slate-600 hover:bg-slate-50">
+                          Historial
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </Card>
 
           {/* ── Panel historial — un solo panel, fiado seleccionado ── */}
