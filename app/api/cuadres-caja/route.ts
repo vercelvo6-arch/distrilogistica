@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       observaciones,
       descuento,
       motivoDescuento,
-      cobrosVinculados, // ← cobros CxC con montos y referencias
+      cobrosVinculados,
     } = body
 
     if (!entregador) {
@@ -89,34 +89,18 @@ export async function POST(request: Request) {
       )
     }
 
-    // ─── 3. CALCULAR TOTALES ──────────────────────────────────────────────────
-    const totales = await sql`
-      SELECT
-        COALESCE(SUM(p.total), 0) AS total_cargue,
-        COALESCE(SUM(CASE WHEN p.estado IN ('entregado','pagado') THEN p.total - COALESCE(p.descuento,0) ELSE 0 END), 0) AS total_entregado,
-        COALESCE(SUM(CASE WHEN p.estado = 'fiado' AND COALESCE(p.es_cobro,false) = false THEN p.saldo_pendiente ELSE 0 END), 0) AS total_fiados_nuevos,
-        COALESCE(SUM(CASE WHEN p.estado = 'devolucion' THEN p.total ELSE 0 END), 0) AS total_devoluciones,
-        COALESCE(SUM(CASE WHEN p.estado = 'repaso' THEN p.total ELSE 0 END), 0) AS total_repasos,
-        COALESCE(SUM(COALESCE(p.descuento,0)), 0) AS total_descuentos,
-        COALESCE(SUM(
-          CASE WHEN p.estado IN ('entregado','pagado','fiado')
-            THEN (SELECT COALESCE(SUM(pp.total),0) FROM pedido_productos pp
-                  WHERE pp.pedido_id = p.id AND pp.estado_producto = 'agotado')
-          ELSE 0 END
-        ), 0) AS total_agotados
-      FROM pedidos p
-      WHERE p.planilla_id = ANY(${planillaIds})
-        AND COALESCE(p.es_cobro, false) = false
-    `
+    // ─── 3. CALCULAR TOTALES DESDE PLANILLAS ─────────────────────────────────
+    // Lógica: entregado = cargue - fiados - devoluciones - agotados - repasos
+    // No depende del estado del pedido — lo que no es novedad fue entregado
+    const totalCargue       = planillas.reduce((s: number, p: any) => s + Number(p.total_cargue || 0), 0)
+    const totalFiadosNuevos = planillas.reduce((s: number, p: any) => s + Number(p.total_fiado || 0), 0)
+    const totalDevoluciones = planillas.reduce((s: number, p: any) => s + Number(p.total_devolucion || 0), 0)
+    const totalRepasos      = planillas.reduce((s: number, p: any) => s + Number(p.total_repaso || 0), 0)
+    const totalAgotados     = planillas.reduce((s: number, p: any) => s + Number(p.total_agotados || 0), 0)
+    const totalDescuentos   = Number(descuento) || 0
 
-    const t = totales[0]
-    const totalCargue       = Number(t.total_cargue)
-    const totalEntregado    = Number(t.total_entregado)
-    const totalFiadosNuevos = Number(t.total_fiados_nuevos)
-    const totalDevoluciones = Number(t.total_devoluciones)
-    const totalRepasos      = Number(t.total_repasos)
-    const totalDescuentos   = Number(t.total_descuentos)
-    const totalAgotados     = Number(t.total_agotados)
+    // Entregado = todo lo que no es novedad
+    const totalEntregado = totalCargue - totalFiadosNuevos - totalDevoluciones - totalRepasos - totalAgotados
 
     // ─── 4. CALCULAR COBROS VINCULADOS ────────────────────────────────────────
     const cobros = cobrosVinculados || []
@@ -125,22 +109,23 @@ export async function POST(request: Request) {
     const totalCobros    = cobrosEfectivo + cobrosNequi
 
     // ─── 5. FÓRMULA DE CUADRE ─────────────────────────────────────────────────
-    const efectivoEsperado = Math.round((totalEntregado - totalDescuentos - totalAgotados + cobrosEfectivo) * 100) / 100
+    // Esperado efectivo = entregado - descuentos + cobros efectivo
+    // Esperado nequi    = cobros nequi
+    const efectivoEsperado = Math.round((totalEntregado - totalDescuentos + cobrosEfectivo) * 100) / 100
     const nequiEsperado    = cobrosNequi
 
-    const billetesVal          = Number(billetes) || 0
-    const monedasVal           = Number(monedas) || 0
-    const consignadoVal        = consignacionesArray?.length
+    const billetesVal         = Number(billetes) || 0
+    const monedasVal          = Number(monedas) || 0
+    const consignadoVal       = consignacionesArray?.length
       ? consignacionesArray.reduce((s: number, c: any) => s + Number(c.monto || 0), 0)
       : Number(montoConsignacion) || 0
-    const nequiReal            = Number(nequiRecibido) || 0
-    const totalFisicoRecibido  = (billetesVal + monedasVal + consignadoVal) || Number(efectivoRecibido) || 0
-    const descuentoVal         = Number(descuento) || 0
-    const totalRecibido        = totalFisicoRecibido + nequiReal
-    const totalEsperado        = efectivoEsperado + nequiEsperado
-    const diferencia           = Math.round((totalRecibido - totalEsperado - descuentoVal) * 100) / 100
-    const estado               = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
-    const tipoCuadre           = planillaIds.length === 1 ? 'individual' : 'agrupado'
+    const nequiReal           = Number(nequiRecibido) || 0
+    const totalFisicoRecibido = (billetesVal + monedasVal + consignadoVal) || Number(efectivoRecibido) || 0
+    const totalRecibido       = totalFisicoRecibido + nequiReal
+    const totalEsperado       = efectivoEsperado + nequiEsperado
+    const diferencia          = Math.round((totalRecibido - totalEsperado) * 100) / 100
+    const estado              = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
+    const tipoCuadre          = planillaIds.length === 1 ? 'individual' : 'agrupado'
 
     // ─── 6. TRANSACCIÓN: TODO O NADA ─────────────────────────────────────────
     await sql`BEGIN`
@@ -185,7 +170,6 @@ export async function POST(request: Request) {
 
         const fiadoId = Number(cobro.id)
 
-        // Obtener fiado actual
         const [fiado] = await sql`
           SELECT id, monto_total, monto_pagado, saldo_pendiente, estado
           FROM fiados
@@ -201,7 +185,6 @@ export async function POST(request: Request) {
         const nuevoSaldo       = Math.max(0, Math.round((saldoActual - totalAbono) * 100) / 100)
         const pagoCompleto     = nuevoSaldo <= 0
 
-        // Actualizar fiado
         await sql`
           UPDATE fiados SET
             monto_pagado        = ${nuevoMontoPagado},
@@ -212,7 +195,6 @@ export async function POST(request: Request) {
           WHERE id = ${fiadoId}
         `
 
-        // Registrar abono
         await sql`
           INSERT INTO abonos_fiados (
             pedido_id, monto_abono, monto_nequi, metodo_pago,
@@ -265,7 +247,7 @@ export async function POST(request: Request) {
           ${(consignacionesArray?.length > 0) || tieneConsignacion || false},
           ${consignacionesArray?.[0]?.numero || numeroConsignacion || null},
           ${consignacionesArray?.[0]?.banco || banco || null},
-          ${descuentoVal},
+          ${totalDescuentos},
           ${motivoDescuento || null},
           ${totalAgotados},
           ${totalFiadosNuevos},
