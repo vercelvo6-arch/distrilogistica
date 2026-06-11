@@ -86,6 +86,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   const [abonoForm, setAbonoForm] = useState({
     monto: "",
     metodoPago: "efectivo",
+    referencia: "",
     observaciones: ""
   })
   const [submittingAbono, setSubmittingAbono] = useState(false)
@@ -367,6 +368,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     setAbonoForm({
       monto: "",
       metodoPago: "efectivo",
+      referencia: "",
       observaciones: ""
     })
     setShowAbonoModal(true)
@@ -400,19 +402,31 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     try {
       setSubmittingAbono(true)
 
+      const esNequi = abonoForm.metodoPago === "nequi" || abonoForm.metodoPago === "transferencia"
+      const fiadoId = selectedFiado.fiado_tabla_id || selectedFiado.id
+
       const response = await fetch('/api/fiados/registrar-abono', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          pedidoId: selectedFiado.fiado_tabla_id || selectedFiado.id,
-          montoAbono,
-          metodoPago: abonoForm.metodoPago,
+          fiadoId,
+          montoEfectivo: esNequi ? 0 : montoAbono,
+          montoNequi:    esNequi ? montoAbono : 0,
+          referenciaPago: abonoForm.referencia?.trim() || null,
           observaciones: abonoForm.observaciones || null,
-          usuarioId: userId
         })
       })
 
       const data = await response.json()
+
+      if (response.status === 409) {
+        toast({
+          title: "Referencia duplicada",
+          description: "Esa referencia de pago ya fue registrada. Verifica el número.",
+          variant: "destructive",
+        })
+        return
+      }
 
       if (!response.ok) {
         throw new Error(data.error || 'Error al registrar abono')
@@ -569,7 +583,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
   return (
     <>
-      <header className="border-b bg-card">
+      <header className="border-b bg-card" translate="no">
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -589,7 +603,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-4 sm:py-8 max-w-7xl">
+      <main className="container mx-auto px-4 py-4 sm:py-8 max-w-7xl" translate="no">
         <div className="space-y-4 sm:space-y-6">
           {/* Filtros */}
           <Card className="p-4">
@@ -913,19 +927,34 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                 <Label htmlFor="metodoPago">Método de Pago</Label>
                 <Select
                   value={abonoForm.metodoPago}
-                  onValueChange={(value) => setAbonoForm({ ...abonoForm, metodoPago: value })}
+                  onValueChange={(value) => setAbonoForm({ ...abonoForm, metodoPago: value, referencia: "" })}
                 >
                   <SelectTrigger id="metodoPago">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="efectivo">Efectivo</SelectItem>
+                    <SelectItem value="nequi">Nequi</SelectItem>
                     <SelectItem value="transferencia">Transferencia</SelectItem>
                     <SelectItem value="consignacion">Consignación</SelectItem>
-                    <SelectItem value="otro">Otro</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {(abonoForm.metodoPago === "nequi" || abonoForm.metodoPago === "transferencia" || abonoForm.metodoPago === "consignacion") && (
+                <div className="space-y-2">
+                  <Label htmlFor="referencia">
+                    Referencia de pago <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="referencia"
+                    type="text"
+                    value={abonoForm.referencia}
+                    onChange={(e) => setAbonoForm({ ...abonoForm, referencia: e.target.value })}
+                    placeholder="Número de referencia / comprobante"
+                  />
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="observaciones">Observaciones (opcional)</Label>
@@ -934,7 +963,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                   value={abonoForm.observaciones}
                   onChange={(e) => setAbonoForm({ ...abonoForm, observaciones: e.target.value })}
                   placeholder="Notas adicionales sobre el abono..."
-                  rows={3}
+                  rows={2}
                 />
               </div>
 
