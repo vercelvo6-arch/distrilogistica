@@ -736,8 +736,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
                       const fkey = fiado.fiado_tabla_id || fiado.id
                       return (
-                        <React.Fragment key={fiado.id}>
-                        <TableRow>
+                        <TableRow key={fiado.id}>
                           <TableCell>
                             {/* ✅ FIX: incluye abono_parcial */}
                             {mostrarBotones && (
@@ -829,10 +828,10 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => loadHistorialFiado(fiado.fiado_tabla_id || fiado.id)}
+                                onClick={() => loadHistorialFiado(fkey)}
                                 className="text-slate-500 hover:text-slate-700"
                               >
-                                {historialAbierto[fiado.fiado_tabla_id || fiado.id]
+                                {historialAbierto[fkey]
                                   ? <ChevronUp className="h-3 w-3 mr-1" />
                                   : <ChevronDown className="h-3 w-3 mr-1" />}
                                 Historial
@@ -840,90 +839,100 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                             </div>
                           </TableCell>
                         </TableRow>
-                          {/* ── Historial de cobros: TableRow separado para DOM válido ── */}
-                          {(() => {
-                            if (!historialAbierto[fkey] && !historialCobros[fkey]) return null
-                            if (!historialAbierto[fkey]) return null
-                            return (
-                              <TableRow className="bg-slate-50 hover:bg-slate-50">
-                                <TableCell colSpan={12} className="py-2 px-4">
-                                  {loadingHistorial[fkey] ? (
-                                    <p className="text-xs text-gray-400 py-1">Cargando historial...</p>
-                                  ) : !historialCobros[fkey]?.abonos?.length ? (
-                                    <p className="text-xs text-gray-400 py-1 italic">Sin cobros registrados aún.</p>
-                                  ) : (
-                                    <div className="space-y-2 py-1">
-                                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                        Historial de cobros
-                                      </p>
-                                      {historialCobros[fkey].abonos.map((abono: any, idx: number) => {
-                                        const totalAbono = (Number(abono.monto_abono) || 0) + (Number(abono.monto_nequi) || 0)
-                                        const medio =
-                                          abono.metodo_pago === "nequi" ? "Nequi"
-                                          : abono.metodo_pago === "mixto" ? "Mixto"
-                                          : "Efectivo"
-                                        return (
-                                          <div key={abono.id} className="bg-white rounded border border-gray-100 p-2 text-xs flex flex-wrap gap-x-6 gap-y-1 items-start">
-                                            <span className="font-semibold text-gray-700 min-w-[80px]">
-                                              #{idx + 1} — {formatFechaColombia(abono.fecha_abono_iso || abono.fecha_abono)}
-                                            </span>
-                                            <span>
-                                              <span className="text-gray-400">Llevó:</span>{" "}
-                                              {abono.entregador_planilla || historialCobros[fkey]?.fiado?.entregador_asignado || "—"}
-                                              {abono.ruta_cobro ? <span className="text-gray-400"> (Ruta {abono.ruta_cobro})</span> : null}
-                                            </span>
-                                            <span>
-                                              <span className="text-gray-400">Cobró:</span>{" "}
-                                              {abono.entregador_cobro || "—"}
-                                            </span>
-                                            {Number(abono.monto_abono) > 0 && (
-                                              <span>
-                                                <span className="text-gray-400">Efectivo:</span>{" "}
-                                                <span className="text-green-700 font-medium">{formatCOP(Number(abono.monto_abono))}</span>
-                                              </span>
-                                            )}
-                                            {Number(abono.monto_nequi) > 0 && (
-                                              <span>
-                                                <span className="text-gray-400">Nequi:</span>{" "}
-                                                <span className="text-purple-600 font-medium">{formatCOP(Number(abono.monto_nequi))}</span>
-                                              </span>
-                                            )}
-                                            {abono.referencia_pago && (
-                                              <span>
-                                                <span className="text-gray-400">Ref:</span>{" "}
-                                                <span className="font-mono">{abono.referencia_pago}</span>
-                                              </span>
-                                            )}
-                                            <span className={
-                                              medio === "Nequi" ? "text-purple-600 font-medium"
-                                              : medio === "Mixto" ? "text-blue-600 font-medium"
-                                              : "text-green-700 font-medium"
-                                            }>
-                                              {formatCOP(totalAbono)} — {medio}
-                                            </span>
-                                          </div>
-                                        )
-                                      })}
-                                      <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-200">
-                                        <span className="text-gray-600">Saldo actual:</span>
-                                        <span className={Number(historialCobros[fkey]?.fiado?.saldo_pendiente) === 0 ? "text-green-600" : "text-orange-600"}>
-                                          {formatCOP(Number(historialCobros[fkey]?.fiado?.saldo_pendiente) || 0)}
-                                          {Number(historialCobros[fkey]?.fiado?.saldo_pendiente) === 0 ? " ✓ Pagado" : ""}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            )
-                          })()}
-                        </React.Fragment>
                       )
                     })
                   )}
                 </TableBody>
               </Table>
             </div>
+
+            {/* ── Paneles de historial de cobros — fuera de la tabla para evitar DOM errors ── */}
+            <div className="mt-2 space-y-2">
+              {fiados.map((fiado) => {
+                const fkey = fiado.fiado_tabla_id || fiado.id
+                if (!historialAbierto[fkey]) return null
+                return (
+                  <div key={`hist-${fiado.id}`} className="border border-slate-200 rounded-lg bg-slate-50 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-600">
+                        Historial de cobros — <span className="text-slate-800">{fiado.cliente}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setHistorialAbierto(prev => ({ ...prev, [fkey]: false }))}
+                        className="text-xs text-slate-400 hover:text-slate-600"
+                      >
+                        ✕ Cerrar
+                      </button>
+                    </div>
+                    {loadingHistorial[fkey] ? (
+                      <p className="text-xs text-gray-400 py-1">Cargando historial...</p>
+                    ) : !historialCobros[fkey]?.abonos?.length ? (
+                      <p className="text-xs text-gray-400 py-1 italic">Sin cobros registrados aún.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {historialCobros[fkey].abonos.map((abono: any, idx: number) => {
+                          const totalAbono = (Number(abono.monto_abono) || 0) + (Number(abono.monto_nequi) || 0)
+                          const medio =
+                            abono.metodo_pago === "nequi" ? "Nequi"
+                            : abono.metodo_pago === "mixto" ? "Mixto"
+                            : "Efectivo"
+                          return (
+                            <div key={abono.id} className="bg-white rounded border border-gray-100 p-2 text-xs flex flex-wrap gap-x-6 gap-y-1 items-start">
+                              <span className="font-semibold text-gray-700 min-w-[80px]">
+                                #{idx + 1} — {formatFechaColombia(abono.fecha_abono_iso || abono.fecha_abono)}
+                              </span>
+                              <span>
+                                <span className="text-gray-400">Llevó:</span>{" "}
+                                {abono.entregador_planilla || historialCobros[fkey]?.fiado?.entregador_asignado || "—"}
+                                {abono.ruta_cobro ? <span className="text-gray-400"> (Ruta {abono.ruta_cobro})</span> : null}
+                              </span>
+                              <span>
+                                <span className="text-gray-400">Cobró:</span>{" "}
+                                {abono.entregador_cobro || "—"}
+                              </span>
+                              {Number(abono.monto_abono) > 0 && (
+                                <span>
+                                  <span className="text-gray-400">Efectivo:</span>{" "}
+                                  <span className="text-green-700 font-medium">{formatCOP(Number(abono.monto_abono))}</span>
+                                </span>
+                              )}
+                              {Number(abono.monto_nequi) > 0 && (
+                                <span>
+                                  <span className="text-gray-400">Nequi:</span>{" "}
+                                  <span className="text-purple-600 font-medium">{formatCOP(Number(abono.monto_nequi))}</span>
+                                </span>
+                              )}
+                              {abono.referencia_pago && (
+                                <span>
+                                  <span className="text-gray-400">Ref:</span>{" "}
+                                  <span className="font-mono">{abono.referencia_pago}</span>
+                                </span>
+                              )}
+                              <span className={
+                                medio === "Nequi" ? "text-purple-600 font-medium"
+                                : medio === "Mixto" ? "text-blue-600 font-medium"
+                                : "text-green-700 font-medium"
+                              }>
+                                {formatCOP(totalAbono)} — {medio}
+                              </span>
+                            </div>
+                          )
+                        })}
+                        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-200">
+                          <span className="text-gray-600">Saldo actual:</span>
+                          <span className={Number(historialCobros[fkey]?.fiado?.saldo_pendiente) === 0 ? "text-green-600" : "text-orange-600"}>
+                            {formatCOP(Number(historialCobros[fkey]?.fiado?.saldo_pendiente) || 0)}
+                            {Number(historialCobros[fkey]?.fiado?.saldo_pendiente) === 0 ? " ✓ Pagado" : ""}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
           </Card>
         </div>
       </main>
