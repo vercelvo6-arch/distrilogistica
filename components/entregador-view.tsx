@@ -67,6 +67,16 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   // Estado para novedades
   const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, any[]>>({})
 
+  // Novedades globales editables por planilla (agotados, devoluciones, descuentos, fiados)
+  const [novedadesGlobales, setNovedadesGlobales] = useState<Record<number, {
+    agotados: string
+    devoluciones: string
+    descuentos: string
+    fiados: string
+    guardando: boolean
+    guardado: boolean
+  }>>({})
+
   const entregador = user.nombre
 
   useEffect(() => {
@@ -78,6 +88,49 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       loadHistorial()
     }
   }, [selectedView])
+
+  // Inicializar novedades globales desde planillas cargadas
+  const initNovedadesGlobales = (planillas: any[]) => {
+    const init: Record<number, any> = {}
+    planillas.forEach((p: any) => {
+      init[p.id] = {
+        agotados:    String(Number(p.total_agotados)    || 0),
+        devoluciones: String(Number(p.total_devolucion) || 0),
+        descuentos:  String(Number(p.total_descuento)   || 0),
+        fiados:      String(Number(p.total_fiado)       || 0),
+        guardando: false,
+        guardado: false,
+      }
+    })
+    setNovedadesGlobales(init)
+  }
+
+  // Guardar novedades globales de una planilla en BD
+  const guardarNovedadGlobal = async (planillaId: number) => {
+    const ng = novedadesGlobales[planillaId]
+    if (!ng) return
+    setNovedadesGlobales(prev => ({ ...prev, [planillaId]: { ...prev[planillaId], guardando: true, guardado: false } }))
+    try {
+      const res = await fetch(`/api/planillas/${planillaId}/novedades`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          total_agotados:   Number(ng.agotados)    || 0,
+          total_devolucion: Number(ng.devoluciones) || 0,
+          total_descuento:  Number(ng.descuentos)   || 0,
+          total_fiado:      Number(ng.fiados)        || 0,
+        })
+      })
+      if (!res.ok) throw new Error('Error al guardar')
+      setNovedadesGlobales(prev => ({ ...prev, [planillaId]: { ...prev[planillaId], guardando: false, guardado: true } }))
+      setTimeout(() => {
+        setNovedadesGlobales(prev => ({ ...prev, [planillaId]: { ...prev[planillaId], guardado: false } }))
+      }, 2000)
+    } catch {
+      toast({ title: "Error", description: "No se pudo guardar la novedad", variant: "destructive" })
+      setNovedadesGlobales(prev => ({ ...prev, [planillaId]: { ...prev[planillaId], guardando: false } }))
+    }
+  }
 
   // ✅ OPTIMIZADO: Una única petición para todas las novedades del entregador
   async function loadData() {
@@ -132,6 +185,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       }))
 
       setRouteSheets(planillas)
+      initNovedadesGlobales(data.planillas || [])
 
       // Cargar cobros CxC asignados al entregador
       try {
@@ -1029,9 +1083,51 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                     const clientesDeLaRuta = searchCliente.trim()
                       ? (route.orders || []).filter(o => o.cliente?.toLowerCase().includes(searchCliente.toLowerCase()))
                       : (route.orders || [])
+                    const ng = novedadesGlobales[route.id] || { agotados: "0", devoluciones: "0", descuentos: "0", fiados: "0", guardando: false, guardado: false }
 
                     return (
                       <Card key={route.id} className="overflow-hidden">
+
+                        {/* Panel de Novedades Globales editables */}
+                        {!route.cuadradoEnCaja && (
+                          <div className="px-4 pt-3 pb-2 bg-amber-50 border-b border-amber-100">
+                            <p className="text-xs font-semibold text-amber-700 mb-2">Novedades de la ruta — edita y guarda</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              {[
+                                { key: "agotados",     label: "Agotados",     color: "gray" },
+                                { key: "devoluciones", label: "Devoluciones", color: "red" },
+                                { key: "descuentos",   label: "Descuentos",   color: "purple" },
+                                { key: "fiados",       label: "Fiados",       color: "orange" },
+                              ].map(({ key, label, color }) => (
+                                <div key={key}>
+                                  <label className={`text-xs text-${color}-600 font-medium block mb-1`}>{label}</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    className="w-full text-sm border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-amber-400"
+                                    value={ng[key as keyof typeof ng] as string}
+                                    onChange={(e) => setNovedadesGlobales(prev => ({
+                                      ...prev,
+                                      [route.id]: { ...prev[route.id], [key]: e.target.value, guardado: false }
+                                    }))}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <button
+                                type="button"
+                                disabled={ng.guardando}
+                                onClick={() => guardarNovedadGlobal(route.id)}
+                                className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded disabled:opacity-50"
+                              >
+                                {ng.guardando ? "Guardando..." : "Guardar"}
+                              </button>
+                              {ng.guardado && <span className="text-xs text-green-600 font-medium">Guardado</span>}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Cabecera de ruta */}
                         <div
                           className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
