@@ -704,9 +704,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
             </Card>
           </div>
 
-
-          )}
-
           {/* Detalle de Fiados — cards en lugar de tabla para evitar DOM errors de React 19 */}
           <Card className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
@@ -835,7 +832,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
               </div>
             )}
           </Card>
-          )}
 
         </div>
       </main>
