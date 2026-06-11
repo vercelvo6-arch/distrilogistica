@@ -89,17 +89,32 @@ export async function POST(request: Request) {
       )
     }
 
-    // ─── 3. CALCULAR TOTALES DESDE PLANILLAS ─────────────────────────────────
-    // Lógica: entregado = cargue - fiados - devoluciones - agotados - repasos
-    // No depende del estado del pedido — lo que no es novedad fue entregado
-    const totalCargue       = planillas.reduce((s: number, p: any) => s + Number(p.total_cargue || 0), 0)
-    const totalFiadosNuevos = planillas.reduce((s: number, p: any) => s + Number(p.total_fiado || 0), 0)
-    const totalDevoluciones = planillas.reduce((s: number, p: any) => s + Number(p.total_devolucion || 0), 0)
-    const totalRepasos      = planillas.reduce((s: number, p: any) => s + Number(p.total_repaso || 0), 0)
-    const totalAgotados     = planillas.reduce((s: number, p: any) => s + Number(p.total_agotados || 0), 0)
-    const totalDescuentos   = Number(descuento) || 0
+    // ─── 3. CALCULAR TOTALES ──────────────────────────────────────────────────
+    // Cargue viene de planillas (fuente de verdad)
+    // Novedades: si el body trae valores editados por caja, se usan esos.
+    // Si no, se toman de las planillas como fallback.
+    const totalCargue = planillas.reduce((s: number, p: any) => s + Number(p.total_cargue || 0), 0)
 
-    // Entregado = todo lo que no es novedad
+    // Novedades — usar valor del modal si fue ingresado, sino sumar desde planillas
+    const totalFiadosNuevos = (body.fiados !== undefined && body.fiados !== null)
+      ? Number(body.fiados) || 0
+      : planillas.reduce((s: number, p: any) => s + Number(p.total_fiado || 0), 0)
+
+    const totalDevoluciones = (body.devoluciones !== undefined && body.devoluciones !== null)
+      ? Number(body.devoluciones) || 0
+      : planillas.reduce((s: number, p: any) => s + Number(p.total_devolucion || 0), 0)
+
+    const totalRepasos = (body.repasos !== undefined && body.repasos !== null)
+      ? Number(body.repasos) || 0
+      : planillas.reduce((s: number, p: any) => s + Number(p.total_repaso || 0), 0)
+
+    const totalAgotados = (body.agotados !== undefined && body.agotados !== null)
+      ? Number(body.agotados) || 0
+      : planillas.reduce((s: number, p: any) => s + Number(p.total_agotados || 0), 0)
+
+    const totalDescuentos = Number(descuento) || 0
+
+    // Entregado = cargue - novedades (lo que no es novedad fue entregado)
     const totalEntregado = totalCargue - totalFiadosNuevos - totalDevoluciones - totalRepasos - totalAgotados
 
     // ─── 4. CALCULAR COBROS VINCULADOS ────────────────────────────────────────
