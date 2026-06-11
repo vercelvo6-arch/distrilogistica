@@ -5,10 +5,6 @@ import { handleDBError } from '@/lib/db-helpers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/fiados/asignar-cobro
-//
-// Vincula un fiado a un cuadre de caja cuando el entregador regresa.
-// Ya NO modifica el total_cargue de la planilla — el cobro es un concepto
-// separado del cargue y se liquida en el cuadre.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
@@ -17,17 +13,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
     }
 
-    // Caja y admin pueden vincular cobros
     if (!['administrador', 'caja'].includes(session.user.rol)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
 
     const body = await request.json()
     const { fiadoId, entregador, cuadreId } = body
-
-    // fiadoId   → id de tabla fiados (numérico)
-    // entregador → quién llevó el cobro
-    // cuadreId  → opcional, si ya existe el cuadre en curso
 
     if (!fiadoId || !entregador) {
       return NextResponse.json(
@@ -38,7 +29,6 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // ── 1. Verificar que el fiado existe y tiene saldo ────────────────────────
     const [fiado] = await sql`
       SELECT id, cliente, monto_total, monto_pagado, saldo_pendiente, estado, ruta
       FROM fiados
@@ -55,7 +45,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── 2. Verificar que no esté ya vinculado a otro entregador activo ────────
     if (fiado.entregador_asignado && fiado.entregador_asignado !== entregador) {
       return NextResponse.json(
         { error: `Este cobro ya está vinculado al entregador ${fiado.entregador_asignado}` },
@@ -63,13 +52,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── 3. Vincular el fiado al entregador y cuadre ───────────────────────────
     await sql`
       UPDATE fiados SET
-        entregador_asignado = ${entregador},
-        fecha_asignacion    = NOW(),
+        entregador_asignado  = ${entregador},
+        fecha_asignacion     = NOW(),
         planilla_asignado_id = ${cuadreId ? String(cuadreId) : null},
-        updated_at          = NOW()
+        updated_at           = NOW()
       WHERE id = ${Number(fiadoId)}
     `
 
@@ -91,10 +79,10 @@ export async function POST(request: NextRequest) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/fiados/asignar-cobro?entregador=X
+// GET /api/fiados/asignar-cobro?entregador=X&rol=Y
 //
-// Devuelve los cobros disponibles para vincular a un entregador.
-// Usado por caja al abrir el cuadre para buscar cobros por nombre o ruta.
+// - rol=entregador → solo los asignados a ese entregador (no ve cartera general)
+// - rol=caja/admin → todos los disponibles para asignar + los ya asignados
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   try {
@@ -104,12 +92,16 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const busqueda   = searchParams.get('busqueda')   // nombre cliente o ruta
-    const entregador = searchParams.get('entregador') // para ver los ya vinculados
+    const busqueda   = searchParams.get('busqueda')
+    const entregador = searchParams.get('entregador')
+    const rol        = searchParams.get('rol') || session.user.rol
 
     const sql = getDB()
 
-    // Cobros disponibles (sin entregador asignado) o ya vinculados a este entregador
+    // Entregador: solo ve los asignados a él
+    // Caja/Admin: ve todos los disponibles (sin asignar) + los del entregador buscado
+    const esEntregador = rol === 'entregador'
+
     const cobros = await sql`
       SELECT
         f.id,
@@ -123,20 +115,22 @@ export async function GET(request: NextRequest) {
         f.fecha_fiado,
         f.entregador_asignado,
         f.planilla_asignado_id,
-        -- Abonos previos
         COALESCE(
           (SELECT SUM(monto_abono) FROM abonos_fiados WHERE pedido_id = f.id::text),
           0
         ) AS total_abonado
       FROM fiados f
-      WHERE f.eliminado = false
+      WHERE (f.eliminado IS NULL OR f.eliminado = false)
         AND f.estado IN ('pendiente', 'abono_parcial')
         AND f.saldo_pendiente > 0
         AND (
-          -- Sin asignar (disponibles para cualquier entregador)
-          f.entregador_asignado IS NULL
-          -- O ya asignados a este entregador
-          OR f.entregador_asignado = ${entregador || ''}
+          ${esEntregador
+            ? sql`f.entregador_asignado = ${entregador || ''}`
+            : sql`
+                f.entregador_asignado IS NULL
+                OR f.entregador_asignado = ${entregador || ''}
+              `
+          }
         )
         ${busqueda ? sql`
           AND (
