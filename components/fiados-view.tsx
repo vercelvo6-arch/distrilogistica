@@ -831,9 +831,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                                 onClick={() => loadHistorialFiado(fkey)}
                                 className="text-slate-500 hover:text-slate-700"
                               >
-                                {historialAbierto[fkey]
-                                  ? <ChevronUp className="h-3 w-3 mr-1" />
-                                  : <ChevronDown className="h-3 w-3 mr-1" />}
                                 Historial
                               </Button>
                             </div>
