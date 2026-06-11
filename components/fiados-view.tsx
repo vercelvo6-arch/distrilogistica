@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Plus, ArrowRight, Upload, Trash2, ChevronDown, ChevronUp } from "lucide-react"
@@ -736,8 +736,8 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
                       const fkey = fiado.fiado_tabla_id || fiado.id
                       return (
-                        <>
-                        <TableRow key={fiado.id}>
+                        <React.Fragment key={fiado.id}>
+                        <TableRow>
                           <TableCell>
                             {/* ✅ FIX: incluye abono_parcial */}
                             {mostrarBotones && (
@@ -845,7 +845,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                             if (!historialAbierto[fkey] && !historialCobros[fkey]) return null
                             if (!historialAbierto[fkey]) return null
                             return (
-                              <TableRow key={`hist-${fiado.id}`} className="bg-slate-50 hover:bg-slate-50">
+                              <TableRow className="bg-slate-50 hover:bg-slate-50">
                                 <TableCell colSpan={12} className="py-2 px-4">
                                   {loadingHistorial[fkey] ? (
                                     <p className="text-xs text-gray-400 py-1">Cargando historial...</p>
@@ -917,7 +917,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                               </TableRow>
                             )
                           })()}
-                        </>
+                        </React.Fragment>
                       )
                     })
                   )}
