@@ -305,7 +305,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       }
 
       toast({
-        title: "✅ Cobro Asignado",
+        title: "Cobro Asignado",
         description: `Cobro de ${formatCOP(data.cobro.monto)} asignado a ${data.planilla.entregador}`,
       })
 
@@ -347,7 +347,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       if (!response.ok) throw new Error('Error al marcar como pagado')
 
       toast({
-        title: "✅ Éxito",
+        title: "Éxito",
         description: `${selectedFiados.size} fiado(s) marcado(s) como pagado(s)`,
       })
       
@@ -433,7 +433,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       }
 
       toast({
-        title: "✅ Abono Registrado",
+        title: "Abono Registrado",
         description: `Abono de ${formatCOP(montoAbono)} registrado. Saldo pendiente: ${formatCOP(data.saldo_pendiente)}`,
       })
 
@@ -479,7 +479,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       if (!response.ok) throw new Error(data.error || 'Error al eliminar fiado')
 
       toast({
-        title: "✅ Eliminado",
+        title: "Eliminado",
         description: `Fiado de ${selectedFiadoParaEliminar.cliente} eliminado correctamente`,
       })
 
@@ -567,7 +567,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     window.URL.revokeObjectURL(url)
 
     toast({
-      title: "✅ Exportado",
+      title: "Exportado",
       description: "Reporte de fiados descargado exitosamente",
     })
   }
@@ -583,7 +583,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
   return (
     <>
-      <header className="border-b bg-card" translate="no">
+      <header className="border-b bg-card notranslate" translate="no">
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -603,7 +603,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-4 sm:py-8 max-w-7xl" translate="no">
+      <main className="container mx-auto px-4 py-4 sm:py-8 max-w-7xl notranslate" translate="no">
         <div className="space-y-4 sm:space-y-6">
           {/* Filtros */}
           <Card className="p-4">
@@ -867,7 +867,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                     <span className="text-gray-600">Saldo actual:</span>
                     <span className={Number(historialData?.fiado?.saldo_pendiente) === 0 ? "text-green-600" : "text-orange-600"}>
                       {formatCOP(Number(historialData?.fiado?.saldo_pendiente) || 0)}
-                      {Number(historialData?.fiado?.saldo_pendiente) === 0 ? " ✓ Pagado" : ""}
+                      {Number(historialData?.fiado?.saldo_pendiente) === 0 ? <span> ✓ Pagado</span> : null}
                     </span>
                   </div>
                 </div>
