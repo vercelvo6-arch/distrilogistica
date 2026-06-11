@@ -843,29 +843,32 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
               </Table>
             </div>
 
-            {/* ── Paneles de historial de cobros — fuera de la tabla para evitar DOM errors ── */}
-            <div className="mt-2 space-y-2">
+          </Card>
+
+          {/* ── Paneles de historial — fuera del Card para evitar overflow-x-auto ── */}
+          {fiados.some(f => historialAbierto[f.fiado_tabla_id || f.id]) && (
+            <div className="space-y-2">
               {fiados.map((fiado) => {
                 const fkey = fiado.fiado_tabla_id || fiado.id
                 if (!historialAbierto[fkey]) return null
                 return (
-                  <div key={`hist-${fiado.id}`} className="border border-slate-200 rounded-lg bg-slate-50 p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-slate-600">
-                        Historial de cobros — <span className="text-slate-800">{fiado.cliente}</span>
+                  <Card key={`hist-${fiado.id}`} className="p-4 border-blue-200 bg-blue-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-semibold text-blue-800">
+                        Historial de cobros — {fiado.cliente}
                       </span>
                       <button
                         type="button"
                         onClick={() => setHistorialAbierto(prev => ({ ...prev, [fkey]: false }))}
-                        className="text-xs text-slate-400 hover:text-slate-600"
+                        className="text-xs text-slate-400 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100"
                       >
                         ✕ Cerrar
                       </button>
                     </div>
                     {loadingHistorial[fkey] ? (
-                      <p className="text-xs text-gray-400 py-1">Cargando historial...</p>
+                      <p className="text-xs text-gray-400 py-2">Cargando historial...</p>
                     ) : !historialCobros[fkey]?.abonos?.length ? (
-                      <p className="text-xs text-gray-400 py-1 italic">Sin cobros registrados aún.</p>
+                      <p className="text-xs text-gray-500 py-2 italic">Sin cobros registrados aún.</p>
                     ) : (
                       <div className="space-y-2">
                         {historialCobros[fkey].abonos.map((abono: any, idx: number) => {
@@ -875,34 +878,34 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                             : abono.metodo_pago === "mixto" ? "Mixto"
                             : "Efectivo"
                           return (
-                            <div key={abono.id} className="bg-white rounded border border-gray-100 p-2 text-xs flex flex-wrap gap-x-6 gap-y-1 items-start">
-                              <span className="font-semibold text-gray-700 min-w-[80px]">
+                            <div key={abono.id} className="bg-white rounded border border-gray-200 p-3 text-xs flex flex-wrap gap-x-6 gap-y-1">
+                              <span className="font-semibold text-gray-700 w-full sm:w-auto">
                                 #{idx + 1} — {formatFechaColombia(abono.fecha_abono_iso || abono.fecha_abono)}
                               </span>
                               <span>
-                                <span className="text-gray-400">Llevó:</span>{" "}
+                                <span className="text-gray-400">Llevó: </span>
                                 {abono.entregador_planilla || historialCobros[fkey]?.fiado?.entregador_asignado || "—"}
                                 {abono.ruta_cobro ? <span className="text-gray-400"> (Ruta {abono.ruta_cobro})</span> : null}
                               </span>
                               <span>
-                                <span className="text-gray-400">Cobró:</span>{" "}
+                                <span className="text-gray-400">Cobró: </span>
                                 {abono.entregador_cobro || "—"}
                               </span>
                               {Number(abono.monto_abono) > 0 && (
                                 <span>
-                                  <span className="text-gray-400">Efectivo:</span>{" "}
+                                  <span className="text-gray-400">Efectivo: </span>
                                   <span className="text-green-700 font-medium">{formatCOP(Number(abono.monto_abono))}</span>
                                 </span>
                               )}
                               {Number(abono.monto_nequi) > 0 && (
                                 <span>
-                                  <span className="text-gray-400">Nequi:</span>{" "}
+                                  <span className="text-gray-400">Nequi: </span>
                                   <span className="text-purple-600 font-medium">{formatCOP(Number(abono.monto_nequi))}</span>
                                 </span>
                               )}
                               {abono.referencia_pago && (
                                 <span>
-                                  <span className="text-gray-400">Ref:</span>{" "}
+                                  <span className="text-gray-400">Ref: </span>
                                   <span className="font-mono">{abono.referencia_pago}</span>
                                 </span>
                               )}
@@ -916,7 +919,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                             </div>
                           )
                         })}
-                        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-200">
+                        <div className="flex justify-between text-xs font-semibold pt-2 border-t border-blue-200">
                           <span className="text-gray-600">Saldo actual:</span>
                           <span className={Number(historialCobros[fkey]?.fiado?.saldo_pendiente) === 0 ? "text-green-600" : "text-orange-600"}>
                             {formatCOP(Number(historialCobros[fkey]?.fiado?.saldo_pendiente) || 0)}
@@ -925,12 +928,12 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                         </div>
                       </div>
                     )}
-                  </div>
+                  </Card>
                 )
               })}
             </div>
+          )}
 
-          </Card>
         </div>
       </main>
 
