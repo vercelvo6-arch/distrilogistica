@@ -497,13 +497,13 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   }
 
   const loadHistorialFiado = async (fiadoId: string) => {
-    // Toggle cerrar si ya está abierto
+// Toggle cerrar si ya está abierto
     if (historialAbierto[fiadoId]) {
       setHistorialAbierto(prev => ({ ...prev, [fiadoId]: false }))
       return
     }
     setHistorialAbierto(prev => ({ ...prev, [fiadoId]: true }))
-    // Si ya se cargaron los datos, no volver a pedir
+// Si ya se cargaron los datos, no volver a pedir
     if (historialCobros[fiadoId]) return
 
     setLoadingHistorial(prev => ({ ...prev, [fiadoId]: true }))
@@ -846,8 +846,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
           </Card>
 
           {/* ── Paneles de historial — fuera del Card para evitar overflow-x-auto ── */}
-          {fiados.some(f => historialAbierto[f.fiado_tabla_id || f.id]) && (
-            <div className="space-y-2">
+          <div className="space-y-2">
               {fiados.map((fiado) => {
                 const fkey = fiado.fiado_tabla_id || fiado.id
                 if (!historialAbierto[fkey]) return null
@@ -932,7 +931,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                 )
               })}
             </div>
-          )}
 
         </div>
       </main>
