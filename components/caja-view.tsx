@@ -308,6 +308,23 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
+  // Normaliza cualquier fecha/timestamp de Neon a ISO válido para Colombia
+  // created_at llega como "2026-06-09 21:55:13.481" (sin T) — inválido en algunos engines
+  // fecha_cuadre llega como "2026-06-09" (date puro) — JS lo interpreta UTC → día anterior en CO
+  const parseFechaCuadre = (created_at?: string, fecha_cuadre?: string): string => {
+    if (created_at) {
+      const iso = created_at.includes("T") ? created_at : created_at.replace(" ", "T")
+      const d = new Date(iso)
+      if (!isNaN(d.getTime())) return d.toISOString()
+    }
+    if (fecha_cuadre) {
+      // Forzar mediodía Colombia (UTC-5) para evitar drift por interpretación UTC
+      const d = new Date(fecha_cuadre + "T12:00:00-05:00")
+      if (!isNaN(d.getTime())) return d.toISOString()
+    }
+    return new Date().toISOString()
+  }
+
   async function loadHistorial() {
     try {
       const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
@@ -317,14 +334,18 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       const dataAgrupados = await responseAgrupados.json()
 
       const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
-        ? dataIndividuales.recepciones.map((r: any) => ({ ...r, tipo: "individual" }))
+        ? dataIndividuales.recepciones.map((r: any) => ({
+            ...r,
+            tipo: "individual",
+            fecha_recepcion: parseFechaCuadre(r.created_at || r.fecha_recepcion, r.fecha),
+          }))
         : []
 
       const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
         ? dataAgrupados.cuadres.map((c: any) => {
             const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
             const tipoRutaDisplay =
-              c.rutas_nombres && c.rutas_nombres.length > 0
+              c.rutas_nombres && Array.isArray(c.rutas_nombres) && c.rutas_nombres.length > 0
                 ? c.rutas_nombres.join(", ")
                 : numRutas > 1
                   ? `${numRutas} rutas agrupadas`
@@ -333,13 +354,16 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             return {
               ...c,
               tipo: "agrupado",
-              fecha_recepcion: c.fecha_cuadre,
+              // ✅ FIX: parseo correcto — created_at (timestamp) tiene precedencia sobre fecha_cuadre (date)
+              fecha_recepcion: parseFechaCuadre(c.created_at, c.fecha_cuadre),
               efectivo_esperado: c.total_esperado,
               efectivo_recibido: c.total_efectivo,
               diferencia_efectivo: c.diferencia,
               tipo_ruta: tipoRutaDisplay,
               monto_consignacion:
-                c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
+                c.total_consignado !== null && c.total_consignado !== undefined
+                  ? c.total_consignado
+                  : 0,
             }
           })
         : []
@@ -2225,14 +2249,31 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <div>
                           <div className="flex items-center gap-2">
                             <p className="font-semibold">
-                              {rec.entregador} - {rec.tipo_ruta}
+                              {rec.entregador || "—"}
+                              {" — "}
+                              {rec.tipo_ruta
+                                ? rec.tipo_ruta
+                                : Array.isArray(rec.rutas_nombres) && rec.rutas_nombres.length > 0
+                                  ? `Rutas: ${rec.rutas_nombres.join(", ")}`
+                                  : Array.isArray(rec.planillas_ids) && rec.planillas_ids.length > 0
+                                    ? `${rec.planillas_ids.length} ruta(s)`
+                                    : ""}
                             </p>
                             {rec.tipo === "agrupado" && (
                               <Badge variant="secondary">AGRUPADO</Badge>
                             )}
                           </div>
                           <p className="text-sm text-gray-500">
-                            {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
+                            {rec.fecha_recepcion
+                              ? new Date(rec.fecha_recepcion).toLocaleString("es-CO", {
+                                  timeZone: "America/Bogota",
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "Sin fecha"}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2335,6 +2376,24 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         </div>
                       </div>
 
+                      {/* Desglose de efectivo recibido */}
+                      {(rec.billetes > 0 || rec.monedas > 0 || rec.nequi_recibido > 0 || rec.total_cobros > 0) && (
+                        <div className="mt-2 pt-2 border-t grid grid-cols-4 gap-2 text-xs">
+                          {rec.billetes > 0 && (
+                            <div><span className="text-gray-400">Billetes</span><p className="font-medium">{formatCOP(Number(rec.billetes))}</p></div>
+                          )}
+                          {rec.monedas > 0 && (
+                            <div><span className="text-gray-400">Monedas</span><p className="font-medium">{formatCOP(Number(rec.monedas))}</p></div>
+                          )}
+                          {rec.nequi_recibido > 0 && (
+                            <div><span className="text-gray-400">Nequi</span><p className="font-medium text-purple-600">{formatCOP(Number(rec.nequi_recibido))}</p></div>
+                          )}
+                          {rec.total_cobros > 0 && (
+                            <div><span className="text-gray-400">Cobros CxC</span><p className="font-medium text-blue-600">{formatCOP(Number(rec.total_cobros))}</p></div>
+                          )}
+                        </div>
+                      )}
+
                       {rec.tiene_consignacion && (
                         <div className="mt-3 pt-3 border-t">
                           <p className="text-sm font-medium text-gray-700 mb-1">Consignación</p>
@@ -2382,10 +2441,18 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         </div>
                       )}
 
-                      {rec.tipo === "agrupado" && rec.planillas_ids && (
-                        <div className="mt-2 text-xs text-gray-500">
-                          <span className="font-medium">Rutas Incluidas:</span>{" "}
-                          {rec.planillas_ids.join(", ")}
+                      {rec.tipo === "agrupado" && Array.isArray(rec.planillas_ids) && rec.planillas_ids.length > 0 && (
+                        <div className="mt-2 text-xs text-gray-500 flex gap-4 flex-wrap">
+                          <span>
+                            <span className="font-medium">Planillas:</span>{" "}
+                            {rec.planillas_ids.join(", ")}
+                          </span>
+                          {Array.isArray(rec.rutas_nombres) && rec.rutas_nombres.length > 0 && (
+                            <span>
+                              <span className="font-medium">Rutas:</span>{" "}
+                              {rec.rutas_nombres.join(", ")}
+                            </span>
+                          )}
                         </div>
                       )}
                     </Card>
