@@ -513,12 +513,14 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
   const loadHistorialFiado = async (fiado: Fiado) => {
     const fiadoId = String(fiado.fiado_tabla_id || fiado.id)
+    console.log("[HISTORIAL] loadHistorialFiado llamado — fiadoId:", fiadoId, "fiadoHistorialId:", fiadoHistorialId)
     // Toggle cerrar
     if (fiadoHistorialId === fiadoId) {
       setFiadoHistorialId(null)
       setHistorialData(null)
       return
     }
+    console.log("[HISTORIAL] Seteando fiadoHistorialId a:", fiadoId)
     setFiadoHistorialId(fiadoId)
     setFiadoHistorialCliente(fiado.cliente)
     setHistorialData(null)
@@ -783,7 +785,12 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                             <Trash2 className="h-3 w-3 mr-1" />Eliminar
                           </Button>
                         )}
-                        <Button variant="outline" size="sm" onClick={() => loadHistorialFiado(fiado)} className="border-slate-300 text-slate-600 hover:bg-slate-50">
+                        <Button variant="outline" size="sm" onClick={() => {
+                          const id = String(fiado.fiado_tabla_id || fiado.id)
+                          console.log("[BTN] fiado.id:", fiado.id, "fiado.fiado_tabla_id:", fiado.fiado_tabla_id, "fiadoId usado:", id)
+                          console.log("[BTN] fiadoHistorialId actual:", fiadoHistorialId)
+                          loadHistorialFiado(fiado)
+                        }} className="border-slate-300 text-slate-600 hover:bg-slate-50">
                           Historial
                         </Button>
                       </div>
