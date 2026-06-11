@@ -5,16 +5,16 @@ const sql = neon(process.env.DATABASE_URL!)
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { fiadoId: string } }
+  { params }: { params: Promise<{ fiadoId: string }> }
 ) {
   try {
-    const fiadoId = params.fiadoId
+    // Next.js 15+: params es una Promise
+    const { fiadoId } = await params
 
     if (!fiadoId || isNaN(Number(fiadoId))) {
       return NextResponse.json({ error: "ID de fiado inválido" }, { status: 400 })
     }
 
-    // 1. Datos del fiado principal
     const fiados = await sql`
       SELECT
         id,
@@ -37,7 +37,6 @@ export async function GET(
       return NextResponse.json({ error: "Fiado no encontrado" }, { status: 404 })
     }
 
-    // 2. Abonos con join a planillas para ruta_cobro y entregador que llevó
     const abonos = await sql`
       SELECT
         af.id,
