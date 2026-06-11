@@ -734,7 +734,9 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                       const isParcial = Number(fiado.monto_pagado) > 0 && saldo > 0
                       const mostrarBotones = tieneSaldoPendiente(fiado)
 
+                      const fkey = fiado.fiado_tabla_id || fiado.id
                       return (
+                        <>
                         <TableRow key={fiado.id}>
                           <TableCell>
                             {/* ✅ FIX: incluye abono_parcial */}
@@ -840,7 +842,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                         </TableRow>
                           {/* ── Historial de cobros: TableRow separado para DOM válido ── */}
                           {(() => {
-                            const fkey = fiado.fiado_tabla_id || fiado.id
                             if (!historialAbierto[fkey] && !historialCobros[fkey]) return null
                             if (!historialAbierto[fkey]) return null
                             return (
@@ -916,6 +917,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                               </TableRow>
                             )
                           })()}
+                        </>
                       )
                     })
                   )}
