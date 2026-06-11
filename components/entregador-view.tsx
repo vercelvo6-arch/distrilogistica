@@ -189,7 +189,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
       // Cargar cobros CxC asignados al entregador
       try {
-        const cobrosRes = await fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}`)
+        const cobrosRes = await fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}&rol=entregador`)
         if (cobrosRes.ok) {
           const cobrosData = await cobrosRes.json()
           setCobrosAsignados(cobrosData.cobros || [])
