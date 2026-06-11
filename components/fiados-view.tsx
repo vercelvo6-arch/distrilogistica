@@ -496,14 +496,15 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     })
   }
 
-  const loadHistorialFiado = async (fiadoId: string) => {
-// Toggle cerrar si ya está abierto
+  const loadHistorialFiado = async (fiadoIdRaw: string) => {
+    const fiadoId = String(fiadoIdRaw)
+    // Toggle cerrar si ya está abierto
     if (historialAbierto[fiadoId]) {
       setHistorialAbierto(prev => ({ ...prev, [fiadoId]: false }))
       return
     }
     setHistorialAbierto(prev => ({ ...prev, [fiadoId]: true }))
-// Si ya se cargaron los datos, no volver a pedir
+    // Si ya se cargaron los datos, no volver a pedir
     if (historialCobros[fiadoId]) return
 
     setLoadingHistorial(prev => ({ ...prev, [fiadoId]: true }))
@@ -734,7 +735,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                       const isParcial = Number(fiado.monto_pagado) > 0 && saldo > 0
                       const mostrarBotones = tieneSaldoPendiente(fiado)
 
-                      const fkey = fiado.fiado_tabla_id || fiado.id
+                      const fkey = String(fiado.fiado_tabla_id || fiado.id)
                       return (
                         <TableRow key={fiado.id}>
                           <TableCell>
@@ -848,7 +849,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
           {/* ── Paneles de historial — fuera del Card para evitar overflow-x-auto ── */}
           <div className="space-y-2">
               {fiados.map((fiado) => {
-                const fkey = fiado.fiado_tabla_id || fiado.id
+                const fkey = String(fiado.fiado_tabla_id || fiado.id)
                 if (!historialAbierto[fkey]) return null
                 return (
                   <Card key={`hist-${fiado.id}`} className="p-4 border-blue-200 bg-blue-50">
