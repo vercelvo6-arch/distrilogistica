@@ -965,6 +965,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                       const totalIncompletos = consolidatedProducts.filter(
                         (p: any) => p.estadoAlistamiento === "incompleto",
                       ).length
+                      const totalReemplazos = consolidatedProducts.filter(
+                        (p: any) => p.estadoAlistamiento === "reemplazo",
+                      ).length
                       const totalNoAlistados = consolidatedProducts.filter(
                         (p: any) => p.estadoAlistamiento === "no_alistado",
                       ).length
@@ -1010,6 +1013,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                   {totalIncompletos > 0 && (
                                     <span className="text-xs px-2 md:px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
                                       ⚠️ {totalIncompletos} incompletos
+                                    </span>
+                                  )}
+                                  {totalReemplazos > 0 && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-orange-100 text-orange-700 rounded-full font-medium">
+                                      🔄 {totalReemplazos} reemplazos
                                     </span>
                                   )}
                                   {totalNoAlistados > 0 && (
@@ -1114,22 +1122,30 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                 ? "bg-green-100 text-green-800 border border-green-300"
                                                 : producto.estadoAlistamiento === "incompleto"
                                                   ? "bg-yellow-100 text-yellow-800 border border-yellow-300"
-                                                  : producto.estadoAlistamiento === "no_alistado"
-                                                    ? "bg-red-100 text-red-800 border border-red-300"
-                                                    : "bg-gray-100 text-gray-700 border border-gray-300"
+                                                  : producto.estadoAlistamiento === "reemplazo"
+                                                    ? "bg-orange-100 text-orange-800 border border-orange-300"
+                                                    : producto.estadoAlistamiento === "no_alistado"
+                                                      ? "bg-red-100 text-red-800 border border-red-300"
+                                                      : "bg-gray-100 text-gray-700 border border-gray-300"
                                             }`}
                                           >
                                             {producto.estadoAlistamiento === "completo"
                                               ? "✅ Completo"
                                               : producto.estadoAlistamiento === "incompleto"
                                                 ? "⚠️ Incompleto"
-                                                : producto.estadoAlistamiento === "no_alistado"
-                                                  ? "❌ No alistado"
-                                                  : "⏳ Pendiente"}
+                                                : producto.estadoAlistamiento === "reemplazo"
+                                                  ? "🔄 Reemplazo"
+                                                  : producto.estadoAlistamiento === "no_alistado"
+                                                    ? "❌ No alistado"
+                                                    : "⏳ Pendiente"}
                                           </span>
                                         </td>
                                         <td className="py-2 md:py-3 px-2 md:px-4 text-xs text-muted-foreground">
-                                          {producto.observacionesFaltante || "-"}
+                                          {producto.estadoAlistamiento === "reemplazo" && producto.productoReemplazo ? (
+                                            <span className="text-orange-600 font-medium">
+                                              🔄 {producto.productoReemplazo}
+                                            </span>
+                                          ) : producto.observacionesFaltante || "-"}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
                                           <Button
