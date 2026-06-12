@@ -440,6 +440,9 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
       setShowAbonoModal(false)
       setSelectedFiado(null)
+      // Limpiar historial cacheado del fiado para forzar recarga
+      setHistorialData(null)
+      setFiadoHistorialId(null)
       await loadFiados()
     } catch (error) {
       console.error('Error registrando abono:', error)
