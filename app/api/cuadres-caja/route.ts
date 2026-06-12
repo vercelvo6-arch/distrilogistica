@@ -183,6 +183,10 @@ export async function POST(request: Request) {
         const nequi    = Number(cobro.montoNequi) || 0
         if (!cobro.id || efectivo + nequi <= 0) continue
 
+        // Si yaRegistrado=true el entregador ya lo cobró en ruta
+        // Solo marcamos para vincular al cuadre después del INSERT — sin duplicar
+        if (cobro.yaRegistrado) continue
+
         const fiadoId = Number(cobro.id)
 
         const [fiado] = await sql`
@@ -277,6 +281,21 @@ export async function POST(request: Request) {
       `
 
       const cuadreId = cuadreResult.id
+
+      // 6c.2 Vincular al cuadre los abonos que el entregador ya registró en ruta
+      const cobrosYaRegistrados = cobros.filter((c: any) => c.yaRegistrado && c.id)
+      if (cobrosYaRegistrados.length > 0) {
+        for (const cobro of cobrosYaRegistrados) {
+          await sql`
+            UPDATE abonos_fiados SET
+              planilla_cobro_id = ${cuadreId}
+            WHERE pedido_id = ${String(Number(cobro.id))}
+              AND entregador_cobro = ${entregador}
+              AND planilla_cobro_id IS NULL
+              AND DATE(fecha_abono AT TIME ZONE 'America/Bogota') = CURRENT_DATE
+          `
+        }
+      }
 
       // 6d. Marcar planillas como cuadradas
       await sql`
