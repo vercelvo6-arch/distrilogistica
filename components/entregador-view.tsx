@@ -608,7 +608,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const handleAbrirNovedad = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setSelectedOrder(order)
     setTipoNovedad(tipo)
-    setMontoNovedad(tipo === "agotado" ? String(calculateOrderEffectiveTotal(order)) : "")
+    // Pre-cargar monto sugerido pero siempre editable
+    setMontoNovedad(String(calculateOrderEffectiveTotal(order)))
     setShowNovedadModal(true)
   }
 
@@ -629,10 +630,16 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     if (!selectedOrder || !tipoNovedad) return
 
     const totalPedido = calculateOrderEffectiveTotal(selectedOrder)
-    const monto = tipoNovedad === "agotado" ? totalPedido : Number(montoNovedad) || 0
+    const monto = Number(montoNovedad) || 0
 
-    if (tipoNovedad !== "agotado" && (monto <= 0 || monto > totalPedido)) {
-      toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(totalPedido)}`, variant: "destructive" })
+    // Fiado con abono 0 es válido — cliente debe el total completo
+    // Agotado puede ser parcial — validar solo que no supere el total
+    if (tipoNovedad !== "fiado" && monto <= 0) {
+      toast({ title: "Error", description: "Ingresa un monto válido", variant: "destructive" })
+      return
+    }
+    if (monto > totalPedido) {
+      toast({ title: "Error", description: `El monto no puede superar ${formatCOP(totalPedido)}`, variant: "destructive" })
       return
     }
 
@@ -709,6 +716,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       setSelectedOrder(null)
       setTipoNovedad(null)
       setMontoNovedad("")
+      loadData(true)
     } catch {
       toast({ title: "Error", description: "No se pudo registrar la novedad", variant: "destructive" })
     } finally {
@@ -790,6 +798,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       setCobrosAsignados(prev => prev.filter(c => c.id !== selectedCobro.id))
       toast({ title: data.pago_completo ? "Cobro completado" : "Abono registrado", description: data.mensaje })
       setShowCobroModal(false)
+      // Recargar datos para reflejar cambios en saldos y estados
+      await loadData(true)
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
     } finally {
