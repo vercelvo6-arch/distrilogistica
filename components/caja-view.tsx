@@ -1468,9 +1468,32 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const loadCobrosDisponibles = async (entregador: string) => {
     setLoadingCobros(true)
     try {
+      // Cobros disponibles para vincular (asignados al entregador, sin cobrar aún)
       const res = await fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}`)
       const data = await res.json()
       setCobrosDisponibles(data.cobros || [])
+
+      // ✅ Precargar automáticamente los cobros que el entregador ya registró en ruta hoy
+      const hoy = new Date().toISOString().split("T")[0]
+      const resAbonos = await fetch(`/api/fiados/abonos-entregador?entregador=${encodeURIComponent(entregador)}&fecha=${hoy}`)
+      if (resAbonos.ok) {
+        const dataAbonos = await resAbonos.json()
+        const cobrosYaRegistrados = (dataAbonos.abonos || []).map((a: any) => ({
+          id:              a.fiado_id,
+          cliente:         a.cliente,
+          ruta:            a.ruta,
+          saldo_pendiente: a.saldo_pendiente,
+          resultado:       a.monto_nequi > 0 && a.monto_efectivo > 0 ? "mixto"
+                           : a.monto_nequi > 0 ? "nequi" : "efectivo",
+          montoEfectivo:   String(a.monto_efectivo || 0),
+          montoNequi:      String(a.monto_nequi || 0),
+          referencia:      a.referencia_pago || "",
+          yaRegistrado:    true, // flag para que caja sepa que viene del entregador
+        }))
+        if (cobrosYaRegistrados.length > 0) {
+          setCobrosVinculados(cobrosYaRegistrados)
+        }
+      }
     } catch (e) {
       console.error("[CAJA] Error cargando cobros:", e)
       setCobrosDisponibles([])
