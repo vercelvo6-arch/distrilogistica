@@ -62,6 +62,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [montoEfectivoCobro, setMontoEfectivoCobro] = useState("")
   const [montoNequiCobro, setMontoNequiCobro] = useState("")
   const [referenciaCobro, setReferenciaCobro] = useState("")
+  const [fechaCobro, setFechaCobro] = useState("")
   const [submittingCobro, setSubmittingCobro] = useState(false)
 
   // Estado para novedades
@@ -136,6 +137,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       }))
 
       setRouteSheets(planillas)
+      // Expandir todas las rutas por defecto
+      setExpandedRoutes(new Set(planillas.map((p: any) => p.id)))
 
       // Cargar cobros CxC asignados al entregador
       try {
@@ -719,6 +722,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     setMontoEfectivoCobro("")
     setMontoNequiCobro("")
     setReferenciaCobro("")
+    setFechaCobro(new Date().toISOString().split("T")[0])
     setShowCobroModal(true)
   }
 
@@ -763,15 +767,25 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fiadoId:        selectedCobro.id,
-          montoEfectivo:  efectivo,
-          montoNequi:     nequi,
-          referenciaPago: referenciaCobro.trim() || null,
-          entregadorCobro: entregador,
-          observaciones:  "Registrado por entregador en ruta",
+          fiadoId:          selectedCobro.id,
+          montoEfectivo:    efectivo,
+          montoNequi:       nequi,
+          referenciaPago:   referenciaCobro.trim() || null,
+          fechaComprobante: fechaCobro || null,
+          entregadorCobro:  entregador,
+          observaciones:    "Registrado por entregador en ruta",
         }),
       })
       const data = await res.json()
+      if (res.status === 409) {
+        toast({
+          title: "Referencia duplicada",
+          description: "Esa referencia ya fue registrada. Verifica el comprobante.",
+          variant: "destructive",
+        })
+        setSubmittingCobro(false)
+        return
+      }
       if (!res.ok) throw new Error(data.error)
       setCobrosAsignados(prev => prev.filter(c => c.id !== selectedCobro.id))
       toast({ title: data.pago_completo ? "Cobro completado" : "Abono registrado", description: data.mensaje })
@@ -1293,13 +1307,26 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   />
                 </div>
                 {Number(montoNequiCobro) > 0 && (
-                  <div>
-                    <Label className="text-xs">Referencia Nequi <span className="text-red-500">*</span></Label>
-                    <Input placeholder="Número de referencia"
-                      value={referenciaCobro}
-                      onChange={(e) => setReferenciaCobro(e.target.value)}
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <Label className="text-xs">Referencia Nequi <span className="text-red-500">*</span></Label>
+                      <Input
+                        placeholder="Número de referencia / comprobante"
+                        value={referenciaCobro}
+                        onChange={(e) => setReferenciaCobro(e.target.value)}
+                        className="h-11"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Fecha del comprobante <span className="text-red-500">*</span></Label>
+                      <Input
+                        type="date"
+                        value={fechaCobro}
+                        onChange={(e) => setFechaCobro(e.target.value)}
+                        className="h-11"
+                      />
+                    </div>
+                  </>
                 )}
                 {((Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0)) > 0 && (
                   <div className="p-2 bg-purple-50 rounded text-sm">
