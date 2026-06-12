@@ -42,8 +42,16 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [expandedDeliveryPersons, setExpandedDeliveryPersons] = useState<Set<string>>(new Set())
   const [editingProduct, setEditingProduct] = useState<{ entregador: string; product: ConsolidatedProduct } | null>(null)
   const [disponibleInput, setDisponibleInput] = useState("")
-  const [estadoSeleccionado, setEstadoSeleccionado] = useState<'completo' | 'incompleto' | 'no_alistado'>("completo")
+  const [estadoSeleccionado, setEstadoSeleccionado] = useState<'completo' | 'incompleto' | 'no_alistado' | 'reemplazo'>("completo")
   const [observaciones, setObservaciones] = useState("")
+  const [productoReemplazo, setProductoReemplazo] = useState("")
+
+  // ── Timer de alistamiento ──────────────────────────────────────────────────
+  const [timerActivo, setTimerActivo] = useState(false)
+  const [timerPausado, setTimerPausado] = useState(false)
+  const [timerSegundos, setTimerSegundos] = useState(0)
+  const [timerEntregador, setTimerEntregador] = useState<string | null>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
   const [activeTab, setActiveTab] = useState("alistamiento")
 
   useEffect(() => {
@@ -280,6 +288,11 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       return
     }
 
+    if (estadoSeleccionado === 'reemplazo' && !productoReemplazo.trim()) {
+      alert('Por favor especifique el producto de reemplazo entregado')
+      return
+    }
+
     try {
       setSaving(true)
 
@@ -313,6 +326,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           observaciones: observaciones.trim() || null,
           marcadoPor: user.id,
           estadoAlistamiento: estadoSeleccionado,
+          productoReemplazo: estadoSeleccionado === 'reemplazo' ? productoReemplazo.trim() : null,
         }),
       })
 
@@ -335,7 +349,8 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                     cantidadDisponible: disponible,
                     cantidadFaltante: faltante,
                     unidadIncompleta: estadoSeleccionado === 'incompleto',
-                    observacionesFaltante: observaciones.trim() || null
+                    observacionesFaltante: observaciones.trim() || null,
+                    productoReemplazo: estadoSeleccionado === 'reemplazo' ? productoReemplazo.trim() : null,
                   }
                 }
                 return item
@@ -351,6 +366,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       setDisponibleInput("")
       setEstadoSeleccionado("completo")
       setObservaciones("")
+      setProductoReemplazo("")
 
     } catch (err) {
       console.error("[ALISTADOR] Error saving estado:", err)
@@ -435,6 +451,50 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     setExpandedDeliveryPersons(newExpanded)
   }
 
+  // ── Funciones del timer ──────────────────────────────────────────────────
+  const iniciarTimer = (entregador: string) => {
+    if (timerActivo && timerEntregador === entregador) return
+    setTimerEntregador(entregador)
+    setTimerActivo(true)
+    setTimerPausado(false)
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      setTimerSegundos(prev => prev + 1)
+    }, 1000)
+  }
+
+  const pausarTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setTimerPausado(true)
+  }
+
+  const reanudarTimer = () => {
+    setTimerPausado(false)
+    timerRef.current = setInterval(() => {
+      setTimerSegundos(prev => prev + 1)
+    }, 1000)
+  }
+
+  const detenerTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    setTimerActivo(false)
+    setTimerPausado(false)
+    setTimerSegundos(0)
+    setTimerEntregador(null)
+  }
+
+  const formatTimer = (segundos: number) => {
+    const h = Math.floor(segundos / 3600)
+    const m = Math.floor((segundos % 3600) / 60)
+    const s = segundos % 60
+    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+  }
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [])
+
   const getEstadoInfo = (estado: string) => {
     switch (estado) {
       case 'completo':
@@ -454,6 +514,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           label: 'No Alistado', 
           color: 'bg-red-100 text-red-800 border border-red-300',
           icon: '❌'
+        }
+      case 'reemplazo':
+        return { 
+          label: 'Reemplazo', 
+          color: 'bg-orange-100 text-orange-800 border border-orange-300',
+          icon: '🔄'
         }
       default:
         return { 
@@ -618,18 +684,41 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                                 </Button>
                                 <Button
                                   size="sm"
-                                  onClick={() => handleStartPreparation(entregador)}
+                                  onClick={() => {
+                                    handleStartPreparation(entregador)
+                                    iniciarTimer(entregador)
+                                  }}
                                   className="bg-blue-600 text-xs md:text-sm"
                                 >
                                   Iniciar
                                 </Button>
                               </>
                             )}
+                            {/* Timer visible mientras alista */}
+                            {timerActivo && timerEntregador === entregador && (
+                              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                                <span className="font-mono font-bold text-blue-700 text-xs">
+                                  ⏱ {formatTimer(timerSegundos)}
+                                </span>
+                                {!timerPausado ? (
+                                  <button onClick={pausarTimer} className="text-xs text-orange-600 font-medium hover:underline">
+                                    Pausar
+                                  </button>
+                                ) : (
+                                  <button onClick={reanudarTimer} className="text-xs text-green-600 font-medium hover:underline">
+                                    Reanudar
+                                  </button>
+                                )}
+                              </div>
+                            )}
                             {/* ✅ FIX: Botón Completar aparece si hay al menos una planilla en "alistando" */}
                             {allReady && (
                               <Button
                                 size="sm"
-                                onClick={() => handleCompletePreparation(entregador)}
+                                onClick={() => {
+                                  handleCompletePreparation(entregador)
+                                  detenerTimer()
+                                }}
                                 className="bg-green-600 text-xs md:text-sm"
                               >
                                 <CheckCircle className="h-4 w-4 mr-1 md:mr-2" />
@@ -855,6 +944,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                       ❌ No alistado (no hay stock)
                     </Label>
                   </div>
+                  <div className="flex items-center space-x-2 p-2 rounded border border-orange-200 hover:bg-orange-50">
+                    <RadioGroupItem value="reemplazo" id="reemplazo" />
+                    <Label htmlFor="reemplazo" className="font-normal cursor-pointer flex-1">
+                      🔄 Reemplazo (se entregó otro producto)
+                    </Label>
+                  </div>
                 </RadioGroup>
               </div>
 
@@ -870,6 +965,23 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                     className="min-h-[100px]"
                     disabled={saving}
                   />
+                </div>
+              )}
+
+              {estadoSeleccionado === "reemplazo" && (
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Producto entregado en reemplazo <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={productoReemplazo}
+                    onChange={(e) => setProductoReemplazo(e.target.value)}
+                    placeholder="Ej: ACETAMINOFÉN 500MG x 10 SOB"
+                    disabled={saving}
+                  />
+                  <p className="text-xs text-orange-600 mt-1">
+                    El original no estaba en stock — registra aquí qué se entregó en su lugar.
+                  </p>
                 </div>
               )}
             </div>
