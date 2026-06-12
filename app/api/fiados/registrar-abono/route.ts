@@ -3,18 +3,6 @@ import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/fiados/registrar-abono
-//
-// Registra el resultado de un cobro CxC cuando el entregador regresa.
-// Un solo camino: siempre opera sobre tabla fiados por id numérico.
-// Registra: monto, medio de pago, referencia, entregador que cobró.
-//
-// Casos:
-// - pagó todo       → estado = 'pagado_completo'
-// - abono parcial   → estado = 'abono_parcial', saldo se reduce
-// - no pagó nada    → llamar a /liberar-cobro en su lugar
-// ─────────────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
@@ -24,16 +12,15 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const {
-      fiadoId,          // id numérico de tabla fiados — ÚNICO identificador
-      montoEfectivo,    // monto cobrado en efectivo
-      montoNequi,       // monto cobrado por Nequi/transferencia
-      referenciaPago,   // número de referencia Nequi/consignación
-      entregadorCobro,  // quién fue a cobrar
-      cuadreId,         // id del cuadre_caja donde se registra
+      fiadoId,
+      montoEfectivo,
+      montoNequi,
+      referenciaPago,
+      entregadorCobro,
+      cuadreId,
       observaciones,
     } = body
 
-    // Validaciones
     if (!fiadoId) {
       return NextResponse.json({ error: 'fiadoId es requerido' }, { status: 400 })
     }
@@ -51,7 +38,6 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // ── 1. Obtener fiado ──────────────────────────────────────────────────────
     const [fiado] = await sql`
       SELECT id, cliente, monto_total, monto_pagado, saldo_pendiente, estado
       FROM fiados
@@ -71,14 +57,11 @@ export async function POST(request: NextRequest) {
 
     if (totalAbono > saldoActual) {
       return NextResponse.json(
-        {
-          error: `El abono ($${totalAbono.toLocaleString('es-CO')}) no puede superar el saldo pendiente ($${saldoActual.toLocaleString('es-CO')})`
-        },
+        { error: `El abono ($${totalAbono.toLocaleString('es-CO')}) no puede superar el saldo pendiente ($${saldoActual.toLocaleString('es-CO')})` },
         { status: 400 }
       )
     }
 
-    // ── 2. Validar referencia Nequi no duplicada (global) ────────────────────
     if (referenciaPago) {
       const [refExiste] = await sql`
         SELECT id FROM abonos_fiados
@@ -93,42 +76,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── 3. Calcular nuevo estado ──────────────────────────────────────────────
     const nuevoMontoPagado = Number(fiado.monto_pagado) + totalAbono
     const nuevoSaldo       = Math.round((saldoActual - totalAbono) * 100) / 100
     const pagoCompleto     = nuevoSaldo <= 0
     const nuevoEstado      = pagoCompleto ? 'pagado_completo' : 'abono_parcial'
 
-    // ── 4. Actualizar fiado ───────────────────────────────────────────────────
+    // ✅ NO tocar entregador_asignado — solo se asigna desde "Asignar a Cobrar"
     await sql`
       UPDATE fiados SET
         monto_pagado        = ${nuevoMontoPagado},
         saldo_pendiente     = ${nuevoSaldo},
         estado              = ${nuevoEstado},
         cobrado_por         = ${session.user.id},
-        entregador_asignado = ${entregadorCobro || fiado.entregador_asignado || null},
         fecha_pago_completo = ${pagoCompleto ? sql`NOW()` : sql`NULL`},
-        -- Si pagó completo, liberar de la asignación
-        planilla_asignado_id = ${pagoCompleto ? null : sql`planilla_asignado_id`},
         updated_at          = NOW()
       WHERE id = ${Number(fiadoId)}
     `
 
-    // ── 5. Registrar abono con trazabilidad completa ──────────────────────────
     await sql`
       INSERT INTO abonos_fiados (
-        pedido_id,
-        monto_abono,
-        monto_nequi,
-        metodo_pago,
-        referencia_pago,
-        fecha_abono,
-        observaciones,
-        registrado_por,
-        entregador_cobro,
-        planilla_cobro_id,
-        origen_tabla,
-        created_at
+        pedido_id, monto_abono, monto_nequi, metodo_pago,
+        referencia_pago, fecha_abono, observaciones,
+        registrado_por, entregador_cobro, planilla_cobro_id,
+        origen_tabla, created_at
       ) VALUES (
         ${String(fiadoId)},
         ${efectivo},
@@ -145,7 +115,6 @@ export async function POST(request: NextRequest) {
       )
     `
 
-    // ── 6. Respuesta ──────────────────────────────────────────────────────────
     return NextResponse.json({
       success: true,
       mensaje: pagoCompleto
