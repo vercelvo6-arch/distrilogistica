@@ -688,7 +688,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, estado: "devolucion" as const } : o)
         })))
         toast({ title: "Agotado registrado", description: formatCOP(monto) })
-      }
 
       } else if (tipoNovedad === "descuento") {
         await fetch(`/api/pedidos/${selectedOrder.id}/descuento`, {
