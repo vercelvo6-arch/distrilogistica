@@ -291,7 +291,8 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pedidoFiadoId: selectedFiadoParaCobro.id,
+          fiadoId: selectedFiadoParaCobro.fiado_tabla_id || selectedFiadoParaCobro.id,
+          entregador: planillasDisponibles.find(p => p.id === planillaIdLimpio)?.entregador || "",
           planillaDestinoId: planillaIdLimpio,
         }),
       })
@@ -306,7 +307,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
       toast({
         title: "Cobro Asignado",
-        description: `Cobro de ${formatCOP(data.cobro.monto)} asignado a ${data.planilla.entregador}`,
+        description: `Cobro de ${formatCOP(data.cobro?.saldo_pendiente || selectedFiadoParaCobro?.saldo_pendiente)} asignado a ${data.cobro?.entregador || ""}`,
       })
 
       setShowCobroModal(false)
