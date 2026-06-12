@@ -1,15 +1,25 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Truck, LogOut, History, ChevronDown, ChevronUp, RefreshCw } from "lucide-react"
-import type { RouteSheet, User } from "@/lib/types"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Truck, LogOut, Filter, History, Calendar, ChevronDown, ChevronUp } from "lucide-react"
+import type { RouteSheet, User, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
-import { updatePedidoEstado } from "@/lib/actions/planillas"
+import {
+  updatePedidoEstado,
+} from "@/lib/actions/planillas"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import {
-  Dialog, DialogContent, DialogDescription,
-  DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog"
 
 interface EntregadorViewProps {
@@ -19,27 +29,33 @@ interface EntregadorViewProps {
 
 export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const { toast } = useToast()
-  const entregador = user.nombre
-
-  // ── Datos ────────────────────────────────────────────────────────────────────
+  
+  const getDateDaysAgo = (days: number) => {
+    const date = new Date()
+    date.setDate(date.getDate() - days)
+    return date.toISOString().split("T")[0]
+  }
+  
+  const [filterFechaDesde, setFilterFechaDesde] = useState(getDateDaysAgo(7))
+  const [filterFechaHasta, setFilterFechaHasta] = useState(new Date().toISOString().split("T")[0])
+  const [selectedView, setSelectedView] = useState<"rutas" | "historial">("rutas")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [historial, setHistorial] = useState<any[]>([])
-  const [cobrosAsignados, setCobrosAsignados] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-
-  // ── Vista ────────────────────────────────────────────────────────────────────
-  const [selectedView, setSelectedView] = useState<"rutas" | "historial">("rutas")
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [searchCliente, setSearchCliente] = useState("")
+  const [vistaPlana, setVistaPlana] = useState(true) // true = todos los clientes, false = por rutas
 
-  // ── Modal novedad por cliente ─────────────────────────────────────────────────
+  // Modal de novedad unificado
   const [showNovedadModal, setShowNovedadModal] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [tipoNovedad, setTipoNovedad] = useState<"fiado" | "devolucion" | "agotado" | "descuento" | null>(null)
   const [montoNovedad, setMontoNovedad] = useState("")
   const [submittingNovedad, setSubmittingNovedad] = useState(false)
 
-  // ── Modal cobro CxC ──────────────────────────────────────────────────────────
+  // Cobros CxC asignados al entregador
+  const [cobrosAsignados, setCobrosAsignados] = useState<any[]>([])
   const [showCobroModal, setShowCobroModal] = useState(false)
   const [selectedCobro, setSelectedCobro] = useState<any | null>(null)
   const [resultadoCobro, setResultadoCobro] = useState<"total" | "abono" | "nopago" | null>(null)
@@ -48,154 +64,572 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [referenciaCobro, setReferenciaCobro] = useState("")
   const [submittingCobro, setSubmittingCobro] = useState(false)
 
-  // ── Carga inicial ────────────────────────────────────────────────────────────
-  useEffect(() => { loadData() }, [])
-  useEffect(() => { if (selectedView === "historial") loadHistorial() }, [selectedView])
+  // Estado para novedades
+  const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, any[]>>({})
 
-  async function loadData(isRefresh = false) {
+
+
+  const entregador = user.nombre
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  useEffect(() => {
+    if (selectedView === "historial") {
+      loadHistorial()
+    }
+  }, [selectedView])
+
+
+
+  // ✅ OPTIMIZADO: Una única petición para todas las novedades del entregador
+  async function loadData() {
     try {
-      if (isRefresh) setRefreshing(true)
-      else setLoading(true)
+      const response = await fetch("/api/planillas")
+      if (!response.ok) throw new Error("Error al cargar planillas")
 
-      const [planillasRes, cobrosRes] = await Promise.all([
-        fetch("/api/planillas"),
-        fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}&rol=entregador`)
-      ])
+      const data = await response.json()
 
-      if (!planillasRes.ok) throw new Error("Error al cargar planillas")
-
-      const data = await planillasRes.json()
-
-      const planillas: RouteSheet[] = (Array.isArray(data.planillas) ? data.planillas : [])
-        .map((p: any) => ({
-          id: p.id,
+      const planillas: RouteSheet[] = (Array.isArray(data.planillas) ? data.planillas : []).map((p: any) => ({
+        id: p.id,
+        ruta: p.tipo_ruta,
+        fecha: p.fecha,
+        entregador: p.entregador,
+        estado: p.estado,
+        cuadradoEnCaja: p.cuadrado_en_caja || false,
+        totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
+        totalAmount: Number(p.total_cargue) || 0,
+        montoCargue: Number(p.total_cargue) || 0,
+        montoEntregado: Number(p.total_entregado) || 0,
+        montoFiado: Number(p.total_fiado) || 0,
+        montoDevoluciones: Number(p.total_devolucion) || 0,
+        montoRepasos: Number(p.total_repaso) || 0,
+        orders: (Array.isArray(p.pedidos) ? p.pedidos : []).map((ped: any) => ({
+          id: ped.id,
+          cliente: ped.cliente,
           ruta: p.tipo_ruta,
           fecha: p.fecha,
-          entregador: p.entregador,
-          estado: p.estado,
-          cuadradoEnCaja: p.cuadrado_en_caja || false,
-          totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
-          totalAmount: Number(p.total_cargue) || 0,
-          montoCargue: Number(p.total_cargue) || 0,
-          montoEntregado: Number(p.total_entregado) || 0,
-          montoFiado: Number(p.total_fiado) || 0,
-          montoDevoluciones: Number(p.total_devolucion) || 0,
-          montoRepasos: Number(p.total_repaso) || 0,
-          orders: (Array.isArray(p.pedidos) ? p.pedidos : []).map((ped: any) => ({
-            id: ped.id,
-            cliente: ped.cliente,
-            direccion: ped.direccion,
-            telefono: ped.telefono,
-            ruta: p.tipo_ruta,
-            fecha: p.fecha,
-            planillaId: p.id,
-            estado: ped.estado,
-            total: Number(ped.total) || 0,
-            montoPagado: Number(ped.monto_pagado) || 0,
-            saldoPendiente: Number(ped.saldo_pendiente) || Number(ped.total) || 0,
-            descuento: Number(ped.descuento) || 0,
-            esCobro: ped.es_cobro || false,
-            items: (Array.isArray(ped.productos) ? ped.productos : []).map((prod: any) => ({
-              codigo: prod.codigo,
-              descripcion: prod.nombre,
-              cantidad: Number(prod.cantidad) || 0,
-              valorUnidad: Number(prod.precio_unitario) || 0,
-              subtotal: Number(prod.total) || 0,
-              devuelto: prod.devuelto || false,
-              subtotalAjustado: prod.subtotal_ajustado,
-              cantidadEntregada: prod.cantidad_entregada,
-              estadoProducto: prod.estado_producto,
-              motivoAjuste: prod.motivo_ajuste,
-            })),
+          estado: ped.estado,
+          total: Number(ped.total) || 0,
+          montoPagado: Number(ped.monto_pagado) || 0,
+          saldoPendiente: Number(ped.saldo_pendiente) || Number(ped.total) || 0,
+          comentarios: ped.observaciones,
+          esCobro: ped.es_cobro || false,
+          descuento: Number(ped.descuento) || 0,
+          motivoDescuento: ped.motivo_descuento || "",
+          items: (Array.isArray(ped.productos) ? ped.productos : []).map((prod: any) => ({
+            codigo: prod.codigo,
+            descripcion: prod.nombre,
+            categoria: "",
+            cantidad: Number(prod.cantidad) || 0,
+            valorUnidad: Number(prod.precio_unitario) || 0,
+            subtotal: Number(prod.total) || 0,
+            devuelto: prod.devuelto || false,
+            subtotalAjustado: prod.subtotal_ajustado,
+            cantidadEntregada: prod.cantidad_entregada,
+            estadoProducto: prod.estado_producto,
+            motivoAjuste: prod.motivo_ajuste,
           })),
-          cuentasPorCobrar: [],
-        }))
+        })),
+        cuentasPorCobrar: [],
+      }))
 
       setRouteSheets(planillas)
 
-      if (cobrosRes.ok) {
-        const cobrosData = await cobrosRes.json()
-        setCobrosAsignados(cobrosData.cobros || [])
+      // Cargar cobros CxC asignados al entregador
+      try {
+        const cobrosRes = await fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}&rol=entregador`)
+        if (cobrosRes.ok) {
+          const cobrosData = await cobrosRes.json()
+          setCobrosAsignados(cobrosData.cobros || [])
+        }
+      } catch (e) {
+        console.error("[ENTREGADOR] Error cargando cobros:", e)
+      }
+
+      // Solo cargar novedades de las planillas del entregador actual
+      // Una sola petición en vez de 150+
+      const misPlanilas = planillas.filter(
+        (p) => p.entregador === entregador &&
+               (p.estado === 'alistado' || p.estado === 'completado') &&
+               !p.cuadradoEnCaja
+      )
+
+      if (misPlanilas.length > 0) {
+        const ids = misPlanilas.map((p) => p.id).join(",")
+        const novedadesResponse = await fetch(`/api/novedades?planillaIds=${ids}`)
+        
+        if (novedadesResponse.ok) {
+          const novedadesData = await novedadesResponse.json()
+          const todasLasNovedades = novedadesData.novedades || []
+
+          // Agrupar por planilla_id para acceso rápido
+          const novedadesMap: Record<number, any[]> = {}
+          todasLasNovedades.forEach((n: any) => {
+            const pid = n.planilla_id
+            if (!novedadesMap[pid]) novedadesMap[pid] = []
+            novedadesMap[pid].push(n)
+          })
+
+          setNovedadesPorPlanilla(novedadesMap)
+          console.log('[ENTREGADOR] Novedades cargadas en 1 petición:', todasLasNovedades.length)
+        }
+      } else {
+        setNovedadesPorPlanilla({})
       }
 
     } catch (err) {
-      console.error("[ENTREGADOR] Error:", err)
-      toast({ title: "Error", description: "No se pudieron cargar los datos", variant: "destructive" })
+      console.error("[ENTREGADOR] Error loading planillas:", err)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las planillas",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
-      setRefreshing(false)
     }
   }
 
   async function loadHistorial() {
     try {
-      const [resInd, resAgr] = await Promise.all([
-        fetch("/api/caja/recibir-efectivo"),
-        fetch("/api/cuadres-caja"),
-      ])
-      const [dataInd, dataAgr] = await Promise.all([resInd.json(), resAgr.json()])
+      const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
+      const dataIndividuales = await responseIndividuales.json()
 
-      const individuales = (Array.isArray(dataInd.recepciones) ? dataInd.recepciones : [])
-        .filter((r: any) => r.entregador === entregador)
-        .map((r: any) => ({ ...r, tipo: "individual" }))
+      const responseAgrupados = await fetch("/api/cuadres-caja")
+      const dataAgrupados = await responseAgrupados.json()
 
-      const agrupados = (Array.isArray(dataAgr.cuadres) ? dataAgr.cuadres : [])
-        .filter((c: any) => c.entregador === entregador)
-        .map((c: any) => ({
-          ...c,
-          tipo: "agrupado",
-          fecha_recepcion: c.created_at || c.fecha_cuadre,
-          efectivo_esperado: c.total_esperado,
-          efectivo_recibido: c.total_efectivo,
-          diferencia_efectivo: c.diferencia,
-          tipo_ruta: Array.isArray(c.rutas_nombres) && c.rutas_nombres.length > 0
-            ? c.rutas_nombres.join(", ")
-            : `${Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 1} ruta(s)`,
-        }))
+      const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
+        ? dataIndividuales.recepciones
+            .filter((r: any) => r.entregador === entregador)
+            .map((r: any) => ({ ...r, tipo: "individual" }))
+        : []
 
-      setHistorial([...individuales, ...agrupados].sort(
-        (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime()
-      ))
+      const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
+        ? dataAgrupados.cuadres
+            .filter((c: any) => c.entregador === entregador)
+            .map((c: any) => {
+              const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
+              const tipoRutaDisplay =
+                c.rutas_nombres && c.rutas_nombres.length > 0
+                  ? c.rutas_nombres.join(", ")
+                  : numRutas > 1
+                    ? `${numRutas} rutas agrupadas`
+                    : "1 ruta"
+
+              return {
+                ...c,
+                tipo: "agrupado",
+                fecha_recepcion: c.fecha_cuadre,
+                efectivo_esperado: c.total_esperado,
+                efectivo_recibido: c.total_efectivo,
+                diferencia_efectivo: c.diferencia,
+                tipo_ruta: tipoRutaDisplay,
+                monto_consignacion:
+                  c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
+              }
+            })
+        : []
+
+      const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados].sort(
+        (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime(),
+      )
+
+      setHistorial(todosLosCuadres)
     } catch (err) {
-      console.error("[ENTREGADOR] Error historial:", err)
+      console.error("[ENTREGADOR] Error loading historial:", err)
+      toast({
+        title: "Error",
+        description: "No se pudo cargar el historial",
+        variant: "destructive",
+      })
     }
   }
 
-  // ── Filtrar mis rutas activas ─────────────────────────────────────────────────
   const misRutas = routeSheets.filter(
-    (s) => s.entregador === entregador &&
-           (s.estado === "alistado" || s.estado === "completado" || s.estado === "en_ruta") &&
-           !s.cuadradoEnCaja
+    (s) => s.entregador === entregador && (s.estado === 'alistado' || s.estado === 'completado') && !s.cuadradoEnCaja
   )
 
-  // ── Totales globales ──────────────────────────────────────────────────────────
-  const totalCargue      = misRutas.reduce((s, r) => s + r.totalAmount, 0)
-  const totalClientes    = misRutas.reduce((s, r) => s + r.totalOrders, 0)
-  const totalCobrosAsig  = cobrosAsignados.reduce((s, c) => s + Number(c.saldo_pendiente || 0), 0)
+  const filteredRoutes = misRutas.filter((route) => {
+    if (filterFechaDesde || filterFechaHasta) {
+      const routeDate = new Date(route.fecha).toISOString().split("T")[0]
+      if (filterFechaDesde && routeDate < filterFechaDesde) return false
+      if (filterFechaHasta && routeDate > filterFechaHasta) return false
+    }
+    return true
+  })
 
-  // Contar novedades registradas
-  const todosOrders = misRutas.flatMap(r => r.orders || [])
-  const fiados      = todosOrders.filter(o => o.estado === "fiado")
-  const devueltos   = todosOrders.filter(o => o.estado === "devolucion")
-  const pendientes  = todosOrders.filter(o => o.estado === "pendiente")
+  // Lista plana de todos los clientes para el buscador
+  const todosLosClientes = filteredRoutes.flatMap((route) =>
+    (route.orders || []).map((order) => ({
+      ...order,
+      planillaId: route.id,
+      rutaNombre: route.ruta,
+      fechaPlanilla: route.fecha,
+    }))
+  )
 
-  const totalFiado       = fiados.reduce((s, o) => s + (o.saldoPendiente || o.total), 0)
-  const totalDevolucion  = devueltos.reduce((s, o) => s + (o.total || 0), 0)
+  // Clientes filtrados por busqueda (si hay busqueda filtra, si no muestra todos)
+  const clientesFiltrados = searchCliente.trim()
+    ? todosLosClientes.filter((c) =>
+        c.cliente?.toLowerCase().includes(searchCliente.toLowerCase())
+      )
+    : todosLosClientes
 
-  // ── Handlers novedades ────────────────────────────────────────────────────────
-  const abrirNovedad = (order: any, tipo: typeof tipoNovedad) => {
+  const calculateOrderEffectiveTotal = (order: Order): number => {
+    if (!order || !Array.isArray(order.items)) return 0
+
+    let effectiveTotal = 0
+
+    order.items.forEach((item) => {
+      if (!item) return
+
+      const cantOriginal = Number(item.cantidad) || 0
+      const precioUnit = Number(item.valorUnidad) || 0
+
+      if (item.motivoAjuste === 'error_facturacion') return
+      if (item.motivoAjuste === 'devuelto' || item.devuelto) return
+
+      const cantEntregada =
+        item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+          ? Number(item.cantidadEntregada)
+          : cantOriginal
+
+      if (item.estadoProducto === "agotado") return
+      if (cantEntregada === 0) return
+
+      const subtotalReal =
+        item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+          ? Number(item.subtotalAjustado)
+          : cantEntregada * precioUnit
+
+      effectiveTotal += subtotalReal
+    })
+
+    if (order.descuento) {
+      effectiveTotal -= Number(order.descuento)
+    }
+
+    return Math.round(effectiveTotal * 100) / 100
+  }
+
+  // FIX: Una sola fuente de verdad por pedido.
+  // Si tiene novedades validadas → usar novedades (entregador registro).
+  // Si no → usar estado del pedido (caja opero manualmente).
+  const calculateRouteTotals = (route: RouteSheet | null) => {
+    if (!route || !Array.isArray(route.orders)) {
+      return { entregado: 0, fiado: 0, devoluciones: 0, repasos: 0, agotados: 0, erroresFacturacion: 0 }
+    }
+
+    let entregado = 0
+    let fiado = 0
+    let devoluciones = 0
+    let repasos = 0
+    let agotados = 0
+    let erroresFacturacion = 0
+
+    const todasNovedades = novedadesPorPlanilla[route.id] || []
+    const pedidoIds = new Set(route.orders.map((o) => o?.id))
+
+    route.orders.forEach((order) => {
+      if (!order || !Array.isArray(order.items)) return
+
+      const novedadesDelPedido = todasNovedades.filter(
+        (n) => n.pedido_id === order.id && n.validado
+      )
+
+      if (novedadesDelPedido.length > 0) {
+        // ── CANAL NOVEDADES: entregador registro y caja valido ──
+        // PRIMERO: Calcular el total del pedido (items entregados)
+        let totalPedido = 0
+        let devolucionesEnItems = 0
+        let erroresEnItems = 0
+
+        order.items.forEach((item) => {
+          if (!item) return
+          const cantOriginal = Number(item.cantidad) || 0
+          const precioUnit = Number(item.valorUnidad) || 0
+          const subtotalOriginal = cantOriginal * precioUnit
+
+          if (item.motivoAjuste === 'error_facturacion') {
+            erroresEnItems += subtotalOriginal
+            return
+          }
+          if (item.motivoAjuste === 'devuelto' || item.devuelto) {
+            devolucionesEnItems += subtotalOriginal
+            return
+          }
+          const cantEntregada =
+            item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+              ? Number(item.cantidadEntregada)
+              : cantOriginal
+          if (cantEntregada === 0) return
+
+          const subtotalReal =
+            item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+              ? Number(item.subtotalAjustado)
+              : cantEntregada * precioUnit
+          totalPedido += subtotalReal
+        })
+
+        devoluciones += devolucionesEnItems
+        erroresFacturacion += erroresEnItems
+
+        // SEGUNDO: Procesar novedades y calcular cuánto se resta
+        let totalNovedades = 0
+        novedadesDelPedido.forEach((novedad) => {
+          const monto = Number(novedad.monto_novedad) || 0
+          switch (novedad.tipo_novedad) {
+            case "agotado":
+              agotados += monto
+              totalNovedades += monto
+              break
+            case "devolucion":
+              devoluciones += monto
+              totalNovedades += monto
+              break
+            case "fiado_parcial":
+              const montoPagadoNov = Number(novedad.monto_pagado) || 0
+              fiado += monto - montoPagadoNov
+              entregado += montoPagadoNov
+              totalNovedades += monto - montoPagadoNov
+              break
+            case "error_facturacion":
+              erroresFacturacion += monto
+              totalNovedades += monto
+              break
+          }
+        })
+
+        // TERCERO: Entregado es total del pedido menos novedades
+        const entregadoDelPedido = totalPedido - totalNovedades
+        if (entregadoDelPedido > 0) {
+          entregado += entregadoDelPedido
+        }
+
+        if (order.descuento) {
+          entregado -= Number(order.descuento)
+        }
+      } else {
+        // ── CANAL PEDIDO: sin novedad validada, caja opera normal ──
+        let effectiveTotal = 0
+        let returnedTotal = 0
+        let erroresEnPedido = 0
+
+        order.items.forEach((item) => {
+          if (!item) return
+          const cantOriginal = Number(item.cantidad) || 0
+          const precioUnit = Number(item.valorUnidad) || 0
+          const subtotalOriginal = cantOriginal * precioUnit
+
+          if (item.motivoAjuste === 'error_facturacion') {
+            erroresEnPedido += subtotalOriginal
+            return
+          }
+          if (item.motivoAjuste === 'devuelto' || item.devuelto) {
+            returnedTotal += subtotalOriginal
+            return
+          }
+          const cantEntregada =
+            item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
+              ? Number(item.cantidadEntregada)
+              : cantOriginal
+          if (cantEntregada === 0) return
+
+          const subtotalReal =
+            item.subtotalAjustado !== null && item.subtotalAjustado !== undefined
+              ? Number(item.subtotalAjustado)
+              : cantEntregada * precioUnit
+          effectiveTotal += subtotalReal
+        })
+
+        devoluciones += returnedTotal
+        erroresFacturacion += erroresEnPedido
+
+        if (order.estado === "fiado") {
+          const montoPagadoReal = Number(order.montoPagado) || 0
+          fiado += effectiveTotal - montoPagadoReal
+          entregado += montoPagadoReal
+        } else if (order.estado === "repaso") {
+          repasos += effectiveTotal
+        } else if (order.estado === "devolucion") {
+          devoluciones += effectiveTotal
+        } else {
+          entregado += effectiveTotal
+          if (order.descuento) entregado -= Number(order.descuento)
+        }
+      }
+    })
+
+    // Novedades validadas cuyo pedido_id no existe en esta planilla (casos edge)
+    todasNovedades
+      .filter((n) => n.validado && !pedidoIds.has(n.pedido_id))
+      .forEach((novedad) => {
+        const monto = Number(novedad.monto_novedad) || 0
+        switch (novedad.tipo_novedad) {
+          case "agotado": agotados += monto; break
+          case "devolucion": devoluciones += monto; break
+          case "error_facturacion": erroresFacturacion += monto; break
+          case "fiado_parcial":
+            fiado += monto - (Number(novedad.monto_pagado) || 0)
+            entregado += Number(novedad.monto_pagado) || 0
+            break
+        }
+      })
+
+    return {
+      entregado: Math.round(entregado * 100) / 100,
+      fiado: Math.round(fiado * 100) / 100,
+      devoluciones: Math.round(devoluciones * 100) / 100,
+      repasos: Math.round(repasos * 100) / 100,
+      agotados: Math.round(agotados * 100) / 100,
+      erroresFacturacion: Math.round(erroresFacturacion * 100) / 100,
+    }
+  }
+
+  const toggleRouteExpansion = (routeId: number) => {
+    const newExpanded = new Set(expandedRoutes)
+    if (newExpanded.has(routeId)) {
+      newExpanded.delete(routeId)
+    } else {
+      newExpanded.add(routeId)
+    }
+    setExpandedRoutes(newExpanded)
+  }
+
+  const handleCantidadChange = async (orderId: string, codigo: string, cantidad: number, cantidadOriginal: number) => {
+    if (cantidad < 0 || cantidad > cantidadOriginal) {
+      toast({
+        title: "Error",
+        description: `La cantidad debe estar entre 0 y ${cantidadOriginal}`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setRouteSheets(prevSheets =>
+        prevSheets.map(sheet => ({
+          ...sheet,
+          orders: sheet.orders.map(order => {
+            if (order.id !== orderId) return order
+
+            return {
+              ...order,
+              items: order.items.map(item =>
+                item.codigo === codigo
+                  ? {
+                      ...item,
+                      cantidadEntregada: cantidad,
+                      estadoProducto: cantidad === 0 ? "agotado" : cantidad < cantidadOriginal ? "parcial" : "normal"
+                    }
+                  : item
+              )
+            }
+          })
+        }))
+      )
+
+      const result = await updateCantidadEntregada(orderId, codigo, cantidad)
+
+      const estadoMsg =
+        result.estadoProducto === "agotado"
+          ? "Marcado como Agotado"
+          : result.estadoProducto === "parcial"
+            ? "Entrega Parcial"
+            : "Entrega Completa"
+
+      toast({
+        title: "Cantidad actualizada",
+        description: estadoMsg,
+      })
+    } catch (err) {
+      console.error("[ENTREGADOR] Error updating quantity:", err)
+      await loadData()
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar la cantidad",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSubtotalChange = async (orderId: string, codigo: string, nuevoSubtotal: number) => {
+    if (nuevoSubtotal < 0) {
+      toast({
+        title: "Error",
+        description: "El subtotal no puede ser negativo",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setRouteSheets(prevSheets =>
+        prevSheets.map(sheet => ({
+          ...sheet,
+          orders: sheet.orders.map(order => {
+            if (order.id !== orderId) return order
+
+            return {
+              ...order,
+              items: order.items.map(item =>
+                item.codigo === codigo
+                  ? { ...item, subtotalAjustado: nuevoSubtotal }
+                  : item
+              )
+            }
+          })
+        }))
+      )
+
+      await updateSubtotalAjustado(orderId, codigo, nuevoSubtotal)
+
+      toast({
+        title: "Subtotal ajustado",
+        description: "El valor ha sido actualizado manualmente",
+      })
+    } catch (err) {
+      console.error("[ENTREGADOR] Error updating subtotal:", err)
+      await loadData()
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el subtotal",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // ── HANDLERS NUEVOS ────────────────────────────────────────────────────────
+
+  const handleAbrirNovedad = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setSelectedOrder(order)
     setTipoNovedad(tipo)
-    setMontoNovedad(tipo === "agotado" ? String(order.total) : "")
+    setMontoNovedad(tipo === "agotado" ? String(calculateOrderEffectiveTotal(order)) : "")
     setShowNovedadModal(true)
+  }
+
+  const handleConfirmarEntregado = async (order: any) => {
+    try {
+      await updatePedidoEstado(order.id, "entregado")
+      setRouteSheets(prev => prev.map(s => ({
+        ...s,
+        orders: s.orders.map(o => o.id === order.id ? { ...o, estado: "entregado" as const } : o)
+      })))
+      toast({ title: "Entregado", description: `${order.cliente} marcado como entregado` })
+    } catch {
+      toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" })
+    }
   }
 
   const handleSubmitNovedad = async () => {
     if (!selectedOrder || !tipoNovedad) return
-    const monto = Number(montoNovedad) || 0
 
-    if (tipoNovedad !== "agotado" && monto <= 0) {
-      toast({ title: "Error", description: "Ingresa un monto válido", variant: "destructive" })
+    const totalPedido = calculateOrderEffectiveTotal(selectedOrder)
+    const monto = tipoNovedad === "agotado" ? totalPedido : Number(montoNovedad) || 0
+
+    if (tipoNovedad !== "agotado" && (monto <= 0 || monto > totalPedido)) {
+      toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(totalPedido)}`, variant: "destructive" })
       return
     }
 
@@ -203,7 +637,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       setSubmittingNovedad(true)
 
       if (tipoNovedad === "fiado") {
-        const saldo = (selectedOrder.total || 0) - monto
+        const saldo = totalPedido - monto
         await updatePedidoEstado(selectedOrder.id, "fiado", monto, saldo)
         setRouteSheets(prev => prev.map(s => ({
           ...s,
@@ -215,6 +649,19 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
       } else if (tipoNovedad === "devolucion") {
         await updatePedidoEstado(selectedOrder.id, "devolucion")
+        await fetch("/api/novedades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pedidoId: selectedOrder.id,
+            planillaId: selectedOrder.planillaId,
+            tipoNovedad: "devolucion",
+            montoNovedad: monto,
+            descripcion: `Devolución registrada por entregador`,
+            registradoPor: entregador,
+            tipoRegistro: "entregador",
+          }),
+        })
         setRouteSheets(prev => prev.map(s => ({
           ...s,
           orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, estado: "devolucion" as const } : o)
@@ -223,11 +670,25 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
       } else if (tipoNovedad === "agotado") {
         await updatePedidoEstado(selectedOrder.id, "devolucion")
+        await fetch("/api/novedades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pedidoId: selectedOrder.id,
+            planillaId: selectedOrder.planillaId,
+            tipoNovedad: "agotado",
+            montoNovedad: monto,
+            descripcion: "Producto agotado",
+            registradoPor: entregador,
+            tipoRegistro: "entregador",
+          }),
+        })
         setRouteSheets(prev => prev.map(s => ({
           ...s,
           orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, estado: "devolucion" as const } : o)
         })))
         toast({ title: "Agotado registrado", description: formatCOP(monto) })
+      }
 
       } else if (tipoNovedad === "descuento") {
         await fetch(`/api/pedidos/${selectedOrder.id}/descuento`, {
@@ -243,6 +704,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       }
 
       setShowNovedadModal(false)
+      setSelectedOrder(null)
+      setTipoNovedad(null)
+      setMontoNovedad("")
     } catch {
       toast({ title: "Error", description: "No se pudo registrar la novedad", variant: "destructive" })
     } finally {
@@ -250,8 +714,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
   }
 
-  // ── Handlers cobro CxC ────────────────────────────────────────────────────────
-  const abrirCobro = (cobro: any) => {
+  const handleAbrirCobro = (cobro: any) => {
     setSelectedCobro(cobro)
     setResultadoCobro(null)
     setMontoEfectivoCobro("")
@@ -272,7 +735,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           body: JSON.stringify({ fiadoId: selectedCobro.id }),
         })
         setCobrosAsignados(prev => prev.filter(c => c.id !== selectedCobro.id))
-        toast({ title: "Cobro devuelto", description: "Regresó al admin para gestión" })
+        toast({ title: "Cobro no recibido", description: "Devuelto al admin" })
         setShowCobroModal(false)
       } catch {
         toast({ title: "Error", description: "No se pudo procesar", variant: "destructive" })
@@ -291,7 +754,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       return
     }
     if (nequi > 0 && !referenciaCobro.trim()) {
-      toast({ title: "Error", description: "Referencia Nequi obligatoria", variant: "destructive" })
+      toast({ title: "Error", description: "Ingresa la referencia del Nequi", variant: "destructive" })
       return
     }
 
@@ -301,12 +764,12 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fiadoId: selectedCobro.id,
-          montoEfectivo: efectivo,
-          montoNequi: nequi,
+          fiadoId:        selectedCobro.id,
+          montoEfectivo:  efectivo,
+          montoNequi:     nequi,
           referenciaPago: referenciaCobro.trim() || null,
           entregadorCobro: entregador,
-          observaciones: "Registrado por entregador en ruta",
+          observaciones:  "Registrado por entregador en ruta",
         }),
       })
       const data = await res.json()
@@ -321,530 +784,527 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
   }
 
-  const estadoColor = (estado: string) => {
-    if (estado === "entregado")  return "bg-green-100 text-green-700 border-green-300"
-    if (estado === "fiado")      return "bg-orange-100 text-orange-700 border-orange-300"
-    if (estado === "devolucion") return "bg-red-100 text-red-700 border-red-300"
-    return "bg-gray-100 text-gray-600 border-gray-200"
-  }
+  // Placeholder para evitar error de compilación — ya no se usa
+  const handleSubmitFiado = async () => { /* reemplazado por handleSubmitNovedad */ }
+  const handleOrderStatusChange = async (orderId: string, newStatus: any) => { /* reemplazado */ }
 
-  const estadoLabel = (estado: string) => {
-    if (estado === "pendiente")  return "PENDIENTE"
-    if (estado === "entregado")  return "ENTREGADO"
-    if (estado === "fiado")      return "FIADO"
-    if (estado === "devolucion") return "DEVOLUCION"
-    return estado.toUpperCase()
-  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _unused = { handleSubmitFiado, handleOrderStatusChange }
 
-  // ── RENDER ───────────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Truck className="h-10 w-10 text-blue-400 mx-auto mb-3 animate-pulse" />
-          <p className="text-gray-500 text-sm">Cargando rutas...</p>
-        </div>
-      </div>
-    )
-  }
+  const handleDescuentoChange = async () => { /* no aplica al entregador */ }
+  const handleMotivoDescuentoChange = async () => { /* no aplica */ }
+  const handleMotivoAjusteChange = async () => { /* no aplica */ }
+
+  const totalCargue = filteredRoutes.reduce((sum, r) => sum + (r?.totalAmount || 0), 0)
+
+  let totalEntregado = 0
+  let totalFiado = 0
+  let totalDevoluciones = 0
+  let totalRepasos = 0
+  let totalDescuentos = 0
+  let totalAgotados = 0
+  let totalErroresFacturacion = 0
+
+  filteredRoutes.forEach((route) => {
+    const totals = calculateRouteTotals(route)
+    totalEntregado += totals.entregado
+    totalFiado += totals.fiado
+    totalDevoluciones += totals.devoluciones
+    totalRepasos += totals.repasos
+    totalAgotados += totals.agotados
+    totalErroresFacturacion += totals.erroresFacturacion
+  })
+
+  filteredRoutes.forEach((route) => {
+    if (Array.isArray(route.orders)) {
+      route.orders.forEach((order) => {
+        if (order.descuento) {
+          totalDescuentos += Number(order.descuento)
+        }
+      })
+    }
+  })
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50" translate="no">
-
-        {/* HEADER STICKY */}
-        <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
-          <div className="px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-blue-100 rounded-lg">
-                <Truck className="h-5 w-5 text-blue-600" />
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b sticky top-0 z-10 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-blue-100 rounded-lg">
+                  <Truck className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <h1 className="text-base font-bold text-gray-900 leading-tight">{entregador}</h1>
+                  <p className="text-xs text-gray-500 leading-tight">Mis Rutas de Entrega</p>
+                </div>
               </div>
-              <div>
-                <p className="font-bold text-gray-900 text-sm leading-tight">{entregador}</p>
-                <p className="text-xs text-gray-400 leading-tight">
-                  {misRutas.length} ruta(s) · {totalClientes} cliente(s)
-                </p>
-              </div>
+              <Button variant="outline" size="sm" onClick={onLogout}>
+                <LogOut className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Salir</span>
+              </Button>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => loadData(true)}
-                disabled={refreshing}
-                className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-              </button>
-              <button
-                onClick={onLogout}
-                className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50"
-              >
-                <LogOut className="h-4 w-4" />
-                Salir
-              </button>
-            </div>
-          </div>
-
-          {/* TABS */}
-          <div className="flex border-t">
-            <button
-              onClick={() => setSelectedView("rutas")}
-              className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-                selectedView === "rutas"
-                  ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                  : "text-gray-500"
-              }`}
-            >
-              Mis Rutas
-            </button>
-            <button
-              onClick={() => setSelectedView("historial")}
-              className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-                selectedView === "historial"
-                  ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                  : "text-gray-500"
-              }`}
-            >
-              <History className="h-3.5 w-3.5 inline mr-1" />
-              Historial
-            </button>
           </div>
         </header>
 
-        <main className="px-3 py-4 max-w-lg mx-auto space-y-4">
+        <main className="max-w-7xl mx-auto px-3 py-4">
+          <div className="flex gap-2 mb-4">
+            <Button
+              variant={selectedView === "rutas" ? "default" : "outline"}
+              onClick={() => setSelectedView("rutas")}
+              className="flex-1 h-10"
+            >
+              <Truck className="h-4 w-4 mr-2" />
+              Mis Rutas
+            </Button>
+            <Button
+              variant={selectedView === "historial" ? "default" : "outline"}
+              onClick={() => setSelectedView("historial")}
+              className="flex-1 h-10"
+            >
+              <History className="h-4 w-4 mr-2" />
+              Historial
+            </Button>
+          </div>
 
           {selectedView === "historial" ? (
-            /* ── HISTORIAL ── */
-            <div className="space-y-3">
-              <h2 className="text-base font-semibold text-gray-800">Mi historial de entregas</h2>
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold mb-4">Mi Historial de Entregas</h2>
               {historial.length === 0 ? (
-                <div className="bg-white rounded-xl border p-8 text-center text-gray-400 text-sm">
-                  Sin historial disponible
-                </div>
-              ) : historial.map((rec) => (
-                <div key={rec.id} className="bg-white rounded-xl border p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="font-semibold text-sm text-gray-800">
-                        {rec.tipo_ruta || "Ruta"}
-                        {rec.tipo === "agrupado" && (
-                          <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">AGRUPADO</span>
-                        )}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {rec.fecha_recepcion
-                          ? new Date(String(rec.fecha_recepcion).includes("T")
-                              ? rec.fecha_recepcion
-                              : String(rec.fecha_recepcion).replace(" ", "T")
-                            ).toLocaleString("es-CO", { timeZone: "America/Bogota", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-                          : "—"}
-                      </p>
-                    </div>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                      rec.estado === "cuadrado"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-red-100 text-red-700"
-                    }`}>
-                      {rec.estado === "cuadrado" ? "Cuadrado" : "Con diferencia"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-center mt-3">
-                    <div className="bg-gray-50 rounded-lg p-2">
-                      <p className="text-xs text-gray-400">Esperado</p>
-                      <p className="font-bold text-xs text-gray-700">{formatCOP(Number(rec.efectivo_esperado))}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-2">
-                      <p className="text-xs text-gray-400">Recibido</p>
-                      <p className="font-bold text-xs text-gray-700">{formatCOP(Number(rec.efectivo_recibido))}</p>
-                    </div>
-                    <div className={`rounded-lg p-2 ${Number(rec.diferencia_efectivo) === 0 ? "bg-green-50" : "bg-red-50"}`}>
-                      <p className="text-xs text-gray-400">Diferencia</p>
-                      <p className={`font-bold text-xs ${Number(rec.diferencia_efectivo) === 0 ? "text-green-700" : "text-red-700"}`}>
-                        {Number(rec.diferencia_efectivo) > 0 ? "+" : ""}
-                        {formatCOP(Number(rec.diferencia_efectivo))}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                <p className="text-gray-500 text-center py-8">No hay historial disponible</p>
+              ) : (
+                <div className="space-y-4">
+                  {historial.map((rec) => (
+                    <Card key={rec.id} className="p-4 bg-gray-50">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold">{rec.tipo_ruta}</p>
+                            {rec.tipo === "agrupado" && (
+                              <Badge variant="secondary">AGRUPADO</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500">
+                            {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
+                          </p>
+                        </div>
+                        <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
+                          {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
+                        </Badge>
+                      </div>
 
+                      <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-500">Esperado</span>
+                          <p className="font-semibold">{formatCOP(Number(rec.efectivo_esperado))}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Recibido</span>
+                          <p className="font-semibold">{formatCOP(Number(rec.efectivo_recibido))}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Diferencia</span>
+                          <p className={`font-semibold ${Number(rec.diferencia_efectivo) !== 0 ? "text-red-600" : "text-green-600"}`}>
+                            {Number(rec.diferencia_efectivo) > 0 ? "+" : ""}
+                            {formatCOP(Number(rec.diferencia_efectivo))}
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </Card>
           ) : (
-            /* ── RUTAS ── */
             <>
-              {/* RESUMEN DEL DÍA */}
-              <div className="bg-white rounded-xl border p-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Resumen del día</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-blue-500 font-medium">Cargue total</p>
-                    <p className="font-bold text-blue-700 text-base">{formatCOP(totalCargue)}</p>
+              <Card className="p-4 mb-6">
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm font-medium">Filtros:</span>
                   </div>
-                  <div className="bg-purple-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-purple-500 font-medium">Cobros CxC</p>
-                    <p className="font-bold text-purple-700 text-base">{formatCOP(totalCobrosAsig)}</p>
-                    {cobrosAsignados.length > 0 && (
-                      <p className="text-xs text-purple-400">{cobrosAsignados.length} pendiente(s)</p>
-                    )}
-                  </div>
-                  <div className="bg-orange-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-orange-500 font-medium">Fiados</p>
-                    <p className="font-bold text-orange-700 text-base">{formatCOP(totalFiado)}</p>
-                    {fiados.length > 0 && <p className="text-xs text-orange-400">{fiados.length} cliente(s)</p>}
-                  </div>
-                  <div className="bg-red-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-red-500 font-medium">Devoluciones</p>
-                    <p className="font-bold text-red-700 text-base">{formatCOP(totalDevolucion)}</p>
-                    {devueltos.length > 0 && <p className="text-xs text-red-400">{devueltos.length} pedido(s)</p>}
+
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-gray-400" />
+                    <Input
+                      type="date"
+                      value={filterFechaDesde}
+                      onChange={(e) => setFilterFechaDesde(e.target.value)}
+                      className="w-[140px]"
+                      placeholder="Desde"
+                    />
+                    <span>-</span>
+                    <Input
+                      type="date"
+                      value={filterFechaHasta}
+                      onChange={(e) => setFilterFechaHasta(e.target.value)}
+                      className="w-[140px]"
+                      placeholder="Hasta"
+                    />
                   </div>
                 </div>
-                {pendientes.length > 0 && (
-                  <div className="mt-2 bg-yellow-50 rounded-lg px-3 py-2 text-center">
-                    <p className="text-xs text-yellow-700 font-medium">
-                      {pendientes.length} cliente(s) sin gestionar
-                    </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mt-4 pt-4 border-t">
+                  <div className="text-center p-2 bg-blue-50 rounded">
+                    <span className="text-xs text-blue-600 font-medium">Total Cargue</span>
+                    <p className="font-bold text-blue-700">{formatCOP(totalCargue)}</p>
                   </div>
-                )}
-              </div>
+                  <div className="text-center p-2 bg-green-50 rounded">
+                    <span className="text-xs text-green-600 font-medium">Entregado</span>
+                    <p className="font-bold text-green-700">{formatCOP(totalEntregado)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-orange-50 rounded">
+                    <span className="text-xs text-orange-600 font-medium">Fiado (CxC)</span>
+                    <p className="font-bold text-orange-700">{formatCOP(totalFiado)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-red-50 rounded">
+                    <span className="text-xs text-red-600 font-medium">Devoluciones</span>
+                    <p className="font-bold text-red-700">{formatCOP(totalDevoluciones)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-blue-50 rounded">
+                    <span className="text-xs text-blue-600 font-medium">Repasos</span>
+                    <p className="font-bold text-blue-700">{formatCOP(totalRepasos)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-gray-100 rounded">
+                    <span className="text-xs text-gray-600 font-medium">Agotados</span>
+                    <p className="font-bold text-gray-700">{formatCOP(totalAgotados)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-orange-100 rounded">
+                    <span className="text-xs text-orange-700 font-medium">Errores Fact.</span>
+                    <p className="font-bold text-orange-800">{formatCOP(totalErroresFacturacion)}</p>
+                  </div>
+                  <div className="text-center p-2 bg-purple-50 rounded">
+                    <span className="text-xs text-purple-600 font-medium">Descuentos</span>
+                    <p className="font-bold text-purple-700">{formatCOP(totalDescuentos)}</p>
+                  </div>
+                </div>
+              </Card>
+
+              {/* BUSCADOR Y TOGGLE DE VISTA */}
+              <Card className="p-4 mb-4">
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between mb-3">
+                  <Input
+                    placeholder="Buscar cliente por nombre..."
+                    value={searchCliente}
+                    onChange={(e) => setSearchCliente(e.target.value)}
+                    className="w-full sm:w-64"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant={vistaPlana ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setVistaPlana(true)}
+                    >
+                      Todos los Clientes
+                    </Button>
+                    <Button
+                      variant={!vistaPlana ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setVistaPlana(false)}
+                    >
+                      Por Rutas
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {clientesFiltrados.length} cliente(s) en {filteredRoutes.length} ruta(s)
+                </p>
+              </Card>
 
               {/* COBROS CxC */}
               {cobrosAsignados.length > 0 && (
-                <div className="bg-white rounded-xl border border-purple-200">
-                  <div className="px-4 py-3 border-b border-purple-100 flex items-center justify-between">
-                    <p className="font-semibold text-sm text-purple-800">
-                      Cobros CxC asignados
-                    </p>
-                    <span className="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                      {cobrosAsignados.length}
-                    </span>
-                  </div>
-                  <div className="divide-y divide-purple-50">
+                <Card className="p-4 border-purple-200 bg-purple-50 mb-4">
+                  <h2 className="text-sm font-semibold text-purple-700 mb-3">
+                    💳 Cobros CxC asignados ({cobrosAsignados.length})
+                  </h2>
+                  <div className="space-y-2">
                     {cobrosAsignados.map((cobro) => (
-                      <div key={cobro.id} className="flex items-center justify-between px-4 py-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-sm text-gray-800 truncate">{cobro.cliente}</p>
-                          <p className="text-xs text-purple-600 mt-0.5">
-                            Ruta {cobro.ruta} · Saldo: <span className="font-semibold">{formatCOP(cobro.saldo_pendiente)}</span>
-                          </p>
+                      <div key={cobro.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-purple-200">
+                        <div>
+                          <p className="font-medium text-sm text-purple-900">{cobro.cliente}</p>
+                          <p className="text-xs text-purple-600">{cobro.ruta} — Saldo: {formatCOP(cobro.saldo_pendiente)}</p>
                         </div>
-                        <button
-                          onClick={() => abrirCobro(cobro)}
-                          className="ml-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shrink-0"
-                        >
+                        <Button size="sm" onClick={() => handleAbrirCobro(cobro)}
+                          className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-xs">
                           Registrar
-                        </button>
+                        </Button>
                       </div>
                     ))}
                   </div>
-                </div>
+                </Card>
               )}
 
-              {/* RUTAS */}
-              {misRutas.length === 0 ? (
-                <div className="bg-white rounded-xl border p-8 text-center text-gray-400 text-sm">
-                  No hay rutas activas hoy
-                </div>
-              ) : misRutas.map((route) => {
-                const isExpanded = expandedRoutes.has(route.id)
-                const orders = route.orders || []
-                const pendientesRuta = orders.filter(o => o.estado === "pendiente").length
-                const gestionadosRuta = orders.filter(o => o.estado !== "pendiente").length
+              {/* VISTA POR RUTAS — principal */}
+              <div className="space-y-4">
+                {filteredRoutes.length === 0 ? (
+                  <Card className="p-8 text-center text-gray-500">No hay rutas activas</Card>
+                ) : (
+                  filteredRoutes.map((route) => {
+                    const totals = calculateRouteTotals(route)
+                    const isExpanded = expandedRoutes.has(route.id)
+                    const clientesDeLaRuta = searchCliente.trim()
+                      ? (route.orders || []).filter(o => o.cliente?.toLowerCase().includes(searchCliente.toLowerCase()))
+                      : (route.orders || [])
+                    return (
+                      <Card key={route.id} className="overflow-hidden">
 
-                return (
-                  <div key={route.id} className="bg-white rounded-xl border overflow-hidden">
-
-                    {/* Header de ruta */}
-                    <button
-                      className="w-full px-4 py-3 flex items-center justify-between text-left active:bg-gray-50"
-                      onClick={() => {
-                        const next = new Set(expandedRoutes)
-                        if (next.has(route.id)) next.delete(route.id)
-                        else next.add(route.id)
-                        setExpandedRoutes(next)
-                      }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-bold text-gray-900 text-sm">Ruta {route.ruta}</p>
-                          {pendientesRuta > 0 && (
-                            <span className="bg-yellow-100 text-yellow-700 text-xs px-1.5 py-0.5 rounded-full font-medium">
-                              {pendientesRuta} pendiente(s)
-                            </span>
-                          )}
-                          {gestionadosRuta > 0 && (
-                            <span className="bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded-full font-medium">
-                              {gestionadosRuta} gestionado(s)
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {orders.length} cliente(s) · {new Date(route.fecha + "T12:00:00").toLocaleDateString("es-CO")}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <div className="text-right">
-                          <p className="text-xs text-gray-400">Cargue</p>
-                          <p className="font-bold text-blue-700 text-sm">{formatCOP(route.totalAmount)}</p>
-                        </div>
-                        {isExpanded
-                          ? <ChevronUp className="h-4 w-4 text-gray-400" />
-                          : <ChevronDown className="h-4 w-4 text-gray-400" />}
-                      </div>
-                    </button>
-
-                    {/* Clientes de la ruta */}
-                    {isExpanded && (
-                      <div className="border-t divide-y">
-                        {orders.length === 0 ? (
-                          <p className="p-4 text-sm text-gray-400 text-center">Sin clientes</p>
-                        ) : orders.map((order) => {
-                          const yaGestionado = order.estado !== "pendiente"
-                          const esFiado = order.estado === "fiado"
-
-                          return (
-                            <div key={order.id} className={`p-4 ${yaGestionado ? "bg-gray-50" : "bg-white"}`}>
-                              {/* Info del cliente */}
-                              <div className="flex items-start justify-between gap-2 mb-2">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <p className="font-semibold text-sm text-gray-900 truncate">
-                                      {order.cliente}
-                                    </p>
-                                    <Badge
-                                      variant="outline"
-                                      className={`text-xs shrink-0 ${estadoColor(order.estado)}`}
-                                    >
-                                      {estadoLabel(order.estado)}
-                                    </Badge>
-                                  </div>
-                                  {order.direccion && (
-                                    <p className="text-xs text-gray-400 mt-0.5 truncate">{order.direccion}</p>
-                                  )}
-                                  <p className="text-sm font-bold text-gray-700 mt-1">
-                                    {formatCOP(order.total)}
-                                  </p>
-                                  {esFiado && order.saldoPendiente > 0 && (
-                                    <p className="text-xs text-orange-600 mt-0.5">
-                                      Abonó {formatCOP(order.montoPagado)} · Debe {formatCOP(order.saldoPendiente)}
-                                    </p>
-                                  )}
-                                  {order.descuento > 0 && (
-                                    <p className="text-xs text-purple-600 mt-0.5">
-                                      Descuento: {formatCOP(order.descuento)}
-                                    </p>
-                                  )}
-                                </div>
-                                {yaGestionado && (
-                                  <span className="text-green-500 text-lg shrink-0 mt-0.5">✓</span>
-                                )}
-                              </div>
-
-                              {/* Botones de novedad — solo si pendiente */}
-                              {!yaGestionado && (
-                                <div className="grid grid-cols-2 gap-2 mt-2">
-                                  <button
-                                    onClick={() => abrirNovedad(order, "fiado")}
-                                    className="py-2.5 rounded-lg border border-orange-300 text-orange-700 text-sm font-medium active:bg-orange-50"
-                                  >
-                                    Fiado
-                                  </button>
-                                  <button
-                                    onClick={() => abrirNovedad(order, "devolucion")}
-                                    className="py-2.5 rounded-lg border border-red-300 text-red-700 text-sm font-medium active:bg-red-50"
-                                  >
-                                    Devolución
-                                  </button>
-                                  <button
-                                    onClick={() => abrirNovedad(order, "agotado")}
-                                    className="py-2.5 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium active:bg-gray-50"
-                                  >
-                                    Agotado
-                                  </button>
-                                  <button
-                                    onClick={() => abrirNovedad(order, "descuento")}
-                                    className="py-2.5 rounded-lg border border-purple-300 text-purple-700 text-sm font-medium active:bg-purple-50"
-                                  >
-                                    Descuento
-                                  </button>
-                                </div>
-                              )}
-
-                              {/* Si ya gestionado pero quiere editar */}
-                              {yaGestionado && (
-                                <button
-                                  onClick={() => {
-                                    const tipo = order.estado === "fiado" ? "fiado"
-                                      : order.estado === "devolucion" ? "devolucion"
-                                      : "agotado"
-                                    abrirNovedad(order, tipo as any)
-                                  }}
-                                  className="mt-2 w-full py-2 rounded-lg border border-gray-200 text-gray-500 text-xs font-medium active:bg-gray-100"
-                                >
-                                  Corregir novedad
-                                </button>
-                              )}
+                        {/* Cabecera de ruta */}
+                        <div
+                          className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                          onClick={() => toggleRouteExpansion(route.id)}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">Ruta {route.ruta}</p>
+                              <Badge variant="outline" className="text-xs">{route.totalOrders} clientes</Badge>
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+                            <p className="text-xs text-gray-500 mt-1">
+                              {new Date(route.fecha).toLocaleDateString("es-CO")}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className="text-xs text-gray-500">Cargue</p>
+                              <p className="font-bold text-blue-700">{formatCOP(route.totalAmount)}</p>
+                            </div>
+                            {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                          </div>
+                        </div>
+
+                        {/* Totales de la ruta */}
+                        <div className="grid grid-cols-4 gap-0 border-t">
+                          <div className="text-center p-2 bg-green-50 border-r">
+                            <p className="text-xs text-green-600">Entregado</p>
+                            <p className="font-bold text-xs text-green-700">{formatCOP(totals.entregado)}</p>
+                          </div>
+                          <div className="text-center p-2 bg-orange-50 border-r">
+                            <p className="text-xs text-orange-600">Fiado</p>
+                            <p className="font-bold text-xs text-orange-700">{formatCOP(totals.fiado)}</p>
+                          </div>
+                          <div className="text-center p-2 bg-red-50 border-r">
+                            <p className="text-xs text-red-600">Devolución</p>
+                            <p className="font-bold text-xs text-red-700">{formatCOP(totals.devoluciones)}</p>
+                          </div>
+                          <div className="text-center p-2 bg-gray-100">
+                            <p className="text-xs text-gray-600">Agotados</p>
+                            <p className="font-bold text-xs text-gray-700">{formatCOP(totals.agotados)}</p>
+                          </div>
+                        </div>
+
+                        {/* Clientes de la ruta */}
+                        {isExpanded && (
+                          <div className="border-t divide-y">
+                            {clientesDeLaRuta.length === 0 ? (
+                              <p className="p-4 text-sm text-gray-500 text-center">Sin clientes</p>
+                            ) : (
+                              clientesDeLaRuta.map((order) => {
+                                if (!order) return null
+                                const effectiveTotal = calculateOrderEffectiveTotal(order)
+                                const novedadesDelPedido = (novedadesPorPlanilla[route.id] || [])
+                                  .filter((n: any) => n.pedido_id === order.id)
+                                const yaGestionado = ["entregado","fiado","devolucion"].includes(order.estado)
+
+                                return (
+                                  <div key={order.id} className={`p-3 ${yaGestionado ? "bg-gray-50" : "bg-white"}`}>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <p className="font-medium text-sm truncate">{order.cliente}</p>
+                                          <Badge variant="outline" className={`text-xs shrink-0 ${
+                                            order.estado === "entregado"  ? "bg-green-100 text-green-700 border-green-300"
+                                            : order.estado === "fiado"    ? "bg-orange-100 text-orange-700 border-orange-300"
+                                            : order.estado === "devolucion" ? "bg-red-100 text-red-700 border-red-300"
+                                            : "bg-gray-100 text-gray-600"
+                                          }`}>
+                                            {order.estado === "pendiente" ? "PENDIENTE" : order.estado.toUpperCase()}
+                                          </Badge>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-0.5">{formatCOP(effectiveTotal)}</p>
+                                        {novedadesDelPedido.length > 0 && (
+                                          <p className="text-xs text-purple-600 mt-0.5">
+                                            {novedadesDelPedido.map((n: any) => `${n.tipo_novedad}: ${formatCOP(n.monto_novedad)}`).join(" · ")}
+                                          </p>
+                                        )}
+                                        {order.estado === "fiado" && order.saldoPendiente > 0 && (
+                                          <p className="text-xs text-orange-600 mt-0.5">
+                                            Abonó {formatCOP(order.montoPagado)} — Debe {formatCOP(order.saldoPendiente)}
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      {!yaGestionado ? (
+                                        <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                                          <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700 text-white text-xs px-2"
+                                            onClick={() => handleConfirmarEntregado(order)}>
+                                            Entregado
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-8 text-xs px-2 border-orange-300 text-orange-700"
+                                            onClick={() => handleAbrirNovedad(order, "fiado")}>
+                                            Fiado
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-8 text-xs px-2 border-red-300 text-red-700"
+                                            onClick={() => handleAbrirNovedad(order, "devolucion")}>
+                                            Devolución
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-8 text-xs px-2 border-gray-300 text-gray-600"
+                                            onClick={() => handleAbrirNovedad(order, "agotado")}>
+                                            Agotado
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-8 text-xs px-2 border-purple-300 text-purple-700"
+                                            onClick={() => handleAbrirNovedad(order, "descuento")}>
+                                            Descuento
+                                          </Button>
+                                        </div>
+                                      ) : (
+                                        <span className="text-green-500 text-sm shrink-0">✓</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        )}
+                      </Card>
+                    )
+                  })
+                )}
+              </div>
             </>
           )}
         </main>
       </div>
 
-      {/* ── MODAL NOVEDAD ── */}
+      {/* Modal de novedad unificado (Fiado / Devolución / Agotado) */}
       <Dialog open={showNovedadModal} onOpenChange={setShowNovedadModal}>
-        <DialogContent className="max-w-sm mx-4">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">
-              {tipoNovedad === "fiado"     ? "Registrar Fiado"
-               : tipoNovedad === "devolucion" ? "Registrar Devolución"
-               : tipoNovedad === "descuento"  ? "Registrar Descuento"
-               : "Confirmar Agotado"}
+            <DialogTitle>
+              {tipoNovedad === "fiado"      ? "Registrar Fiado"
+                : tipoNovedad === "devolucion" ? "Registrar Devolución"
+                : tipoNovedad === "descuento"  ? "Registrar Descuento"
+                : "Confirmar Agotado"}
             </DialogTitle>
-            <DialogDescription className="text-sm">
-              {selectedOrder?.cliente}
-              <span className="font-semibold ml-1">{formatCOP(selectedOrder?.total)}</span>
+            <DialogDescription>
+              {selectedOrder?.cliente} — {formatCOP(calculateOrderEffectiveTotal(selectedOrder))}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-4">
             {tipoNovedad === "agotado" ? (
-              <div className="bg-gray-50 rounded-xl p-4 text-center">
-                <p className="text-sm text-gray-500 mb-1">Se registrará como agotado por</p>
-                <p className="text-2xl font-bold text-gray-800">{formatCOP(selectedOrder?.total)}</p>
+              <div className="p-3 bg-gray-50 rounded text-center">
+                <p className="text-sm text-gray-600">Se registrará como agotado por</p>
+                <p className="text-lg font-bold">{formatCOP(calculateOrderEffectiveTotal(selectedOrder))}</p>
               </div>
             ) : (
               <>
                 <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1.5">
-                    {tipoNovedad === "fiado"      ? "¿Cuánto abonó el cliente?"
-                     : tipoNovedad === "devolucion" ? "¿Cuánto devuelve?"
-                     : "Monto del descuento"}
-                  </label>
-                  <input
+                  <Label>
+                    {tipoNovedad === "fiado"       ? "¿Cuánto abonó?"
+                      : tipoNovedad === "devolucion" ? "¿Cuánto devuelve?"
+                      : "Monto del descuento"}
+                  </Label>
+                  <Input
                     type="number"
                     inputMode="numeric"
                     min={0}
-                    max={selectedOrder?.total}
+                    max={calculateOrderEffectiveTotal(selectedOrder)}
                     value={montoNovedad}
                     onChange={(e) => setMontoNovedad(e.target.value)}
                     placeholder="0"
                     autoFocus
-                    className="w-full text-xl font-bold border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-400"
+                    className="text-lg h-12"
                   />
                 </div>
                 {Number(montoNovedad) > 0 && tipoNovedad === "fiado" && (
-                  <div className="bg-orange-50 rounded-xl p-3 flex justify-between">
-                    <span className="text-sm text-orange-600">Saldo fiado:</span>
-                    <span className="font-bold text-orange-700">
-                      {formatCOP((selectedOrder?.total || 0) - Number(montoNovedad))}
-                    </span>
+                  <div className="p-3 bg-orange-50 rounded">
+                    <p className="text-xs text-orange-600">Saldo que queda fiado:</p>
+                    <p className="font-bold text-orange-700">
+                      {formatCOP(calculateOrderEffectiveTotal(selectedOrder) - Number(montoNovedad))}
+                    </p>
                   </div>
                 )}
               </>
             )}
           </div>
 
-          <DialogFooter className="gap-2">
-            <button
-              onClick={() => setShowNovedadModal(false)}
-              disabled={submittingNovedad}
-              className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium"
-            >
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNovedadModal(false)} disabled={submittingNovedad}>
               Cancelar
-            </button>
-            <button
-              onClick={handleSubmitNovedad}
-              disabled={submittingNovedad}
-              className="flex-1 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
-            >
+            </Button>
+            <Button onClick={handleSubmitNovedad} disabled={submittingNovedad}>
               {submittingNovedad ? "Registrando..." : "Confirmar"}
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── MODAL COBRO CxC ── */}
+      {/* Modal de cobro CxC */}
       <Dialog open={showCobroModal} onOpenChange={setShowCobroModal}>
-        <DialogContent className="max-w-sm mx-4">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">Cobro CxC</DialogTitle>
+            <DialogTitle>Cobro CxC</DialogTitle>
             <DialogDescription>
-              <span className="font-semibold">{selectedCobro?.cliente}</span>
-              <br />
-              <span className="text-sm">Saldo: <span className="font-bold text-purple-700">{formatCOP(selectedCobro?.saldo_pendiente)}</span></span>
+              {selectedCobro?.cliente} — Saldo: {formatCOP(selectedCobro?.saldo_pendiente)}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {/* Selector resultado */}
+          <div className="space-y-3">
+            {/* Selector de resultado */}
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { key: "total",  label: "Cobrado total",  color: "bg-green-600" },
-                { key: "abono",  label: "Abono parcial",  color: "bg-blue-600" },
-                { key: "nopago", label: "No pagó",        color: "bg-red-600" },
-              ].map(({ key, label, color }) => (
-                <button
-                  key={key}
-                  onClick={() => setResultadoCobro(key as any)}
-                  className={`py-3 rounded-xl text-xs font-semibold transition-colors ${
-                    resultadoCobro === key
-                      ? `${color} text-white`
-                      : "border border-gray-200 text-gray-600"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              <Button size="sm" variant={resultadoCobro === "total" ? "default" : "outline"}
+                onClick={() => setResultadoCobro("total")}
+                className="text-xs h-9">
+                Cobrado total
+              </Button>
+              <Button size="sm" variant={resultadoCobro === "abono" ? "default" : "outline"}
+                onClick={() => setResultadoCobro("abono")}
+                className="text-xs h-9">
+                Abono parcial
+              </Button>
+              <Button size="sm" variant={resultadoCobro === "nopago" ? "destructive" : "outline"}
+                onClick={() => setResultadoCobro("nopago")}
+                className="text-xs h-9">
+                No pagó
+              </Button>
             </div>
 
             {(resultadoCobro === "total" || resultadoCobro === "abono") && (
               <>
                 <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1.5">Efectivo</label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
+                  <Label className="text-xs">Efectivo</Label>
+                  <Input type="number" inputMode="numeric" min={0} placeholder="0"
+                    className="text-lg h-12"
                     value={montoEfectivoCobro}
-                    onChange={(e) => setMontoEfectivoCobro(e.target.value)}
-                    placeholder="0"
-                    className="w-full text-lg font-bold border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-400"
+                    onChange={(e) => {
+                      setMontoEfectivoCobro(e.target.value)
+                      if (resultadoCobro === "total") {
+                        setMontoNequiCobro("")
+                      }
+                    }}
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-700 block mb-1.5">Nequi / Transferencia</label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
+                  <Label className="text-xs">Nequi / Transferencia</Label>
+                  <Input type="number" inputMode="numeric" min={0} placeholder="0"
+                    className="text-lg h-12"
                     value={montoNequiCobro}
                     onChange={(e) => setMontoNequiCobro(e.target.value)}
-                    placeholder="0"
-                    className="w-full text-lg font-bold border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-purple-400"
                   />
                 </div>
                 {Number(montoNequiCobro) > 0 && (
                   <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1.5">
-                      Referencia Nequi <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
+                    <Label className="text-xs">Referencia Nequi <span className="text-red-500">*</span></Label>
+                    <Input placeholder="Número de referencia"
                       value={referenciaCobro}
                       onChange={(e) => setReferenciaCobro(e.target.value)}
-                      placeholder="Número de referencia"
-                      className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-purple-400 text-sm"
                     />
                   </div>
                 )}
                 {((Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0)) > 0 && (
-                  <div className="bg-purple-50 rounded-xl p-3 flex justify-between">
-                    <span className="text-sm text-purple-600">Total cobrado:</span>
+                  <div className="p-2 bg-purple-50 rounded text-sm">
+                    <span className="text-purple-600">Total cobrado: </span>
                     <span className="font-bold text-purple-700">
                       {formatCOP((Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0))}
                     </span>
@@ -854,27 +1314,19 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             )}
 
             {resultadoCobro === "nopago" && (
-              <div className="bg-red-50 rounded-xl p-4 text-center">
-                <p className="text-sm text-red-700">El cobro regresará al admin para gestión</p>
+              <div className="p-3 bg-red-50 rounded text-sm text-red-700">
+                El cobro volverá al admin pendiente de gestión.
               </div>
             )}
           </div>
 
-          <DialogFooter className="gap-2">
-            <button
-              onClick={() => setShowCobroModal(false)}
-              disabled={submittingCobro}
-              className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium"
-            >
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCobroModal(false)} disabled={submittingCobro}>
               Cancelar
-            </button>
-            <button
-              onClick={handleSubmitCobro}
-              disabled={!resultadoCobro || submittingCobro}
-              className="flex-1 py-3 rounded-xl bg-purple-600 text-white text-sm font-semibold disabled:opacity-50"
-            >
+            </Button>
+            <Button onClick={handleSubmitCobro} disabled={!resultadoCobro || submittingCobro}>
               {submittingCobro ? "Registrando..." : "Confirmar"}
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
