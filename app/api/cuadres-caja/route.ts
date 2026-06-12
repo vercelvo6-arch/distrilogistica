@@ -202,11 +202,10 @@ export async function POST(request: Request) {
 
         await sql`
           UPDATE fiados SET
-            monto_pagado        = ${nuevoMontoPagado},
-            saldo_pendiente     = ${nuevoSaldo},
-            estado              = ${pagoCompleto ? 'pagado_completo' : 'abono_parcial'},
-            entregador_asignado = ${entregador},
-            updated_at          = NOW()
+            monto_pagado    = ${nuevoMontoPagado},
+            saldo_pendiente = ${nuevoSaldo},
+            estado          = ${pagoCompleto ? 'pagado_completo' : 'abono_parcial'},
+            updated_at      = NOW()
           WHERE id = ${fiadoId}
         `
 
