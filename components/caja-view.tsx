@@ -276,6 +276,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }))
 
       setRouteSheets(planillas)
+      // Expandir todas las rutas por defecto
+      setExpandedRoutes(new Set(planillas.map((p: any) => p.id)))
 
       // Cargar novedades de cada planilla en paralelo
       const novedadesMap: Record<number, NovedadPedido[]> = {}
