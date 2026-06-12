@@ -1306,28 +1306,31 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                     onChange={(e) => setMontoNequiCobro(e.target.value)}
                   />
                 </div>
-                {Number(montoNequiCobro) > 0 && (
-                  <>
-                    <div>
-                      <Label className="text-xs">Referencia Nequi <span className="text-red-500">*</span></Label>
-                      <Input
-                        placeholder="Número de referencia / comprobante"
-                        value={referenciaCobro}
-                        onChange={(e) => setReferenciaCobro(e.target.value)}
-                        className="h-11"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Fecha del comprobante <span className="text-red-500">*</span></Label>
-                      <Input
-                        type="date"
-                        value={fechaCobro}
-                        onChange={(e) => setFechaCobro(e.target.value)}
-                        className="h-11"
-                      />
-                    </div>
-                  </>
-                )}
+                {/* Referencia y fecha — visibles siempre para Nequi/Transferencia */}
+                <div>
+                  <Label className="text-xs">
+                    Referencia Nequi
+                    {Number(montoNequiCobro) > 0 && <span className="text-red-500 ml-1">*</span>}
+                  </Label>
+                  <Input
+                    placeholder="Número de referencia / comprobante"
+                    value={referenciaCobro}
+                    onChange={(e) => setReferenciaCobro(e.target.value)}
+                    className="h-11"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">
+                    Fecha del comprobante
+                    {Number(montoNequiCobro) > 0 && <span className="text-red-500 ml-1">*</span>}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={fechaCobro}
+                    onChange={(e) => setFechaCobro(e.target.value)}
+                    className="h-11"
+                  />
+                </div>
                 {((Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0)) > 0 && (
                   <div className="p-2 bg-purple-50 rounded text-sm">
                     <span className="text-purple-600">Total cobrado: </span>
