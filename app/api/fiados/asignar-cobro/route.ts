@@ -5,6 +5,7 @@ import { handleDBError } from '@/lib/db-helpers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/fiados/asignar-cobro
+// Mantiene la asignación manual para casos especiales desde admin/caja
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
@@ -45,13 +46,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (fiado.entregador_asignado && fiado.entregador_asignado !== entregador) {
-      return NextResponse.json(
-        { error: `Este cobro ya está vinculado al entregador ${fiado.entregador_asignado}` },
-        { status: 409 }
-      )
-    }
-
     await sql`
       UPDATE fiados SET
         entregador_asignado  = ${entregador},
@@ -79,10 +73,11 @@ export async function POST(request: NextRequest) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/fiados/asignar-cobro?entregador=X&rol=Y
+// GET /api/fiados/asignar-cobro?entregador=X&rol=Y&fecha=YYYY-MM-DD
 //
-// - rol=entregador → solo los asignados a ese entregador (no ve cartera general)
-// - rol=caja/admin → todos los disponibles para asignar + los ya asignados
+// rol=entregador → cobros de las rutas que el entregador tiene HOY
+//                  (automático por ruta, sin asignación manual)
+// rol=caja/admin → todos los disponibles para gestionar
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   try {
@@ -95,26 +90,76 @@ export async function GET(request: NextRequest) {
     const busqueda   = searchParams.get('busqueda')
     const entregador = searchParams.get('entregador')
     const rol        = searchParams.get('rol') || session.user.rol
+    const fecha      = searchParams.get('fecha') || new Date().toISOString().split('T')[0]
 
     const sql = getDB()
-
-    // Entregador: solo ve los asignados a él
-    // Caja/Admin: ve todos los disponibles (sin asignar) + los del entregador buscado
     const esEntregador = rol === 'entregador'
 
+    if (esEntregador && entregador) {
+      // ── Lógica automática por ruta ────────────────────────────────────────
+      // 1. Obtener las rutas activas del entregador hoy
+      const rutasHoy = await sql`
+        SELECT DISTINCT tipo_ruta
+        FROM planillas
+        WHERE entregador = ${entregador}
+          AND fecha = ${fecha}::date
+          AND cuadrado_en_caja = false
+          AND estado NOT IN ('cancelado')
+      `
+
+      if (rutasHoy.length === 0) {
+        return NextResponse.json({ success: true, cobros: [] })
+      }
+
+      const rutas = rutasHoy.map((r: any) => r.tipo_ruta)
+
+      // 2. Cobros pendientes en esas rutas
+      const cobros = await sql`
+        SELECT
+          f.id,
+          f.cliente,
+          f.ruta,
+          f.entregador        AS entregador_origen,
+          f.monto_total,
+          f.monto_pagado,
+          f.saldo_pendiente,
+          f.estado,
+          f.fecha_fiado,
+          f.entregador_asignado,
+          COALESCE(
+            (SELECT SUM(monto_abono) FROM abonos_fiados WHERE pedido_id = f.id::text),
+            0
+          ) AS total_abonado
+        FROM fiados f
+        WHERE (f.eliminado IS NULL OR f.eliminado = false)
+          AND f.estado IN ('pendiente', 'abono_parcial')
+          AND f.saldo_pendiente > 0
+          AND f.ruta = ANY(${rutas})
+          ${busqueda ? sql`
+            AND (
+              f.cliente ILIKE ${'%' + busqueda + '%'}
+              OR f.ruta  ILIKE ${'%' + busqueda + '%'}
+            )
+          ` : sql``}
+        ORDER BY f.ruta ASC, f.fecha_fiado ASC, f.cliente ASC
+      `
+
+      return NextResponse.json({ success: true, cobros })
+    }
+
+    // ── Caja/Admin: todos los disponibles ─────────────────────────────────
     const cobros = await sql`
       SELECT
         f.id,
         f.cliente,
         f.ruta,
-        f.entregador         AS entregador_origen,
+        f.entregador        AS entregador_origen,
         f.monto_total,
         f.monto_pagado,
         f.saldo_pendiente,
         f.estado,
         f.fecha_fiado,
         f.entregador_asignado,
-        f.planilla_asignado_id,
         COALESCE(
           (SELECT SUM(monto_abono) FROM abonos_fiados WHERE pedido_id = f.id::text),
           0
@@ -124,13 +169,8 @@ export async function GET(request: NextRequest) {
         AND f.estado IN ('pendiente', 'abono_parcial')
         AND f.saldo_pendiente > 0
         AND (
-          ${esEntregador
-            ? sql`f.entregador_asignado = ${entregador || ''}`
-            : sql`
-                f.entregador_asignado IS NULL
-                OR f.entregador_asignado = ${entregador || ''}
-              `
-          }
+          f.entregador_asignado IS NULL
+          OR f.entregador_asignado = ${entregador || ''}
         )
         ${busqueda ? sql`
           AND (
