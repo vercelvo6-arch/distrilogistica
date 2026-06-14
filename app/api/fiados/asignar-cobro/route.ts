@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
         SELECT DISTINCT tipo_ruta
         FROM planillas
         WHERE entregador = ${entregador}
+          AND fecha = (NOW() AT TIME ZONE 'America/Bogota')::date
           AND cuadrado_en_caja = false
           AND estado IN ('en_ruta', 'alistado', 'completado', 'alistando')
       `
