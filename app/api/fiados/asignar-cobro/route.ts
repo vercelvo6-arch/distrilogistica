@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
         FROM planillas
         WHERE entregador = ${entregador}
           AND cuadrado_en_caja = false
-          AND estado NOT IN ('cancelado', 'pendiente')
+          AND estado IN ('en_ruta', 'alistado', 'completado', 'alistando')
       `
 
       if (rutasHoy.length === 0) {
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
 
       // 2. Cobros pendientes en esas rutas
       const cobros = await sql`
-        SELECT
+        SELECT DISTINCT ON (f.cliente, f.ruta)
           f.id,
           f.cliente,
           f.ruta,
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
             0
           ) AS total_abonado
         FROM fiados f
-        WHERE (f.eliminado IS NULL OR f.eliminado = false)
+        WHERE f.eliminado IS NOT TRUE
           AND f.estado IN ('pendiente', 'abono_parcial')
           AND f.saldo_pendiente > 0
           AND f.ruta = ANY(${rutas})
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
               OR f.ruta  ILIKE ${'%' + busqueda + '%'}
             )
           ` : sql``}
-        ORDER BY f.ruta ASC, f.fecha_fiado ASC, f.cliente ASC
+        ORDER BY f.cliente, f.ruta, f.id DESC
       `
 
       return NextResponse.json({ success: true, cobros })
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
           0
         ) AS total_abonado
       FROM fiados f
-      WHERE (f.eliminado IS NULL OR f.eliminado = false)
+      WHERE f.eliminado IS NOT TRUE
         AND f.estado IN ('pendiente', 'abono_parcial')
         AND f.saldo_pendiente > 0
         AND (
