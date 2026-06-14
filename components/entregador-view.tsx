@@ -132,6 +132,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       }))
 
       setRouteSheets(planillas)
+      setExpandedRoutes(new Set(planillas.map((p: any) => p.id)))
 
       // Cargar cobros CxC asignados al entregador
       try {
@@ -629,7 +630,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       return
     }
     if (monto > totalPedido) {
-      toast({ title: "Error", description: `El monto no puede superar ${formatCOP(totalPedido)}`, variant: "destructive" })
+      toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(totalPedido)}`, variant: "destructive" })
       return
     }
 
@@ -1150,6 +1151,10 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                             onClick={() => handleAbrirNovedad(order, "agotado")}>
                                             Agotado
                                           </Button>
+                                          <Button size="sm" variant="outline" className="h-7 text-xs px-2 border-purple-300 text-purple-700"
+                                            onClick={() => handleAbrirNovedad(order, "descuento")}>
+                                            Descuento
+                                          </Button>
                                         </div>
                                       ) : (
                                         <span className="text-green-500 text-sm shrink-0">✓</span>
@@ -1178,7 +1183,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             <DialogTitle>
               {tipoNovedad === "fiado" ? "Registrar Fiado"
                 : tipoNovedad === "devolucion" ? "Registrar Devolución"
-                : tipoNovedad === "descuento"  ? "Registrar Descuento"
                 : "Confirmar Agotado"}
             </DialogTitle>
             <DialogDescription>
