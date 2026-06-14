@@ -98,11 +98,25 @@ export async function GET(request: NextRequest) {
     if (esEntregador && entregador) {
       // ── Lógica automática por ruta ────────────────────────────────────────
       // 1. Obtener las rutas activas del entregador hoy
+      // Buscar la fecha más reciente con planillas activas <= fecha del filtro
+      const [ultimaFecha] = await sql`
+        SELECT MAX(fecha) as fecha_cuadre
+        FROM planillas
+        WHERE entregador = ${entregador}
+          AND fecha <= ${fecha}::date
+          AND cuadrado_en_caja = false
+          AND estado IN ('en_ruta', 'alistado', 'completado', 'alistando')
+      `
+
+      if (!ultimaFecha?.fecha_cuadre) {
+        return NextResponse.json({ success: true, cobros: [] })
+      }
+
       const rutasHoy = await sql`
         SELECT DISTINCT tipo_ruta
         FROM planillas
         WHERE entregador = ${entregador}
-          AND fecha = ${fecha}::date
+          AND fecha = ${ultimaFecha.fecha_cuadre}
           AND cuadrado_en_caja = false
           AND estado IN ('en_ruta', 'alistado', 'completado', 'alistando')
       `
