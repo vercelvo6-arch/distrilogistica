@@ -67,16 +67,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   // Estado para novedades
   const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, any[]>>({})
 
-  // Panel global de novedades del día
-  const [novedadGlobal, setNovedadGlobal] = useState({
-    agotados:     "0",
-    devoluciones: "0",
-    descuentos:   "0",
-    fiados:       "0",
-  })
-  const [guardandoGlobal, setGuardandoGlobal] = useState(false)
-  const [guardadoGlobal, setGuardadoGlobal] = useState(false)
-
   const entregador = user.nombre
 
   useEffect(() => {
@@ -88,53 +78,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       loadHistorial()
     }
   }, [selectedView])
-
-  // Cargar novedades globales del día
-  const cargarNovedadGlobal = async () => {
-    try {
-      const fecha = new Date().toISOString().split('T')[0]
-      const res = await fetch(`/api/novedades-globales?entregador=${encodeURIComponent(entregador)}&fecha=${fecha}`)
-      if (!res.ok) return
-      const data = await res.json()
-      if (data.novedades) {
-        setNovedadGlobal({
-          agotados:     String(Number(data.novedades.agotados)     || 0),
-          devoluciones: String(Number(data.novedades.devoluciones) || 0),
-          descuentos:   String(Number(data.novedades.descuentos)   || 0),
-          fiados:       String(Number(data.novedades.fiados)       || 0),
-        })
-      }
-    } catch (e) {
-      console.error('[ENTREGADOR] Error cargando novedades globales:', e)
-    }
-  }
-
-  // Guardar novedades globales del día
-  const guardarNovedadGlobal = async () => {
-    setGuardandoGlobal(true)
-    try {
-      const fecha = new Date().toISOString().split('T')[0]
-      const res = await fetch('/api/novedades-globales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entregador,
-          fecha,
-          agotados:     Number(novedadGlobal.agotados)     || 0,
-          devoluciones: Number(novedadGlobal.devoluciones) || 0,
-          descuentos:   Number(novedadGlobal.descuentos)   || 0,
-          fiados:       Number(novedadGlobal.fiados)        || 0,
-        })
-      })
-      if (!res.ok) throw new Error('Error al guardar')
-      setGuardadoGlobal(true)
-      setTimeout(() => setGuardadoGlobal(false), 2000)
-    } catch {
-      toast({ title: "Error", description: "No se pudo guardar las novedades", variant: "destructive" })
-    } finally {
-      setGuardandoGlobal(false)
-    }
-  }
 
   // ✅ OPTIMIZADO: Una única petición para todas las novedades del entregador
   async function loadData() {
@@ -189,7 +132,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       }))
 
       setRouteSheets(planillas)
-      await cargarNovedadGlobal()
 
       // Cargar cobros CxC asignados al entregador
       try {
@@ -656,7 +598,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   // ── HANDLERS NUEVOS ────────────────────────────────────────────────────────
 
-  const handleAbrirNovedad = (order: any, tipo: "fiado" | "devolucion" | "agotado") => {
+  const handleAbrirNovedad = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setSelectedOrder(order)
     setTipoNovedad(tipo)
     setMontoNovedad("")
@@ -682,8 +624,12 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     const totalPedido = calculateOrderEffectiveTotal(selectedOrder)
     const monto = tipoNovedad === "agotado" ? totalPedido : Number(montoNovedad) || 0
 
-    if (tipoNovedad !== "agotado" && (monto <= 0 || monto > totalPedido)) {
-      toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(totalPedido)}`, variant: "destructive" })
+    if (tipoNovedad !== "fiado" && tipoNovedad !== "agotado" && monto <= 0) {
+      toast({ title: "Error", description: "Ingresa un monto válido", variant: "destructive" })
+      return
+    }
+    if (monto > totalPedido) {
+      toast({ title: "Error", description: `El monto no puede superar ${formatCOP(totalPedido)}`, variant: "destructive" })
       return
     }
 
@@ -742,6 +688,18 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, estado: "devolucion" as const } : o)
         })))
         toast({ title: "Agotado registrado", description: formatCOP(monto) })
+
+      } else if (tipoNovedad === "descuento") {
+        await fetch(`/api/pedidos/${selectedOrder.id}/descuento`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ descuento: monto, motivo: "Descuento registrado por entregador" }),
+        })
+        setRouteSheets(prev => prev.map(s => ({
+          ...s,
+          orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, descuento: monto } : o)
+        })))
+        toast({ title: "Descuento registrado", description: formatCOP(monto) })
       }
 
       setShowNovedadModal(false)
@@ -997,11 +955,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   </div>
                   <div className="text-center p-2 bg-orange-50 rounded">
                     <span className="text-xs text-orange-600 font-medium">Fiado (CxC)</span>
-                    <p className="font-bold text-orange-700">{formatCOP(totalFiado + (Number(novedadGlobal.fiados) || 0))}</p>
+                    <p className="font-bold text-orange-700">{formatCOP(totalFiado)}</p>
                   </div>
                   <div className="text-center p-2 bg-red-50 rounded">
                     <span className="text-xs text-red-600 font-medium">Devoluciones</span>
-                    <p className="font-bold text-red-700">{formatCOP(totalDevoluciones + (Number(novedadGlobal.devoluciones) || 0))}</p>
+                    <p className="font-bold text-red-700">{formatCOP(totalDevoluciones)}</p>
                   </div>
                   <div className="text-center p-2 bg-blue-50 rounded">
                     <span className="text-xs text-blue-600 font-medium">Repasos</span>
@@ -1009,7 +967,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   </div>
                   <div className="text-center p-2 bg-gray-100 rounded">
                     <span className="text-xs text-gray-600 font-medium">Agotados</span>
-                    <p className="font-bold text-gray-700">{formatCOP(totalAgotados + (Number(novedadGlobal.agotados) || 0))}</p>
+                    <p className="font-bold text-gray-700">{formatCOP(totalAgotados)}</p>
                   </div>
                   <div className="text-center p-2 bg-orange-100 rounded">
                     <span className="text-xs text-orange-700 font-medium">Errores Fact.</span>
@@ -1017,7 +975,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   </div>
                   <div className="text-center p-2 bg-purple-50 rounded">
                     <span className="text-xs text-purple-600 font-medium">Descuentos</span>
-                    <p className="font-bold text-purple-700">{formatCOP(totalDescuentos + (Number(novedadGlobal.descuentos) || 0))}</p>
+                    <p className="font-bold text-purple-700">{formatCOP(totalDescuentos)}</p>
                   </div>
                 </div>
               </Card>
@@ -1051,41 +1009,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 <p className="text-sm text-muted-foreground">
                   {clientesFiltrados.length} cliente(s) en {filteredRoutes.length} ruta(s)
                 </p>
-              </Card>
-
-              {/* PANEL GLOBAL DE NOVEDADES */}
-              <Card className="p-4 mb-4 border-amber-200 bg-amber-50">
-                <p className="text-sm font-semibold text-amber-700 mb-3">Novedades del día — edita y guarda</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {([
-                    { key: "agotados",     label: "Agotados",     color: "text-gray-600" },
-                    { key: "devoluciones", label: "Devoluciones", color: "text-red-600" },
-                    { key: "descuentos",   label: "Descuentos",   color: "text-purple-600" },
-                    { key: "fiados",       label: "Fiados",       color: "text-orange-600" },
-                  ] as const).map(({ key, label, color }) => (
-                    <div key={key}>
-                      <label className={`text-xs font-medium block mb-1 ${color}`}>{label}</label>
-                      <input
-                        type="number"
-                        min="0"
-                        className="w-full text-sm border border-amber-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:border-amber-500"
-                        value={novedadGlobal[key]}
-                        onChange={(e) => setNovedadGlobal(prev => ({ ...prev, [key]: e.target.value }))}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center gap-3 mt-3">
-                  <button
-                    type="button"
-                    disabled={guardandoGlobal}
-                    onClick={guardarNovedadGlobal}
-                    className="text-sm bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded font-medium disabled:opacity-50"
-                  >
-                    {guardandoGlobal ? "Guardando..." : "Guardar"}
-                  </button>
-                  {guardadoGlobal && <span className="text-sm text-green-600 font-semibold">Guardado</span>}
-                </div>
               </Card>
 
               {/* COBROS CxC */}
@@ -1122,9 +1045,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                     const clientesDeLaRuta = searchCliente.trim()
                       ? (route.orders || []).filter(o => o.cliente?.toLowerCase().includes(searchCliente.toLowerCase()))
                       : (route.orders || [])
+
                     return (
                       <Card key={route.id} className="overflow-hidden">
-
                         {/* Cabecera de ruta */}
                         <div
                           className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
@@ -1255,6 +1178,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             <DialogTitle>
               {tipoNovedad === "fiado" ? "Registrar Fiado"
                 : tipoNovedad === "devolucion" ? "Registrar Devolución"
+                : tipoNovedad === "descuento"  ? "Registrar Descuento"
                 : "Confirmar Agotado"}
             </DialogTitle>
             <DialogDescription>
