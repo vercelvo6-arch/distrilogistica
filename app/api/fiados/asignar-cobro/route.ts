@@ -102,9 +102,8 @@ export async function GET(request: NextRequest) {
         SELECT DISTINCT tipo_ruta
         FROM planillas
         WHERE entregador = ${entregador}
-          AND fecha = ${fecha}::date
           AND cuadrado_en_caja = false
-          AND estado NOT IN ('cancelado')
+          AND estado NOT IN ('cancelado', 'pendiente')
       `
 
       if (rutasHoy.length === 0) {
