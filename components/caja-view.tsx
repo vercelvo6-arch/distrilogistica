@@ -406,6 +406,30 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
 
   // Función auxiliar para calcular el total efectivo de un pedido
+  // Calcula saldo disponible del pedido descontando novedades ya registradas
+  const calcularSaldoDisponibleCaja = (order: any): number => {
+    const totalOriginal = calculateOrderEffectiveTotal(order)
+    const todasNovedades = Object.values(novedadesPorPlanilla).flat() as any[]
+    let totalNovedades = 0
+    todasNovedades
+      .filter((n: any) => n.pedido_id === order.id)
+      .forEach((n: any) => {
+        const monto = Number(n.monto_novedad) || 0
+        switch (n.tipo_novedad) {
+          case "devolucion":
+          case "agotado":
+          case "descuento":
+            totalNovedades += monto
+            break
+          case "fiado_parcial":
+          case "fiado":
+            totalNovedades += monto + (Number(n.monto_pagado) || 0)
+            break
+        }
+      })
+    return Math.max(0, totalOriginal - totalNovedades)
+  }
+
   const calculateOrderEffectiveTotal = (order: Order): number => {
     if (!order || !Array.isArray(order.items)) return 0
 
@@ -1411,6 +1435,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
+    setNovedadCajaMonto(String(calcularSaldoDisponibleCaja(order)))
     setNovedadCajaOrder(order)
     setNovedadCajaTipo(tipo)
     setNovedadCajaMonto("")
@@ -1419,7 +1444,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const handleSubmitNovedadCaja = async () => {
     if (!novedadCajaOrder || !novedadCajaTipo) return
-    const totalPedido = calculateOrderEffectiveTotal(novedadCajaOrder)
+    const totalPedido = calcularSaldoDisponibleCaja(novedadCajaOrder)
     const monto = novedadCajaTipo === "agotado" && !novedadCajaMonto
       ? totalPedido
       : Number(novedadCajaMonto) || 0
