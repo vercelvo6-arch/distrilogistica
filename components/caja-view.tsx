@@ -3628,7 +3628,13 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               const totalBilletes       = Number(formData.billetes || 0)
               const totalMonedas        = Number(formData.monedas || 0)
               const totalConsignaciones = consignaciones.reduce((s, c) => s + (Number(c.monto) || 0), 0)
-              const esperado            = (agrupadoData?.totales.entregado || 0) + totalCobrosEfectivo
+              const totalNovedades      = (Number(formData.fiados)||0)
+                                        + (Number(formData.repasos)||0)
+                                        + (Number(formData.devolucionesParciales)||0)
+                                        + (Number(formData.agotados)||0)
+                                        + (Number(formData.descuento)||0)
+                                        + (Number(formData.erroresFacturacion)||0)
+              const esperado            = (agrupadoData?.totales.cargue || 0) - totalNovedades + totalCobrosEfectivo
               const recibido            = totalBilletes + totalMonedas + totalConsignaciones
               const diferencia          = recibido - esperado
               return (
