@@ -340,7 +340,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     route.orders.forEach((order) => {
       if (!order || !Array.isArray(order.items)) return
 
-      const novedadesDelPedido = todasNovedades.filter((n) => n && n.pedido_id === order.id && n.validado)
+      const novedadesDelPedido = todasNovedades.filter((n) => n && n.pedido_id === order.id)
 
       if (novedadesDelPedido.length > 0) {
         // ── CANAL NOVEDADES: entregador registro y caja valido ──
@@ -501,7 +501,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
     // Novedades validadas cuyo pedido_id no existe en esta planilla (casos edge)
     todasNovedades
-      .filter((n) => n && n.validado && !pedidoIds.has(n.pedido_id))
+      .filter((n) => n && !pedidoIds.has(n.pedido_id))
       .forEach((novedad) => {
         const monto = Number(novedad.monto_novedad) || 0
         switch (novedad.tipo_novedad) {
