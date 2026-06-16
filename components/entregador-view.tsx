@@ -1191,28 +1191,27 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           </DialogHeader>
 
           <div className="space-y-4">
-            {tipoNovedad === "agotado" ? (
-              <div className="p-3 bg-gray-50 rounded text-center">
-                <p className="text-sm text-gray-600">Se registrará como agotado por</p>
-                <p className="text-lg font-bold">{formatCOP(calculateOrderEffectiveTotal(selectedOrder))}</p>
+            <>
+              <div>
+                <Label>
+                  {tipoNovedad === "fiado"       ? "¿Cuánto abonó?"
+                    : tipoNovedad === "devolucion" ? "¿Cuánto devuelve?"
+                    : tipoNovedad === "agotado"    ? "Monto agotado"
+                    : "Monto del descuento"}
+                </Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={calculateOrderEffectiveTotal(selectedOrder)}
+                  value={montoNovedad}
+                  onChange={(e) => setMontoNovedad(e.target.value)}
+                  placeholder="0"
+                  autoFocus
+                  className="text-lg h-12"
+                />
               </div>
-            ) : (
-              <>
-                <div>
-                  <Label>
-                    {tipoNovedad === "fiado" ? "¿Cuánto abonó?" : "¿Cuánto devuelve?"}
-                  </Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={calculateOrderEffectiveTotal(selectedOrder)}
-                    value={montoNovedad}
-                    onChange={(e) => setMontoNovedad(e.target.value)}
-                    placeholder="0"
-                    autoFocus
-                  />
-                </div>
-                {Number(montoNovedad) > 0 && tipoNovedad === "fiado" && (
+              {Number(montoNovedad) > 0 && tipoNovedad === "fiado" && (
                   <div className="p-3 bg-orange-50 rounded">
                     <p className="text-xs text-orange-600">Saldo que queda fiado:</p>
                     <p className="font-bold text-orange-700">
@@ -1220,8 +1219,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                     </p>
                   </div>
                 )}
-              </>
-            )}
+            </>
           </div>
 
           <DialogFooter>
