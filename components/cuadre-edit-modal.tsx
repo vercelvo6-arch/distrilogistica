@@ -23,6 +23,8 @@ export function CuadreEditModal({ cuadreId, onClose, onSuccess }: CuadreEditModa
   const [saving, setSaving] = useState(false)
   const [cuadre, setCuadre] = useState<any>(null)
 
+  const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string}>>([])
+
   const [formData, setFormData] = useState({
     efectivoRecibido:   "",
     montoConsignacion:  "",
@@ -67,6 +69,26 @@ export function CuadreEditModal({ cuadreId, onClose, onSuccess }: CuadreEditModa
         cobrosEfectivo:     data.cuadre.cobros_efectivo?.toString()      || "0",
         cobrosNequi:        data.cuadre.cobros_nequi?.toString()         || "0",
       })
+      // Cargar consignaciones múltiples
+      const cons = data.cuadre.consignaciones
+      if (Array.isArray(cons) && cons.length > 0) {
+        setConsignaciones(cons.map((c: any, i: number) => ({
+          id: String(i),
+          banco: c.banco || "",
+          numero: c.numero || "",
+          monto: String(c.monto || ""),
+          fecha: c.fecha || new Date().toISOString().split("T")[0],
+        })))
+      } else if (data.cuadre.tiene_consignacion && data.cuadre.total_consignado > 0) {
+        // Fallback: una sola consignación del campo legacy
+        setConsignaciones([{
+          id: "0",
+          banco: data.cuadre.banco || "",
+          numero: data.cuadre.numero_consignacion || "",
+          monto: String(data.cuadre.total_consignado || ""),
+          fecha: new Date().toISOString().split("T")[0],
+        }])
+      }
     } catch (error) {
       toast({ title: "Error", description: error instanceof Error ? error.message : "Error", variant: "destructive" })
       onClose()
@@ -89,7 +111,8 @@ export function CuadreEditModal({ cuadreId, onClose, onSuccess }: CuadreEditModa
   }
 
   const calcularRecibido = () => {
-    return (Number(formData.efectivoRecibido) || 0) + (Number(formData.montoConsignacion) || 0)
+    const totalConsig = consignaciones.reduce((s, c) => s + (Number(c.monto) || 0), 0)
+    return (Number(formData.efectivoRecibido) || 0) + totalConsig
   }
 
   const handleSave = async () => {
@@ -113,8 +136,11 @@ export function CuadreEditModal({ cuadreId, onClose, onSuccess }: CuadreEditModa
         devoluciones:       Number(formData.devoluciones)       || 0,
         repasos:            Number(formData.repasos)            || 0,
         erroresFacturacion: Number(formData.erroresFacturacion) || 0,
-        cobrosEfectivo:     Number(formData.cobrosEfectivo)     || 0,
-        cobrosNequi:        Number(formData.cobrosNequi)        || 0,
+        cobrosEfectivo:        Number(formData.cobrosEfectivo) || 0,
+        cobrosNequi:           Number(formData.cobrosNequi)     || 0,
+        consignacionesDetalle: consignaciones.map(c => ({
+          banco: c.banco, numero: c.numero, monto: Number(c.monto) || 0, fecha: c.fecha
+        })),
         totalEsperado:      esperado,
         totalEfectivo:      recibido,
         diferencia,
@@ -212,35 +238,49 @@ export function CuadreEditModal({ cuadreId, onClose, onSuccess }: CuadreEditModa
             {field("Efectivo (billetes + monedas)", "efectivoRecibido")}
           </div>
 
-          {/* Consignación */}
+          {/* Consignaciones múltiples */}
           <div className="border rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Checkbox
-                checked={formData.tieneConsignacion}
-                onCheckedChange={(v) => setFormData({ ...formData, tieneConsignacion: !!v })}
-              />
-              <Label className="text-sm font-semibold">¿Tiene consignación / Nequi?</Label>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-sm">💳 Consignaciones / Nequi</h3>
+              <Button size="sm" variant="outline" type="button"
+                onClick={() => setConsignaciones(prev => [...prev, {
+                  id: crypto.randomUUID(), banco: "", numero: "", monto: "",
+                  fecha: new Date().toISOString().split("T")[0]
+                }])}>
+                + Agregar
+              </Button>
             </div>
-            {formData.tieneConsignacion && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Número</Label>
-                  <Input value={formData.numeroConsignacion}
-                    onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
-                    className="mt-1" placeholder="Referencia" />
-                </div>
+            {consignaciones.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-2">Sin consignaciones</p>
+            ) : consignaciones.map((cons, idx) => (
+              <div key={cons.id} className="grid grid-cols-4 gap-2 mb-2 items-end">
                 <div>
                   <Label className="text-xs">Banco</Label>
-                  <Input value={formData.banco}
-                    onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
-                    className="mt-1" placeholder="Nequi, Bancolombia..." />
+                  <Input value={cons.banco} placeholder="Nequi, Bancolombia..."
+                    onChange={(e) => setConsignaciones(prev => prev.map(c => c.id === cons.id ? { ...c, banco: e.target.value } : c))}
+                    className="mt-1 h-8 text-xs" />
                 </div>
-                <div className="col-span-2">
+                <div>
+                  <Label className="text-xs">Número</Label>
+                  <Input value={cons.numero} placeholder="Referencia"
+                    onChange={(e) => setConsignaciones(prev => prev.map(c => c.id === cons.id ? { ...c, numero: e.target.value } : c))}
+                    className="mt-1 h-8 text-xs" />
+                </div>
+                <div>
                   <Label className="text-xs">Monto</Label>
-                  <Input type="number" value={formData.montoConsignacion}
-                    onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                    className="mt-1" />
+                  <Input type="number" value={cons.monto} placeholder="0"
+                    onChange={(e) => setConsignaciones(prev => prev.map(c => c.id === cons.id ? { ...c, monto: e.target.value } : c))}
+                    className="mt-1 h-8 text-xs" />
                 </div>
+                <Button size="sm" variant="ghost" type="button" className="text-red-500 h-8"
+                  onClick={() => setConsignaciones(prev => prev.filter(c => c.id !== cons.id))}>
+                  ✕
+                </Button>
+              </div>
+            ))}
+            {consignaciones.length > 0 && (
+              <div className="text-right text-sm font-semibold text-gray-700 mt-2 pt-2 border-t">
+                Total consignado: {formatCOP(consignaciones.reduce((s, c) => s + (Number(c.monto) || 0), 0))}
               </div>
             )}
           </div>
