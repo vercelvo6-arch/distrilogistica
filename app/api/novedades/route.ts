@@ -51,6 +51,8 @@ export async function GET(request: NextRequest) {
       const ids = planillaIds.split(",").map(id => id.trim()).filter(id => id);
       if (ids.length === 0) return NextResponse.json({ novedades: [] });
 
+      // ✅ Devolver TODAS las novedades — validadas y no validadas
+      // El entregador ve el impacto inmediato de lo que registra
       const novedades = await sql`
         SELECT n.*, p.cliente, p.total AS total_pedido, p.planilla_id
         FROM novedades_pedido n
@@ -67,7 +69,6 @@ export async function GET(request: NextRequest) {
     );
 
   } catch (error: any) {
-    console.error("[API novedades GET] Error:", error);
     return handleDBError(error, "NOVEDADES_GET");
   }
 }
@@ -82,7 +83,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { pedidoId, tipoNovedad, montoNovedad, descripcion, montoPagado } = body;
 
-    // ── Validaciones ────────────────────────────────────────────────────────
     if (!pedidoId || !tipoNovedad) {
       return NextResponse.json(
         { error: "Faltan campos requeridos: pedidoId, tipoNovedad" },
@@ -90,7 +90,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // montoNovedad puede ser 0 solo para fiado_parcial (cliente abonó el total)
     if (montoNovedad === undefined || montoNovedad === null) {
       return NextResponse.json(
         { error: "montoNovedad es requerido" },
@@ -98,7 +97,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const tiposValidos = ["agotado", "devolucion", "fiado_parcial", "fiado", "error_facturacion"];
+    const tiposValidos = ["agotado", "devolucion", "fiado_parcial", "fiado", "error_facturacion", "descuento"];
     if (!tiposValidos.includes(tipoNovedad)) {
       return NextResponse.json(
         { error: `Tipo de novedad inválido. Debe ser: ${tiposValidos.join(", ")}` },
@@ -108,7 +107,6 @@ export async function POST(request: NextRequest) {
 
     const esFiado = tipoNovedad === 'fiado_parcial' || tipoNovedad === 'fiado'
 
-    // Solo rechazar monto 0 si NO es fiado (para fiado, monto 0 = cliente no abonó nada)
     if (Number(montoNovedad) <= 0 && !esFiado) {
       return NextResponse.json(
         { error: "El monto de la novedad debe ser mayor a 0" },
@@ -116,7 +114,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Para fiado, montoNovedad es el saldo que queda fiado — debe ser >= 0
     if (esFiado && Number(montoNovedad) < 0) {
       return NextResponse.json(
         { error: "El saldo fiado no puede ser negativo" },
@@ -161,29 +158,8 @@ export async function POST(request: NextRequest) {
       RETURNING *
     `;
 
-    // Actualizar estado del pedido según el tipo de novedad
-    if (esFiado) {
-      const montoPagadoNum = Number(montoPagado || 0)
-      const saldoPendiente = Number(montoNovedad)
-      await sql`
-        UPDATE pedidos SET
-          estado          = 'fiado',
-          monto_pagado    = ${montoPagadoNum},
-          saldo_pendiente = ${saldoPendiente},
-          updated_at      = NOW()
-        WHERE id = ${pedidoId}
-      `
-    } else if (tipoNovedad === 'devolucion') {
-      await sql`
-        UPDATE pedidos SET
-          estado     = 'devolucion',
-          updated_at = NOW()
-        WHERE id = ${pedidoId}
-      `
-    } else if (tipoNovedad === 'agotado') {
-      // Agotado NO cambia el estado del pedido — queda como estaba
-      // Solo queda registrado en novedades_pedido
-    }
+    // ✅ NO tocar el estado del pedido — las novedades son la fuente de verdad
+    // El estado del pedido lo actualiza caja al momento de cuadrar
 
     return NextResponse.json({
       success: true,
@@ -192,7 +168,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error("[API novedades POST] ❌ Error:", error);
     return handleDBError(error, "NOVEDADES_POST");
   }
 }
