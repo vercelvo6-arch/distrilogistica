@@ -1103,7 +1103,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                 const effectiveTotal = calculateOrderEffectiveTotal(order)
                                 const novedadesDelPedido = (novedadesPorPlanilla[route.id] || [])
                                   .filter((n: any) => n.pedido_id === order.id)
-                                const yaGestionado = ["entregado","fiado","devolucion"].includes(order.estado)
+                                const yaGestionado = order.estado === "entregado"
 
                                 return (
                                   <div key={order.id} className={`p-3 ${yaGestionado ? "bg-gray-50" : "bg-white"}`}>
