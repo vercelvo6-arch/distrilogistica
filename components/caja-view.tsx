@@ -329,19 +329,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   async function loadHistorial() {
     try {
-      const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
-      const dataIndividuales = await responseIndividuales.json()
-
       const responseAgrupados = await fetch("/api/cuadres-caja")
       const dataAgrupados = await responseAgrupados.json()
-
-      const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
-        ? dataIndividuales.recepciones.map((r: any) => ({
-            ...r,
-            tipo: "individual",
-            fecha_recepcion: parseFechaCuadre(r.created_at || r.fecha_recepcion, r.fecha),
-          }))
-        : []
 
       const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
         ? dataAgrupados.cuadres.map((c: any) => {
@@ -356,7 +345,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             return {
               ...c,
               tipo: "agrupado",
-              // ✅ FIX: parseo correcto — created_at (timestamp) tiene precedencia sobre fecha_cuadre (date)
               fecha_recepcion: parseFechaCuadre(c.created_at, c.fecha_cuadre),
               efectivo_esperado: c.total_esperado,
               efectivo_recibido: c.total_efectivo,
@@ -370,7 +358,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           })
         : []
 
-      const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados].sort(
+      const todosLosCuadres = cuadresAgrupados.sort(
         (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime(),
       )
 
@@ -501,7 +489,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       if (!order || !Array.isArray(order.items)) return
 
       const novedadesDelPedido = todasNovedades.filter(
-      (n) => n.pedido_id === order.id && n.validado
+      (n) => n.pedido_id === order.id
       )
 
             if (novedadesDelPedido.length > 0) {
@@ -657,7 +645,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     // Novedades validadas cuyo pedido_id no existe en esta planilla (casos edge)
     todasNovedades
-      .filter((n) => n.validado && !pedidoIds.has(n.pedido_id))
+      .filter((n) => !pedidoIds.has(n.pedido_id))
       .forEach((novedad) => {
         const monto = Number(novedad.monto_novedad) || 0
         switch (novedad.tipo_novedad) {
@@ -1806,7 +1794,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const agotadosFinal          = Number(formData.agotados) || 0
     const descuentoFinal         = Number(formData.descuento) || 0
     const erroresFacturacionFinal = Number(formData.erroresFacturacion) || 0
-    const totalEsperado          = agrupadoData.totales.entregado + totalCobrosEfectivo
+    const totalEsperado = (agrupadoData.totales.cargue || 0)
+      - fiadoFinal
+      - devolucionesFinal
+      - agotadosFinal
+      - descuentoFinal
+      - repasosFinal
+      - erroresFacturacionFinal
+      + totalCobrosEfectivo
 
     const payload = {
       planillaIds:        agrupadoData.planillaIds,
@@ -3346,7 +3341,14 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               const totalBilletes       = Number(formData.billetes || 0)
               const totalMonedas        = Number(formData.monedas || 0)
               const totalConsignaciones = consignaciones.reduce((s, c) => s + (Number(c.monto) || 0), 0)
-              const efectivoEsperado    = totals.entregado + totalCobrosEfectivo - Number(formData.descuento || 0)
+              const efectivoEsperado    = (selectedPlanilla.montoCargue || 0)
+                - totals.fiado
+                - totals.devoluciones
+                - totals.agotados
+                - totals.repasos
+                - totals.erroresFacturacion
+                - Number(formData.descuento || 0)
+                + totalCobrosEfectivo
               const nequiEsperado       = totalCobrosNequi
               const totalRecibido       = totalBilletes + totalMonedas + totalConsignaciones
               const diferencia          = totalRecibido - efectivoEsperado
