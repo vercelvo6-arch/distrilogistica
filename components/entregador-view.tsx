@@ -443,7 +443,33 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         devoluciones += returnedTotal
         erroresFacturacion += erroresEnPedido
 
-        if (order.estado === "fiado") {
+        // Leer novedades del entregador (validadas o no) para el cálculo
+        const novedadesDelPedidoTodas = todasNovedades.filter(
+          (n) => n.pedido_id === order.id
+        )
+
+        if (novedadesDelPedidoTodas.length > 0) {
+          // Calcular desde novedades
+          novedadesDelPedidoTodas.forEach((nov) => {
+            const mNov = Number(nov.monto_novedad) || 0
+            switch (nov.tipo_novedad) {
+              case "devolucion":  devoluciones += mNov; break
+              case "agotado":     agotados += mNov; break
+              case "fiado_parcial":
+                fiado += mNov
+                entregado += Number(nov.monto_pagado) || 0
+                break
+              case "descuento":   entregado -= mNov; break
+            }
+          })
+          // Lo que no es novedad se entregó
+          const totalNovedades = novedadesDelPedidoTodas.reduce((s, n) => {
+            if (n.tipo_novedad === "fiado_parcial") return s + Number(n.monto_novedad) + (Number(n.monto_pagado) || 0)
+            return s + Number(n.monto_novedad) || 0
+          }, 0)
+          const resto = effectiveTotal - totalNovedades
+          if (resto > 0) entregado += resto
+        } else if (order.estado === "fiado") {
           const montoPagadoReal = Number(order.montoPagado) || 0
           fiado += effectiveTotal - montoPagadoReal
           entregado += montoPagadoReal
