@@ -556,9 +556,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               break
             case "fiado_parcial":
               const montoPagadoNov = Number(novedad.monto_pagado) || 0
-              fiado += monto - montoPagadoNov
+              fiado += monto
               entregado += montoPagadoNov
-              totalNovedades += monto - montoPagadoNov
+              totalNovedades += monto + montoPagadoNov
               break
             case "error_facturacion":
               erroresFacturacion += monto
