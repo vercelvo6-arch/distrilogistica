@@ -637,69 +637,73 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     try {
       setSubmittingNovedad(true)
 
+      // ── Solo novedades — nunca tocar estado del pedido ───────────────────
+      // El entregador acumula novedades, caja las valida al cuadrar
+
       if (tipoNovedad === "fiado") {
         const saldo = totalPedido - monto
-        await updatePedidoEstado(selectedOrder.id, "fiado", monto, saldo)
-        setRouteSheets(prev => prev.map(s => ({
-          ...s,
-          orders: s.orders.map(o => o.id === selectedOrder.id
-            ? { ...o, estado: "fiado" as const, montoPagado: monto, saldoPendiente: saldo }
-            : o)
-        })))
+        await fetch("/api/novedades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pedidoId:     selectedOrder.id,
+            planillaId:   selectedOrder.planillaId,
+            tipoNovedad:  "fiado_parcial",
+            montoNovedad: saldo,
+            montoPagado:  monto,
+            descripcion:  `Fiado — abonó ${formatCOP(monto)}, debe ${formatCOP(saldo)}`,
+            registradoPor: entregador,
+            tipoRegistro: "entregador",
+          }),
+        })
         toast({ title: "Fiado registrado", description: `Abonó ${formatCOP(monto)} — Debe ${formatCOP(saldo)}` })
 
       } else if (tipoNovedad === "devolucion") {
-        await updatePedidoEstado(selectedOrder.id, "devolucion")
         await fetch("/api/novedades", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pedidoId: selectedOrder.id,
-            planillaId: selectedOrder.planillaId,
-            tipoNovedad: "devolucion",
+            pedidoId:     selectedOrder.id,
+            planillaId:   selectedOrder.planillaId,
+            tipoNovedad:  "devolucion",
             montoNovedad: monto,
-            descripcion: `Devolución registrada por entregador`,
+            descripcion:  "Devolución registrada por entregador",
             registradoPor: entregador,
             tipoRegistro: "entregador",
           }),
         })
-        setRouteSheets(prev => prev.map(s => ({
-          ...s,
-          orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, estado: "devolucion" as const } : o)
-        })))
         toast({ title: "Devolución registrada", description: formatCOP(monto) })
 
       } else if (tipoNovedad === "agotado") {
-        await updatePedidoEstado(selectedOrder.id, "devolucion")
         await fetch("/api/novedades", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pedidoId: selectedOrder.id,
-            planillaId: selectedOrder.planillaId,
-            tipoNovedad: "agotado",
+            pedidoId:     selectedOrder.id,
+            planillaId:   selectedOrder.planillaId,
+            tipoNovedad:  "agotado",
             montoNovedad: monto,
-            descripcion: "Producto agotado",
+            descripcion:  "Agotado registrado por entregador",
             registradoPor: entregador,
             tipoRegistro: "entregador",
           }),
         })
-        setRouteSheets(prev => prev.map(s => ({
-          ...s,
-          orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, estado: "devolucion" as const } : o)
-        })))
         toast({ title: "Agotado registrado", description: formatCOP(monto) })
 
       } else if (tipoNovedad === "descuento") {
-        await fetch(`/api/pedidos/${selectedOrder.id}/descuento`, {
-          method: "PATCH",
+        await fetch("/api/novedades", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ descuento: monto, motivo: "Descuento registrado por entregador" }),
+          body: JSON.stringify({
+            pedidoId:     selectedOrder.id,
+            planillaId:   selectedOrder.planillaId,
+            tipoNovedad:  "descuento",
+            montoNovedad: monto,
+            descripcion:  "Descuento registrado por entregador",
+            registradoPor: entregador,
+            tipoRegistro: "entregador",
+          }),
         })
-        setRouteSheets(prev => prev.map(s => ({
-          ...s,
-          orders: s.orders.map(o => o.id === selectedOrder.id ? { ...o, descuento: monto } : o)
-        })))
         toast({ title: "Descuento registrado", description: formatCOP(monto) })
       }
 
@@ -707,6 +711,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       setSelectedOrder(null)
       setTipoNovedad(null)
       setMontoNovedad("")
+      loadData(true)
     } catch {
       toast({ title: "Error", description: "No se pudo registrar la novedad", variant: "destructive" })
     } finally {
