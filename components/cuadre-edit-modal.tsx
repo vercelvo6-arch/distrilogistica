@@ -22,327 +22,269 @@ export function CuadreEditModal({ cuadreId, onClose, onSuccess }: CuadreEditModa
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [cuadre, setCuadre] = useState<any>(null)
-  
+
   const [formData, setFormData] = useState({
-    efectivoRecibido: "",
-    montoConsignacion: "",
-    tieneConsignacion: false,
+    efectivoRecibido:   "",
+    montoConsignacion:  "",
+    tieneConsignacion:  false,
     numeroConsignacion: "",
-    banco: "",
-    observaciones: "",
-    descuento: "",
-    motivoDescuento: "",
-    agotados: "",
-    fiado: "",
-    devoluciones: "",
-    repasos: "",
+    banco:              "",
+    observaciones:      "",
+    descuento:          "",
+    motivoDescuento:    "",
+    agotados:           "",
+    fiado:              "",
+    devoluciones:       "",
+    repasos:            "",
     erroresFacturacion: "",
+    cobrosEfectivo:     "",
+    cobrosNequi:        "",
   })
 
-  useEffect(() => {
-    if (cuadreId) {
-      loadCuadre()
-    }
-  }, [cuadreId])
+  useEffect(() => { if (cuadreId) loadCuadre() }, [cuadreId])
 
   const loadCuadre = async () => {
     try {
       setLoading(true)
-      
-      console.log('[CUADRE EDIT MODAL] Cargando cuadre ID:', cuadreId)
-      
       const response = await fetch(`/api/cuadres-caja/${cuadreId}`)
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al cargar cuadre')
-      }
-      
+      if (!response.ok) throw new Error((await response.json()).error || 'Error al cargar cuadre')
       const data = await response.json()
-      
-      console.log('[CUADRE EDIT MODAL] Cuadre cargado:', data.cuadre)
-      
       setCuadre(data.cuadre)
-      
-      // Pre-cargar datos en el formulario
       setFormData({
-        efectivoRecibido: data.cuadre.total_efectivo?.toString() || "",
-        montoConsignacion: data.cuadre.total_consignado?.toString() || "",
-        tieneConsignacion: data.cuadre.tiene_consignacion || false,
-        numeroConsignacion: data.cuadre.numero_consignacion || "",
-        banco: data.cuadre.banco || "",
-        observaciones: data.cuadre.observaciones || "",
-        descuento: data.cuadre.descuento?.toString() || "",
-        motivoDescuento: data.cuadre.motivo_descuento || "",
-        agotados: data.cuadre.agotados?.toString() || "",
-        fiado: data.cuadre.fiado?.toString() || "",
-        devoluciones: data.cuadre.devoluciones?.toString() || "",
-        repasos: data.cuadre.repasos?.toString() || "",
-        erroresFacturacion: data.cuadre.errores_facturacion?.toString() || "",
+        efectivoRecibido:   data.cuadre.total_efectivo?.toString()       || "0",
+        montoConsignacion:  data.cuadre.total_consignado?.toString()     || "0",
+        tieneConsignacion:  data.cuadre.tiene_consignacion               || false,
+        numeroConsignacion: data.cuadre.numero_consignacion              || "",
+        banco:              data.cuadre.banco                            || "",
+        observaciones:      data.cuadre.observaciones                   || "",
+        descuento:          data.cuadre.descuento?.toString()            || "0",
+        motivoDescuento:    data.cuadre.motivo_descuento                 || "",
+        agotados:           data.cuadre.agotados?.toString()             || "0",
+        fiado:              data.cuadre.fiado?.toString()                || "0",
+        devoluciones:       data.cuadre.devoluciones?.toString()         || "0",
+        repasos:            data.cuadre.repasos?.toString()              || "0",
+        erroresFacturacion: data.cuadre.errores_facturacion?.toString()  || "0",
+        cobrosEfectivo:     data.cuadre.cobros_efectivo?.toString()      || "0",
+        cobrosNequi:        data.cuadre.cobros_nequi?.toString()         || "0",
       })
-      
     } catch (error) {
-      console.error('[CUADRE EDIT MODAL] Error:', error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "No se pudo cargar el cuadre",
-        variant: "destructive"
-      })
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Error", variant: "destructive" })
       onClose()
     } finally {
       setLoading(false)
     }
   }
 
+  // ── Recalcular esperado dinámicamente ──────────────────────────────────────
+  const calcularEsperado = () => {
+    const cargue      = Number(cuadre?.total_cargue) || 0
+    const fiado       = Number(formData.fiado)              || 0
+    const devoluciones= Number(formData.devoluciones)       || 0
+    const agotados    = Number(formData.agotados)           || 0
+    const repasos     = Number(formData.repasos)            || 0
+    const errores     = Number(formData.erroresFacturacion) || 0
+    const descuento   = Number(formData.descuento)          || 0
+    const cobrosEfec  = Number(formData.cobrosEfectivo)     || 0
+    return cargue - fiado - devoluciones - agotados - repasos - errores - descuento + cobrosEfec
+  }
+
+  const calcularRecibido = () => {
+    return (Number(formData.efectivoRecibido) || 0) + (Number(formData.montoConsignacion) || 0)
+  }
+
   const handleSave = async () => {
     try {
       setSaving(true)
-      
+      const esperado   = calcularEsperado()
+      const recibido   = calcularRecibido()
+      const diferencia = recibido - esperado
+
       const payload = {
-        efectivoRecibido: Number(formData.efectivoRecibido) || 0,
-        montoConsignacion: Number(formData.montoConsignacion) || 0,
-        tieneConsignacion: formData.tieneConsignacion,
-        numeroConsignacion: formData.numeroConsignacion || null,
-        banco: formData.banco || null,
-        observaciones: formData.observaciones || null,
-        descuento: Number(formData.descuento) || 0,
-        motivoDescuento: formData.motivoDescuento || null,
-        agotados: Number(formData.agotados) || 0,
-        fiado: Number(formData.fiado) || 0,
-        devoluciones: Number(formData.devoluciones) || 0,
-        repasos: Number(formData.repasos) || 0,
+        efectivoRecibido:   Number(formData.efectivoRecibido)   || 0,
+        montoConsignacion:  Number(formData.montoConsignacion)  || 0,
+        tieneConsignacion:  formData.tieneConsignacion,
+        numeroConsignacion: formData.numeroConsignacion         || null,
+        banco:              formData.banco                      || null,
+        observaciones:      formData.observaciones              || null,
+        descuento:          Number(formData.descuento)          || 0,
+        motivoDescuento:    formData.motivoDescuento            || null,
+        agotados:           Number(formData.agotados)           || 0,
+        fiado:              Number(formData.fiado)              || 0,
+        devoluciones:       Number(formData.devoluciones)       || 0,
+        repasos:            Number(formData.repasos)            || 0,
         erroresFacturacion: Number(formData.erroresFacturacion) || 0,
+        cobrosEfectivo:     Number(formData.cobrosEfectivo)     || 0,
+        cobrosNequi:        Number(formData.cobrosNequi)        || 0,
+        totalEsperado:      esperado,
+        totalEfectivo:      recibido,
+        diferencia,
+        estado:             diferencia === 0 ? 'cuadrado' : 'con_diferencia',
       }
-      
-      console.log('[CUADRE EDIT MODAL] Guardando cambios:', payload)
-      
+
       const response = await fetch(`/api/cuadres-caja/${cuadreId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al guardar cambios')
-      }
-      
+
+      if (!response.ok) throw new Error((await response.json()).error || 'Error al guardar')
       const data = await response.json()
-      
-      toast({
-        title: "✅ Cambios Guardados",
-        description: data.mensaje || "El cuadre ha sido actualizado correctamente"
-      })
-      
+      toast({ title: "✅ Cuadre actualizado", description: data.mensaje || "Cambios guardados" })
       onSuccess()
-      
     } catch (error) {
-      console.error('[CUADRE EDIT MODAL] Error al guardar:', error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "No se pudieron guardar los cambios",
-        variant: "destructive"
-      })
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Error", variant: "destructive" })
     } finally {
       setSaving(false)
     }
   }
 
-  if (loading) {
-    return (
-      <Dialog open={true} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl">
-          <div className="flex items-center justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-          </div>
-        </DialogContent>
-      </Dialog>
-    )
-  }
+  const field = (label: string, key: keyof typeof formData, color?: string) => (
+    <div>
+      <Label className={`text-xs ${color || ''}`}>{label}</Label>
+      <Input
+        type="number"
+        value={formData[key] as string}
+        onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
+        className="mt-1"
+      />
+    </div>
+  )
+
+  if (loading) return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <div className="flex items-center justify-center p-8">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
 
   if (!cuadre) return null
 
+  const esperado   = calcularEsperado()
+  const recibido   = calcularRecibido()
+  const diferencia = recibido - esperado
+
   return (
-    <Dialog open={true} onOpenChange={onClose}>
+    <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar Cuadre de Caja</DialogTitle>
           <DialogDescription>
-            Cuadre ID: {cuadreId} - {cuadre.entregador}
+            {cuadre.entregador} — {new Date(cuadre.fecha_cuadre).toLocaleDateString('es-CO')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Información del cuadre */}
-          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm text-blue-900">
-              <strong>Fecha:</strong> {new Date(cuadre.fecha_cuadre).toLocaleDateString('es-CO')}
-            </p>
-            <p className="text-sm text-blue-900">
-              <strong>Total Esperado:</strong> {formatCOP(cuadre.total_esperado)}
-            </p>
+        <div className="space-y-4 py-2">
+
+          {/* Info */}
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 grid grid-cols-2 gap-2 text-sm">
+            <div><span className="text-blue-600 font-medium">Cargue:</span> <span className="font-bold">{formatCOP(cuadre.total_cargue)}</span></div>
+            <div><span className="text-blue-600 font-medium">Rutas:</span> <span>{Array.isArray(cuadre.rutas_nombres) ? cuadre.rutas_nombres.join(', ') : '—'}</span></div>
           </div>
 
           {/* Novedades */}
           <div className="border rounded-lg p-4 bg-gray-50">
-            <h3 className="font-semibold text-sm mb-3">📊 Novedades</h3>
-            
+            <h3 className="font-semibold text-sm mb-3">📊 Novedades (restan del esperado)</h3>
             <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs">Fiados</Label>
-                <Input
-                  type="number"
-                  value={formData.fiado}
-                  onChange={(e) => setFormData({ ...formData, fiado: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">Repasos</Label>
-                <Input
-                  type="number"
-                  value={formData.repasos}
-                  onChange={(e) => setFormData({ ...formData, repasos: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">Devoluciones</Label>
-                <Input
-                  type="number"
-                  value={formData.devoluciones}
-                  onChange={(e) => setFormData({ ...formData, devoluciones: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">Agotados</Label>
-                <Input
-                  type="number"
-                  value={formData.agotados}
-                  onChange={(e) => setFormData({ ...formData, agotados: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">Errores Facturación</Label>
-                <Input
-                  type="number"
-                  value={formData.erroresFacturacion}
-                  onChange={(e) => setFormData({ ...formData, erroresFacturacion: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">Descuentos</Label>
-                <Input
-                  type="number"
-                  value={formData.descuento}
-                  onChange={(e) => setFormData({ ...formData, descuento: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
+              {field("Fiados", "fiado", "text-orange-600")}
+              {field("Devoluciones", "devoluciones", "text-red-600")}
+              {field("Agotados", "agotados", "text-gray-600")}
+              {field("Repasos", "repasos", "text-blue-600")}
+              {field("Errores Facturación", "erroresFacturacion", "text-yellow-700")}
+              {field("Descuentos", "descuento", "text-purple-600")}
             </div>
           </div>
 
-          {/* Efectivo */}
-          <div>
-            <Label>💵 Efectivo Recibido</Label>
-            <Input
-              type="number"
-              value={formData.efectivoRecibido}
-              onChange={(e) => setFormData({ ...formData, efectivoRecibido: e.target.value })}
-              className="mt-1 font-bold text-lg"
-            />
+          {/* Cobros CxC */}
+          <div className="border rounded-lg p-4 bg-purple-50">
+            <h3 className="font-semibold text-sm mb-3">💳 Cobros CxC (suman al esperado)</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {field("Cobros Efectivo", "cobrosEfectivo", "text-purple-700")}
+              {field("Cobros Nequi", "cobrosNequi", "text-purple-700")}
+            </div>
+          </div>
+
+          {/* Efectivo recibido */}
+          <div className="border rounded-lg p-4">
+            <h3 className="font-semibold text-sm mb-3">💵 Efectivo Recibido</h3>
+            {field("Efectivo (billetes + monedas)", "efectivoRecibido")}
           </div>
 
           {/* Consignación */}
-          <div className="flex items-center gap-2">
-            <Checkbox
-              checked={formData.tieneConsignacion}
-              onCheckedChange={(checked) => setFormData({ ...formData, tieneConsignacion: !!checked })}
-            />
-            <Label>¿Tiene consignación?</Label>
-          </div>
-
-          {formData.tieneConsignacion && (
-            <div className="grid grid-cols-2 gap-3 p-3 border rounded-lg bg-gray-50">
-              <div>
-                <Label className="text-xs">Número Consignación</Label>
-                <Input
-                  value={formData.numeroConsignacion}
-                  onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">Banco</Label>
-                <Input
-                  value={formData.banco}
-                  onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <Label className="text-xs">Monto Consignación</Label>
-                <Input
-                  type="number"
-                  value={formData.montoConsignacion}
-                  onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
+          <div className="border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Checkbox
+                checked={formData.tieneConsignacion}
+                onCheckedChange={(v) => setFormData({ ...formData, tieneConsignacion: !!v })}
+              />
+              <Label className="text-sm font-semibold">¿Tiene consignación / Nequi?</Label>
             </div>
-          )}
+            {formData.tieneConsignacion && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Número</Label>
+                  <Input value={formData.numeroConsignacion}
+                    onChange={(e) => setFormData({ ...formData, numeroConsignacion: e.target.value })}
+                    className="mt-1" placeholder="Referencia" />
+                </div>
+                <div>
+                  <Label className="text-xs">Banco</Label>
+                  <Input value={formData.banco}
+                    onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
+                    className="mt-1" placeholder="Nequi, Bancolombia..." />
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-xs">Monto</Label>
+                  <Input type="number" value={formData.montoConsignacion}
+                    onChange={(e) => setFormData({ ...formData, montoConsignacion: e.target.value })}
+                    className="mt-1" />
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Observaciones */}
           <div>
-            <Label>Observaciones</Label>
-            <Textarea
-              value={formData.observaciones}
+            <Label className="text-sm font-medium">Observaciones</Label>
+            <Textarea value={formData.observaciones}
               onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-              className="mt-1"
-              rows={3}
-            />
+              className="mt-1" rows={2} />
           </div>
 
-          {/* Resumen */}
-          <div className="border-t pt-4 bg-emerald-50 rounded-lg p-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Diferencia:</span>
-              {(() => {
-                const totalRecibido = Number(formData.efectivoRecibido) + Number(formData.montoConsignacion)
-                const diferencia = totalRecibido - cuadre.total_esperado
-                return (
-                  <span className={`font-bold text-lg ${diferencia === 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
-                  </span>
-                )
-              })()}
+          {/* Resumen dinámico */}
+          <div className="border-t pt-4 rounded-lg bg-gray-50 p-3 space-y-2">
+            <p className="text-sm font-semibold text-gray-700">Resumen recalculado:</p>
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              <div className="text-center p-2 bg-blue-50 rounded">
+                <p className="text-xs text-blue-600">Cargue</p>
+                <p className="font-bold text-blue-700">{formatCOP(cuadre.total_cargue)}</p>
+              </div>
+              <div className="text-center p-2 bg-emerald-50 rounded">
+                <p className="text-xs text-emerald-600">Esperado</p>
+                <p className="font-bold text-emerald-700">{formatCOP(esperado)}</p>
+              </div>
+              <div className="text-center p-2 bg-gray-100 rounded">
+                <p className="text-xs text-gray-600">Recibido</p>
+                <p className="font-bold text-gray-700">{formatCOP(recibido)}</p>
+              </div>
+            </div>
+            <div className={`text-center p-3 rounded-lg ${diferencia === 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+              <p className="text-xs text-gray-500">Diferencia</p>
+              <p className={`font-bold text-xl ${diferencia === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {diferencia > 0 ? '+' : ''}{formatCOP(diferencia)}
+              </p>
+              <p className="text-xs mt-1 text-gray-500">{diferencia === 0 ? '✅ Cuadrado' : '⚠️ Con diferencia'}</p>
             </div>
           </div>
+
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Guardando...
-              </>
-            ) : (
-              "Guardar Cambios"
-            )}
+            {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Guardando...</> : "Guardar Cambios"}
           </Button>
         </DialogFooter>
       </DialogContent>
