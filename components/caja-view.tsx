@@ -4024,6 +4024,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             <DialogTitle>
               {novedadCajaTipo === "fiado" ? "Registrar Fiado"
                 : novedadCajaTipo === "devolucion" ? "Registrar Devolución"
+                : novedadCajaTipo === "descuento" ? "Registrar Descuento"
                 : "Registrar Agotado"}
             </DialogTitle>
             <DialogDescription>
@@ -4041,6 +4042,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                   <Label>
                     {novedadCajaTipo === "fiado" ? "¿Cuánto abonó el cliente?"
                       : novedadCajaTipo === "devolucion" ? "¿Cuánto devuelve?"
+                      : novedadCajaTipo === "descuento" ? "Monto del descuento"
                       : "Monto agotado (dejar vacío para todo el pedido)"}
                   </Label>
                   <Input
