@@ -8,6 +8,8 @@ import type { RouteSheet, User, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import {
   updatePedidoEstado,
+  updateCantidadEntregada,
+  updateSubtotalAjustado,
 } from "@/lib/actions/planillas"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -29,13 +31,13 @@ interface EntregadorViewProps {
 
 export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const { toast } = useToast()
-  
+
   const getDateDaysAgo = (days: number) => {
     const date = new Date()
     date.setDate(date.getDate() - days)
     return date.toISOString().split("T")[0]
   }
-  
+
   const [filterFechaDesde, setFilterFechaDesde] = useState(getDateDaysAgo(7))
   const [filterFechaHasta, setFilterFechaHasta] = useState(new Date().toISOString().split("T")[0])
   const [selectedView, setSelectedView] = useState<"rutas" | "historial">("rutas")
@@ -101,33 +103,37 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         montoFiado: Number(p.total_fiado) || 0,
         montoDevoluciones: Number(p.total_devolucion) || 0,
         montoRepasos: Number(p.total_repaso) || 0,
-        orders: (Array.isArray(p.pedidos) ? p.pedidos : []).map((ped: any) => ({
-          id: ped.id,
-          cliente: ped.cliente,
-          ruta: p.tipo_ruta,
-          fecha: p.fecha,
-          estado: ped.estado,
-          total: Number(ped.total) || 0,
-          montoPagado: Number(ped.monto_pagado) || 0,
-          saldoPendiente: Number(ped.saldo_pendiente) || Number(ped.total) || 0,
-          comentarios: ped.observaciones,
-          esCobro: ped.es_cobro || false,
-          descuento: Number(ped.descuento) || 0,
-          motivoDescuento: ped.motivo_descuento || "",
-          items: (Array.isArray(ped.productos) ? ped.productos : []).map((prod: any) => ({
-            codigo: prod.codigo,
-            descripcion: prod.nombre,
-            categoria: "",
-            cantidad: Number(prod.cantidad) || 0,
-            valorUnidad: Number(prod.precio_unitario) || 0,
-            subtotal: Number(prod.total) || 0,
-            devuelto: prod.devuelto || false,
-            subtotalAjustado: prod.subtotal_ajustado,
-            cantidadEntregada: prod.cantidad_entregada,
-            estadoProducto: prod.estado_producto,
-            motivoAjuste: prod.motivo_ajuste,
+        orders: (Array.isArray(p.pedidos) ? p.pedidos : [])
+          .filter((ped: any) => ped != null)
+          .map((ped: any) => ({
+            id: ped.id,
+            cliente: ped.cliente,
+            ruta: p.tipo_ruta,
+            fecha: p.fecha,
+            estado: ped.estado,
+            total: Number(ped.total) || 0,
+            montoPagado: Number(ped.monto_pagado) || 0,
+            saldoPendiente: Number(ped.saldo_pendiente) || Number(ped.total) || 0,
+            comentarios: ped.observaciones,
+            esCobro: ped.es_cobro || false,
+            descuento: Number(ped.descuento) || 0,
+            motivoDescuento: ped.motivo_descuento || "",
+            items: (Array.isArray(ped.productos) ? ped.productos : [])
+              .filter((prod: any) => prod != null)
+              .map((prod: any) => ({
+                codigo: prod.codigo,
+                descripcion: prod.nombre,
+                categoria: "",
+                cantidad: Number(prod.cantidad) || 0,
+                valorUnidad: Number(prod.precio_unitario) || 0,
+                subtotal: Number(prod.total) || 0,
+                devuelto: prod.devuelto || false,
+                subtotalAjustado: prod.subtotal_ajustado,
+                cantidadEntregada: prod.cantidad_entregada,
+                estadoProducto: prod.estado_producto,
+                motivoAjuste: prod.motivo_ajuste,
+              })),
           })),
-        })),
         cuentasPorCobrar: [],
       }))
 
@@ -136,7 +142,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
       // Cargar cobros CxC asignados al entregador
       try {
-        const cobrosRes = await fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}&rol=entregador&fecha=${filterFechaHasta || new Date().toISOString().split('T')[0]}`)
+        const cobrosRes = await fetch(
+          `/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}&rol=entregador&fecha=${filterFechaHasta || new Date().toISOString().split("T")[0]}`,
+        )
         if (cobrosRes.ok) {
           const cobrosData = await cobrosRes.json()
           setCobrosAsignados(cobrosData.cobros || [])
@@ -148,18 +156,19 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       // Solo cargar novedades de las planillas del entregador actual
       // Una sola petición en vez de 150+
       const misPlanilas = planillas.filter(
-        (p) => p.entregador === entregador &&
-               (p.estado === 'alistado' || p.estado === 'completado') &&
-               !p.cuadradoEnCaja
+        (p) =>
+          p.entregador === entregador &&
+          (p.estado === "alistado" || p.estado === "completado") &&
+          !p.cuadradoEnCaja,
       )
 
       if (misPlanilas.length > 0) {
         const ids = misPlanilas.map((p) => p.id).join(",")
         const novedadesResponse = await fetch(`/api/novedades?planillaIds=${ids}`)
-        
+
         if (novedadesResponse.ok) {
           const novedadesData = await novedadesResponse.json()
-          const todasLasNovedades = novedadesData.novedades || []
+          const todasLasNovedades = (novedadesData.novedades || []).filter((n: any) => n != null)
 
           // Agrupar por planilla_id para acceso rápido
           const novedadesMap: Record<number, any[]> = {}
@@ -170,12 +179,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           })
 
           setNovedadesPorPlanilla(novedadesMap)
-          console.log('[ENTREGADOR] Novedades cargadas en 1 petición:', todasLasNovedades.length)
+          console.log("[ENTREGADOR] Novedades cargadas en 1 petición:", todasLasNovedades.length)
         }
       } else {
         setNovedadesPorPlanilla({})
       }
-
     } catch (err) {
       console.error("[ENTREGADOR] Error loading planillas:", err)
       toast({
@@ -198,13 +206,13 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
       const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
         ? dataIndividuales.recepciones
-            .filter((r: any) => r.entregador === entregador)
+            .filter((r: any) => r && r.entregador === entregador)
             .map((r: any) => ({ ...r, tipo: "individual" }))
         : []
 
       const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
         ? dataAgrupados.cuadres
-            .filter((c: any) => c.entregador === entregador)
+            .filter((c: any) => c && c.entregador === entregador)
             .map((c: any) => {
               const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
               const tipoRutaDisplay =
@@ -244,10 +252,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   }
 
   const misRutas = routeSheets.filter(
-    (s) => s.entregador === entregador && (s.estado === 'alistado' || s.estado === 'completado') && !s.cuadradoEnCaja
+    (s) => s && s.entregador === entregador && (s.estado === "alistado" || s.estado === "completado") && !s.cuadradoEnCaja,
   )
 
   const filteredRoutes = misRutas.filter((route) => {
+    if (!route) return false
     if (filterFechaDesde || filterFechaHasta) {
       const routeDate = new Date(route.fecha).toISOString().split("T")[0]
       if (filterFechaDesde && routeDate < filterFechaDesde) return false
@@ -258,22 +267,22 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   // Lista plana de todos los clientes para el buscador
   const todosLosClientes = filteredRoutes.flatMap((route) =>
-    (route.orders || []).map((order) => ({
-      ...order,
-      planillaId: route.id,
-      rutaNombre: route.ruta,
-      fechaPlanilla: route.fecha,
-    }))
+    (route.orders || [])
+      .filter((order) => order != null)
+      .map((order) => ({
+        ...order,
+        planillaId: route.id,
+        rutaNombre: route.ruta,
+        fechaPlanilla: route.fecha,
+      })),
   )
 
   // Clientes filtrados por busqueda (si hay busqueda filtra, si no muestra todos)
   const clientesFiltrados = searchCliente.trim()
-    ? todosLosClientes.filter((c) =>
-        c.cliente?.toLowerCase().includes(searchCliente.toLowerCase())
-      )
+    ? todosLosClientes.filter((c) => c.cliente?.toLowerCase().includes(searchCliente.toLowerCase()))
     : todosLosClientes
 
-  const calculateOrderEffectiveTotal = (order: Order): number => {
+  const calculateOrderEffectiveTotal = (order: Order | null | undefined): number => {
     if (!order || !Array.isArray(order.items)) return 0
 
     let effectiveTotal = 0
@@ -284,8 +293,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       const cantOriginal = Number(item.cantidad) || 0
       const precioUnit = Number(item.valorUnidad) || 0
 
-      if (item.motivoAjuste === 'error_facturacion') return
-      if (item.motivoAjuste === 'devuelto' || item.devuelto) return
+      if (item.motivoAjuste === "error_facturacion") return
+      if (item.motivoAjuste === "devuelto" || item.devuelto) return
 
       const cantEntregada =
         item.cantidadEntregada !== null && item.cantidadEntregada !== undefined
@@ -325,15 +334,13 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     let agotados = 0
     let erroresFacturacion = 0
 
-    const todasNovedades = novedadesPorPlanilla[route.id] || []
+    const todasNovedades = (novedadesPorPlanilla[route.id] || []).filter((n) => n != null)
     const pedidoIds = new Set(route.orders.map((o) => o?.id))
 
     route.orders.forEach((order) => {
       if (!order || !Array.isArray(order.items)) return
 
-      const novedadesDelPedido = todasNovedades.filter(
-        (n) => n.pedido_id === order.id && n.validado
-      )
+      const novedadesDelPedido = todasNovedades.filter((n) => n && n.pedido_id === order.id && n.validado)
 
       if (novedadesDelPedido.length > 0) {
         // ── CANAL NOVEDADES: entregador registro y caja valido ──
@@ -348,11 +355,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           const precioUnit = Number(item.valorUnidad) || 0
           const subtotalOriginal = cantOriginal * precioUnit
 
-          if (item.motivoAjuste === 'error_facturacion') {
+          if (item.motivoAjuste === "error_facturacion") {
             erroresEnItems += subtotalOriginal
             return
           }
-          if (item.motivoAjuste === 'devuelto' || item.devuelto) {
+          if (item.motivoAjuste === "devuelto" || item.devuelto) {
             devolucionesEnItems += subtotalOriginal
             return
           }
@@ -419,11 +426,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           const precioUnit = Number(item.valorUnidad) || 0
           const subtotalOriginal = cantOriginal * precioUnit
 
-          if (item.motivoAjuste === 'error_facturacion') {
+          if (item.motivoAjuste === "error_facturacion") {
             erroresEnPedido += subtotalOriginal
             return
           }
-          if (item.motivoAjuste === 'devuelto' || item.devuelto) {
+          if (item.motivoAjuste === "devuelto" || item.devuelto) {
             returnedTotal += subtotalOriginal
             return
           }
@@ -444,22 +451,26 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         erroresFacturacion += erroresEnPedido
 
         // Leer novedades del entregador (validadas o no) para el cálculo
-        const novedadesDelPedidoTodas = todasNovedades.filter(
-          (n) => n.pedido_id === order.id
-        )
+        const novedadesDelPedidoTodas = todasNovedades.filter((n) => n && n.pedido_id === order.id)
 
         if (novedadesDelPedidoTodas.length > 0) {
           // Calcular desde novedades
           novedadesDelPedidoTodas.forEach((nov) => {
             const mNov = Number(nov.monto_novedad) || 0
             switch (nov.tipo_novedad) {
-              case "devolucion":  devoluciones += mNov; break
-              case "agotado":     agotados += mNov; break
+              case "devolucion":
+                devoluciones += mNov
+                break
+              case "agotado":
+                agotados += mNov
+                break
               case "fiado_parcial":
                 fiado += mNov
                 entregado += Number(nov.monto_pagado) || 0
                 break
-              case "descuento":   entregado -= mNov; break
+              case "descuento":
+                entregado -= mNov
+                break
             }
           })
           // Lo que no es novedad se entregó
@@ -486,13 +497,19 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
     // Novedades validadas cuyo pedido_id no existe en esta planilla (casos edge)
     todasNovedades
-      .filter((n) => n.validado && !pedidoIds.has(n.pedido_id))
+      .filter((n) => n && n.validado && !pedidoIds.has(n.pedido_id))
       .forEach((novedad) => {
         const monto = Number(novedad.monto_novedad) || 0
         switch (novedad.tipo_novedad) {
-          case "agotado": agotados += monto; break
-          case "devolucion": devoluciones += monto; break
-          case "error_facturacion": erroresFacturacion += monto; break
+          case "agotado":
+            agotados += monto
+            break
+          case "devolucion":
+            devoluciones += monto
+            break
+          case "error_facturacion":
+            erroresFacturacion += monto
+            break
           case "fiado_parcial":
             fiado += monto - (Number(novedad.monto_pagado) || 0)
             entregado += Number(novedad.monto_pagado) || 0
@@ -531,26 +548,26 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
 
     try {
-      setRouteSheets(prevSheets =>
-        prevSheets.map(sheet => ({
+      setRouteSheets((prevSheets) =>
+        prevSheets.map((sheet) => ({
           ...sheet,
-          orders: sheet.orders.map(order => {
+          orders: sheet.orders.map((order) => {
             if (order.id !== orderId) return order
 
             return {
               ...order,
-              items: order.items.map(item =>
+              items: order.items.map((item) =>
                 item.codigo === codigo
                   ? {
                       ...item,
                       cantidadEntregada: cantidad,
-                      estadoProducto: cantidad === 0 ? "agotado" : cantidad < cantidadOriginal ? "parcial" : "normal"
+                      estadoProducto: cantidad === 0 ? "agotado" : cantidad < cantidadOriginal ? "parcial" : "normal",
                     }
-                  : item
-              )
+                  : item,
+              ),
             }
-          })
-        }))
+          }),
+        })),
       )
 
       const result = await updateCantidadEntregada(orderId, codigo, cantidad)
@@ -588,22 +605,20 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
 
     try {
-      setRouteSheets(prevSheets =>
-        prevSheets.map(sheet => ({
+      setRouteSheets((prevSheets) =>
+        prevSheets.map((sheet) => ({
           ...sheet,
-          orders: sheet.orders.map(order => {
+          orders: sheet.orders.map((order) => {
             if (order.id !== orderId) return order
 
             return {
               ...order,
-              items: order.items.map(item =>
-                item.codigo === codigo
-                  ? { ...item, subtotalAjustado: nuevoSubtotal }
-                  : item
-              )
+              items: order.items.map((item) =>
+                item.codigo === codigo ? { ...item, subtotalAjustado: nuevoSubtotal } : item,
+              ),
             }
-          })
-        }))
+          }),
+        })),
       )
 
       await updateSubtotalAjustado(orderId, codigo, nuevoSubtotal)
@@ -627,12 +642,16 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   // Calcula el saldo disponible del pedido descontando novedades ya registradas
   const calcularSaldoDisponible = (order: any): number => {
+    // FIX: el modal puede renderizar con selectedOrder = null. Sin este guard,
+    // order.id lanza "Cannot read properties of null (reading 'id')".
+    if (!order) return 0
+
     const totalOriginal = calculateOrderEffectiveTotal(order)
     // Buscar novedades del pedido en todas las planillas
     let totalNovedades = 0
     Object.values(novedadesPorPlanilla).forEach((novedades: any[]) => {
-      novedades
-        .filter((n: any) => n.pedido_id === order.id)
+      ;(Array.isArray(novedades) ? novedades : [])
+        .filter((n: any) => n && n.pedido_id === order.id)
         .forEach((n: any) => {
           const monto = Number(n.monto_novedad) || 0
           switch (n.tipo_novedad) {
@@ -664,10 +683,12 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const handleConfirmarEntregado = async (order: any) => {
     try {
       await updatePedidoEstado(order.id, "entregado")
-      setRouteSheets(prev => prev.map(s => ({
-        ...s,
-        orders: s.orders.map(o => o.id === order.id ? { ...o, estado: "entregado" as const } : o)
-      })))
+      setRouteSheets((prev) =>
+        prev.map((s) => ({
+          ...s,
+          orders: s.orders.map((o) => (o.id === order.id ? { ...o, estado: "entregado" as const } : o)),
+        })),
+      )
       toast({ title: "Entregado", description: `${order.cliente} marcado como entregado` })
     } catch {
       toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" })
@@ -701,60 +722,57 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pedidoId:     selectedOrder.id,
-            planillaId:   selectedOrder.planillaId,
-            tipoNovedad:  "fiado_parcial",
+            pedidoId: selectedOrder.id,
+            planillaId: selectedOrder.planillaId,
+            tipoNovedad: "fiado_parcial",
             montoNovedad: saldo,
-            montoPagado:  monto,
-            descripcion:  `Fiado — abonó ${formatCOP(monto)}, debe ${formatCOP(saldo)}`,
+            montoPagado: monto,
+            descripcion: `Fiado — abonó ${formatCOP(monto)}, debe ${formatCOP(saldo)}`,
             registradoPor: entregador,
             tipoRegistro: "entregador",
           }),
         })
         toast({ title: "Fiado registrado", description: `Abonó ${formatCOP(monto)} — Debe ${formatCOP(saldo)}` })
-
       } else if (tipoNovedad === "devolucion") {
         await fetch("/api/novedades", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pedidoId:     selectedOrder.id,
-            planillaId:   selectedOrder.planillaId,
-            tipoNovedad:  "devolucion",
+            pedidoId: selectedOrder.id,
+            planillaId: selectedOrder.planillaId,
+            tipoNovedad: "devolucion",
             montoNovedad: monto,
-            descripcion:  "Devolución registrada por entregador",
+            descripcion: "Devolución registrada por entregador",
             registradoPor: entregador,
             tipoRegistro: "entregador",
           }),
         })
         toast({ title: "Devolución registrada", description: formatCOP(monto) })
-
       } else if (tipoNovedad === "agotado") {
         await fetch("/api/novedades", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pedidoId:     selectedOrder.id,
-            planillaId:   selectedOrder.planillaId,
-            tipoNovedad:  "agotado",
+            pedidoId: selectedOrder.id,
+            planillaId: selectedOrder.planillaId,
+            tipoNovedad: "agotado",
             montoNovedad: monto,
-            descripcion:  "Agotado registrado por entregador",
+            descripcion: "Agotado registrado por entregador",
             registradoPor: entregador,
             tipoRegistro: "entregador",
           }),
         })
         toast({ title: "Agotado registrado", description: formatCOP(monto) })
-
-      } else if (tipoNovedad === "descuento") {
+      } else if ((tipoNovedad as string) === "descuento") {
         await fetch("/api/novedades", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pedidoId:     selectedOrder.id,
-            planillaId:   selectedOrder.planillaId,
-            tipoNovedad:  "descuento",
+            pedidoId: selectedOrder.id,
+            planillaId: selectedOrder.planillaId,
+            tipoNovedad: "descuento",
             montoNovedad: monto,
-            descripcion:  "Descuento registrado por entregador",
+            descripcion: "Descuento registrado por entregador",
             registradoPor: entregador,
             tipoRegistro: "entregador",
           }),
@@ -766,7 +784,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       setSelectedOrder(null)
       setTipoNovedad(null)
       setMontoNovedad("")
-      loadData(true)
+      loadData()
     } catch {
       toast({ title: "Error", description: "No se pudo registrar la novedad", variant: "destructive" })
     } finally {
@@ -794,7 +812,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ fiadoId: selectedCobro.id }),
         })
-        setCobrosAsignados(prev => prev.filter(c => c.id !== selectedCobro.id))
+        setCobrosAsignados((prev) => prev.filter((c) => c.id !== selectedCobro.id))
         toast({ title: "Cobro no recibido", description: "Devuelto al admin" })
         setShowCobroModal(false)
       } catch {
@@ -806,8 +824,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
 
     const efectivo = Number(montoEfectivoCobro) || 0
-    const nequi    = Number(montoNequiCobro) || 0
-    const total    = efectivo + nequi
+    const nequi = Number(montoNequiCobro) || 0
+    const total = efectivo + nequi
 
     if (total <= 0) {
       toast({ title: "Error", description: "Ingresa al menos un monto", variant: "destructive" })
@@ -824,17 +842,17 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fiadoId:        selectedCobro.id,
-          montoEfectivo:  efectivo,
-          montoNequi:     nequi,
+          fiadoId: selectedCobro.id,
+          montoEfectivo: efectivo,
+          montoNequi: nequi,
           referenciaPago: referenciaCobro.trim() || null,
           entregadorCobro: entregador,
-          observaciones:  "Registrado por entregador en ruta",
+          observaciones: "Registrado por entregador en ruta",
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setCobrosAsignados(prev => prev.filter(c => c.id !== selectedCobro.id))
+      setCobrosAsignados((prev) => prev.filter((c) => c.id !== selectedCobro.id))
       toast({ title: data.pago_completo ? "Cobro completado" : "Abono registrado", description: data.mensaje })
       setShowCobroModal(false)
     } catch (err: any) {
@@ -845,15 +863,25 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   }
 
   // Placeholder para evitar error de compilación — ya no se usa
-  const handleSubmitFiado = async () => { /* reemplazado por handleSubmitNovedad */ }
-  const handleOrderStatusChange = async (orderId: string, newStatus: any) => { /* reemplazado */ }
+  const handleSubmitFiado = async () => {
+    /* reemplazado por handleSubmitNovedad */
+  }
+  const handleOrderStatusChange = async (orderId: string, newStatus: any) => {
+    /* reemplazado */
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _unused = { handleSubmitFiado, handleOrderStatusChange }
+  const _unused = { handleSubmitFiado, handleOrderStatusChange, handleCantidadChange, handleSubtotalChange, expandedOrders, setExpandedOrders, vistaPlana }
 
-  const handleDescuentoChange = async () => { /* no aplica al entregador */ }
-  const handleMotivoDescuentoChange = async () => { /* no aplica */ }
-  const handleMotivoAjusteChange = async () => { /* no aplica */ }
+  const handleDescuentoChange = async () => {
+    /* no aplica al entregador */
+  }
+  const handleMotivoDescuentoChange = async () => {
+    /* no aplica */
+  }
+  const handleMotivoAjusteChange = async () => {
+    /* no aplica */
+  }
 
   const totalCargue = filteredRoutes.reduce((sum, r) => sum + (r?.totalAmount || 0), 0)
 
@@ -878,7 +906,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   filteredRoutes.forEach((route) => {
     if (Array.isArray(route.orders)) {
       route.orders.forEach((order) => {
-        if (order.descuento) {
+        if (order && order.descuento) {
           totalDescuentos += Number(order.descuento)
         }
       })
@@ -941,9 +969,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                         <div>
                           <div className="flex items-center gap-2">
                             <p className="font-semibold">{rec.tipo_ruta}</p>
-                            {rec.tipo === "agrupado" && (
-                              <Badge variant="secondary">AGRUPADO</Badge>
-                            )}
+                            {rec.tipo === "agrupado" && <Badge variant="secondary">AGRUPADO</Badge>}
                           </div>
                           <p className="text-sm text-gray-500">
                             {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
@@ -965,7 +991,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                         </div>
                         <div>
                           <span className="text-gray-500">Diferencia</span>
-                          <p className={`font-semibold ${Number(rec.diferencia_efectivo) !== 0 ? "text-red-600" : "text-green-600"}`}>
+                          <p
+                            className={`font-semibold ${Number(rec.diferencia_efectivo) !== 0 ? "text-red-600" : "text-green-600"}`}
+                          >
                             {Number(rec.diferencia_efectivo) > 0 ? "+" : ""}
                             {formatCOP(Number(rec.diferencia_efectivo))}
                           </p>
@@ -1051,18 +1079,10 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                     className="w-full sm:w-64"
                   />
                   <div className="flex gap-2">
-                    <Button
-                      variant={vistaPlana ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setVistaPlana(true)}
-                    >
+                    <Button variant={vistaPlana ? "default" : "outline"} size="sm" onClick={() => setVistaPlana(true)}>
                       Todos los Clientes
                     </Button>
-                    <Button
-                      variant={!vistaPlana ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setVistaPlana(false)}
-                    >
+                    <Button variant={!vistaPlana ? "default" : "outline"} size="sm" onClick={() => setVistaPlana(false)}>
                       Por Rutas
                     </Button>
                   </div>
@@ -1076,17 +1096,25 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
               {cobrosAsignados.length > 0 && (
                 <Card className="p-4 border-purple-200 bg-purple-50 mb-4">
                   <h2 className="text-sm font-semibold text-purple-700 mb-3">
-                    💳 Cobros CxC asignados ({cobrosAsignados.length})
+                    Cobros CxC asignados ({cobrosAsignados.length})
                   </h2>
                   <div className="space-y-2">
                     {cobrosAsignados.map((cobro) => (
-                      <div key={cobro.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-purple-200">
+                      <div
+                        key={cobro.id}
+                        className="flex items-center justify-between p-3 bg-white rounded-lg border border-purple-200"
+                      >
                         <div>
                           <p className="font-medium text-sm text-purple-900">{cobro.cliente}</p>
-                          <p className="text-xs text-purple-600">{cobro.ruta} — Saldo: {formatCOP(cobro.saldo_pendiente)}</p>
+                          <p className="text-xs text-purple-600">
+                            {cobro.ruta} — Saldo: {formatCOP(cobro.saldo_pendiente)}
+                          </p>
                         </div>
-                        <Button size="sm" onClick={() => handleAbrirCobro(cobro)}
-                          className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-xs">
+                        <Button
+                          size="sm"
+                          onClick={() => handleAbrirCobro(cobro)}
+                          className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-xs"
+                        >
                           Registrar
                         </Button>
                       </div>
@@ -1104,8 +1132,10 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                     const totals = calculateRouteTotals(route)
                     const isExpanded = expandedRoutes.has(route.id)
                     const clientesDeLaRuta = searchCliente.trim()
-                      ? (route.orders || []).filter(o => o.cliente?.toLowerCase().includes(searchCliente.toLowerCase()))
-                      : (route.orders || [])
+                      ? (route.orders || []).filter(
+                          (o) => o && o.cliente?.toLowerCase().includes(searchCliente.toLowerCase()),
+                        )
+                      : (route.orders || []).filter((o) => o != null)
 
                     return (
                       <Card key={route.id} className="overflow-hidden">
@@ -1117,7 +1147,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                           <div>
                             <div className="flex items-center gap-2">
                               <p className="font-semibold">Ruta {route.ruta}</p>
-                              <Badge variant="outline" className="text-xs">{route.totalOrders} clientes</Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {route.totalOrders} clientes
+                              </Badge>
                             </div>
                             <p className="text-xs text-gray-500 mt-1">
                               {new Date(route.fecha).toLocaleDateString("es-CO")}
@@ -1128,7 +1160,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                               <p className="text-xs text-gray-500">Cargue</p>
                               <p className="font-bold text-blue-700">{formatCOP(route.totalAmount)}</p>
                             </div>
-                            {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4 text-gray-400" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-gray-400" />
+                            )}
                           </div>
                         </div>
 
@@ -1161,29 +1197,43 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                               clientesDeLaRuta.map((order) => {
                                 if (!order) return null
                                 const effectiveTotal = calculateOrderEffectiveTotal(order)
-                                const novedadesDelPedido = (novedadesPorPlanilla[route.id] || [])
-                                  .filter((n: any) => n.pedido_id === order.id)
+                                const novedadesDelPedido = (novedadesPorPlanilla[route.id] || []).filter(
+                                  (n: any) => n && n.pedido_id === order.id,
+                                )
                                 const yaGestionado = order.estado === "entregado"
 
                                 return (
-                                  <div key={order.id} className={`p-3 ${yaGestionado ? "bg-gray-50" : "bg-white"}`}>
+                                  <div
+                                    key={order.id}
+                                    className={`p-3 ${yaGestionado ? "bg-gray-50" : "bg-white"}`}
+                                  >
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
                                           <p className="font-medium text-sm truncate">{order.cliente}</p>
-                                          <Badge variant="outline" className={`text-xs shrink-0 ${
-                                            order.estado === "entregado"  ? "bg-green-100 text-green-700 border-green-300"
-                                            : order.estado === "fiado"    ? "bg-orange-100 text-orange-700 border-orange-300"
-                                            : order.estado === "devolucion" ? "bg-red-100 text-red-700 border-red-300"
-                                            : "bg-gray-100 text-gray-600"
-                                          }`}>
-                                            {order.estado === "pendiente" ? "PENDIENTE" : order.estado.toUpperCase()}
+                                          <Badge
+                                            variant="outline"
+                                            className={`text-xs shrink-0 ${
+                                              order.estado === "entregado"
+                                                ? "bg-green-100 text-green-700 border-green-300"
+                                                : order.estado === "fiado"
+                                                  ? "bg-orange-100 text-orange-700 border-orange-300"
+                                                  : order.estado === "devolucion"
+                                                    ? "bg-red-100 text-red-700 border-red-300"
+                                                    : "bg-gray-100 text-gray-600"
+                                            }`}
+                                          >
+                                            {order.estado === "pendiente"
+                                              ? "PENDIENTE"
+                                              : (order.estado || "").toUpperCase()}
                                           </Badge>
                                         </div>
                                         <p className="text-xs text-gray-500 mt-0.5">{formatCOP(effectiveTotal)}</p>
                                         {novedadesDelPedido.length > 0 && (
                                           <p className="text-xs text-purple-600 mt-0.5">
-                                            {novedadesDelPedido.map((n: any) => `${n.tipo_novedad}: ${formatCOP(n.monto_novedad)}`).join(" · ")}
+                                            {novedadesDelPedido
+                                              .map((n: any) => `${n.tipo_novedad}: ${formatCOP(n.monto_novedad)}`)
+                                              .join(" · ")}
                                           </p>
                                         )}
                                         {order.estado === "fiado" && order.saldoPendiente > 0 && (
@@ -1195,24 +1245,43 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
                                       {!yaGestionado ? (
                                         <div className="flex gap-1 shrink-0 flex-wrap justify-end">
-                                          <Button size="sm" className="h-7 bg-green-600 hover:bg-green-700 text-white text-xs px-2"
-                                            onClick={() => handleConfirmarEntregado(order)}>
+                                          <Button
+                                            size="sm"
+                                            className="h-7 bg-green-600 hover:bg-green-700 text-white text-xs px-2"
+                                            onClick={() => handleConfirmarEntregado(order)}
+                                          >
                                             Entregado
                                           </Button>
-                                          <Button size="sm" variant="outline" className="h-7 text-xs px-2 border-orange-300 text-orange-700"
-                                            onClick={() => handleAbrirNovedad(order, "fiado")}>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-xs px-2 border-orange-300 text-orange-700"
+                                            onClick={() => handleAbrirNovedad(order, "fiado")}
+                                          >
                                             Fiado
                                           </Button>
-                                          <Button size="sm" variant="outline" className="h-7 text-xs px-2 border-red-300 text-red-700"
-                                            onClick={() => handleAbrirNovedad(order, "devolucion")}>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-xs px-2 border-red-300 text-red-700"
+                                            onClick={() => handleAbrirNovedad(order, "devolucion")}
+                                          >
                                             Devolución
                                           </Button>
-                                          <Button size="sm" variant="outline" className="h-7 text-xs px-2 border-gray-300 text-gray-600"
-                                            onClick={() => handleAbrirNovedad(order, "agotado")}>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-xs px-2 border-gray-300 text-gray-600"
+                                            onClick={() => handleAbrirNovedad(order, "agotado")}
+                                          >
                                             Agotado
                                           </Button>
-                                          <Button size="sm" variant="outline" className="h-7 text-xs px-2 border-purple-300 text-purple-700"
-                                            onClick={() => handleAbrirNovedad(order, "descuento")}>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-xs px-2 border-purple-300 text-purple-700"
+                                            onClick={() => handleAbrirNovedad(order, "descuento")}
+                                          >
                                             Descuento
                                           </Button>
                                         </div>
@@ -1241,9 +1310,11 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {tipoNovedad === "fiado" ? "Registrar Fiado"
-                : tipoNovedad === "devolucion" ? "Registrar Devolución"
-                : "Confirmar Agotado"}
+              {tipoNovedad === "fiado"
+                ? "Registrar Fiado"
+                : tipoNovedad === "devolucion"
+                  ? "Registrar Devolución"
+                  : "Confirmar Agotado"}
             </DialogTitle>
             <DialogDescription>
               {selectedOrder?.cliente} — {formatCOP(calcularSaldoDisponible(selectedOrder))}
@@ -1254,10 +1325,13 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             <>
               <div>
                 <Label>
-                  {tipoNovedad === "fiado"       ? "¿Cuánto abonó?"
-                    : tipoNovedad === "devolucion" ? "¿Cuánto devuelve?"
-                    : tipoNovedad === "agotado"    ? "Monto agotado"
-                    : "Monto del descuento"}
+                  {tipoNovedad === "fiado"
+                    ? "¿Cuánto abonó?"
+                    : tipoNovedad === "devolucion"
+                      ? "¿Cuánto devuelve?"
+                      : tipoNovedad === "agotado"
+                        ? "Monto agotado"
+                        : "Monto del descuento"}
                 </Label>
                 <Input
                   type="number"
@@ -1272,13 +1346,13 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 />
               </div>
               {Number(montoNovedad) > 0 && tipoNovedad === "fiado" && (
-                  <div className="p-3 bg-orange-50 rounded">
-                    <p className="text-xs text-orange-600">Saldo que queda fiado:</p>
-                    <p className="font-bold text-orange-700">
-                      {formatCOP(calcularSaldoDisponible(selectedOrder) - Number(montoNovedad))}
-                    </p>
-                  </div>
-                )}
+                <div className="p-3 bg-orange-50 rounded">
+                  <p className="text-xs text-orange-600">Saldo que queda fiado:</p>
+                  <p className="font-bold text-orange-700">
+                    {formatCOP(calcularSaldoDisponible(selectedOrder) - Number(montoNovedad))}
+                  </p>
+                </div>
+              )}
             </>
           </div>
 
@@ -1306,19 +1380,28 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
           <div className="space-y-3">
             {/* Selector de resultado */}
             <div className="grid grid-cols-3 gap-2">
-              <Button size="sm" variant={resultadoCobro === "total" ? "default" : "outline"}
+              <Button
+                size="sm"
+                variant={resultadoCobro === "total" ? "default" : "outline"}
                 onClick={() => setResultadoCobro("total")}
-                className="text-xs h-9">
+                className="text-xs h-9"
+              >
                 Cobrado total
               </Button>
-              <Button size="sm" variant={resultadoCobro === "abono" ? "default" : "outline"}
+              <Button
+                size="sm"
+                variant={resultadoCobro === "abono" ? "default" : "outline"}
                 onClick={() => setResultadoCobro("abono")}
-                className="text-xs h-9">
+                className="text-xs h-9"
+              >
                 Abono parcial
               </Button>
-              <Button size="sm" variant={resultadoCobro === "nopago" ? "destructive" : "outline"}
+              <Button
+                size="sm"
+                variant={resultadoCobro === "nopago" ? "destructive" : "outline"}
                 onClick={() => setResultadoCobro("nopago")}
-                className="text-xs h-9">
+                className="text-xs h-9"
+              >
                 No pagó
               </Button>
             </div>
@@ -1327,7 +1410,10 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
               <>
                 <div>
                   <Label className="text-xs">Efectivo</Label>
-                  <Input type="number" min={0} placeholder="0"
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="0"
                     value={montoEfectivoCobro}
                     onChange={(e) => {
                       setMontoEfectivoCobro(e.target.value)
@@ -1339,21 +1425,27 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 </div>
                 <div>
                   <Label className="text-xs">Nequi / Transferencia</Label>
-                  <Input type="number" min={0} placeholder="0"
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="0"
                     value={montoNequiCobro}
                     onChange={(e) => setMontoNequiCobro(e.target.value)}
                   />
                 </div>
                 {Number(montoNequiCobro) > 0 && (
                   <div>
-                    <Label className="text-xs">Referencia Nequi <span className="text-red-500">*</span></Label>
-                    <Input placeholder="Número de referencia"
+                    <Label className="text-xs">
+                      Referencia Nequi <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      placeholder="Número de referencia"
                       value={referenciaCobro}
                       onChange={(e) => setReferenciaCobro(e.target.value)}
                     />
                   </div>
                 )}
-                {((Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0)) > 0 && (
+                {(Number(montoEfectivoCobro) || 0) + (Number(montoNequiCobro) || 0) > 0 && (
                   <div className="p-2 bg-purple-50 rounded text-sm">
                     <span className="text-purple-600">Total cobrado: </span>
                     <span className="font-bold text-purple-700">
