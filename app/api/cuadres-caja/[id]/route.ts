@@ -36,6 +36,7 @@ export async function GET(
         COALESCE(c.errores_facturacion, 0) as errores_facturacion,
         COALESCE(c.cobros_efectivo, 0)     as cobros_efectivo,
         COALESCE(c.cobros_nequi, 0)        as cobros_nequi,
+        COALESCE(c.consignaciones, '[]'::jsonb) as consignaciones,
         c.created_at,
         array_agg(DISTINCT p.tipo_ruta) FILTER (WHERE p.tipo_ruta IS NOT NULL) as rutas_nombres
       FROM cuadres_caja c
@@ -133,6 +134,7 @@ export async function PATCH(
         errores_facturacion = ${erroresNum},
         cobros_efectivo     = ${cobrosEfectivoNum},
         cobros_nequi        = ${cobrosNequiNum},
+        consignaciones      = ${JSON.stringify(body.consignacionesDetalle || [])},
         updated_at          = NOW()
       WHERE id = ${cuadreId}
     `
