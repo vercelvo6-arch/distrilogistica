@@ -4058,15 +4058,15 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 : "Registrar Agotado"}
             </DialogTitle>
             <DialogDescription>
-              {novedadCajaOrder && `${novedadCajaOrder.cliente} — ${formatCOP(calculateOrderEffectiveTotal(novedadCajaOrder))}`}
+              {novedadCajaOrder && `${novedadCajaOrder.cliente} — ${formatCOP(calcularSaldoDisponibleCaja(novedadCajaOrder))}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {novedadCajaOrder && (
               <>
                 <div className="p-3 bg-gray-50 rounded flex justify-between">
-                  <span className="text-sm text-gray-600">Total pedido:</span>
-                  <span className="font-bold">{formatCOP(calculateOrderEffectiveTotal(novedadCajaOrder))}</span>
+                  <span className="text-sm text-gray-600">Saldo disponible:</span>
+                  <span className="font-bold">{formatCOP(calcularSaldoDisponibleCaja(novedadCajaOrder))}</span>
                 </div>
                 <div>
                   <Label>
@@ -4089,7 +4089,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                   <div className="p-3 bg-orange-50 rounded flex justify-between">
                     <span className="text-xs text-orange-600">Saldo que queda fiado:</span>
                     <span className="font-bold text-orange-700">
-                      {formatCOP(calculateOrderEffectiveTotal(novedadCajaOrder) - Number(novedadCajaMonto))}
+                      {formatCOP(calcularSaldoDisponibleCaja(novedadCajaOrder) - Number(novedadCajaMonto))}
                     </span>
                   </div>
                 )}
