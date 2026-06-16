@@ -33,6 +33,12 @@ export async function POST(request: Request) {
       descuento,
       motivoDescuento,
       cobrosVinculados,
+      totalEsperado: totalEsperadoFrontend,
+      fiado: fiadoFrontend,
+      devoluciones: devolucionesFrontend,
+      agotados: agotadosFrontend,
+      repasos: repasosFrontend,
+      erroresFacturacion: erroresFrontend,
     } = body
 
     if (!entregador) {
@@ -135,12 +141,18 @@ export async function POST(request: Request) {
       ? consignacionesArray.reduce((s: number, c: any) => s + Number(c.monto || 0), 0)
       : Number(montoConsignacion) || 0
     const nequiReal           = Number(nequiRecibido) || 0
-    const totalFisicoRecibido = (billetesVal + monedasVal + consignadoVal) || Number(efectivoRecibido) || 0
-    const totalRecibido       = totalFisicoRecibido + nequiReal
-    const totalEsperado       = efectivoEsperado + nequiEsperado
-    const diferencia          = Math.round((totalRecibido - totalEsperado) * 100) / 100
-    const estado              = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
-    const tipoCuadre          = planillaIds.length === 1 ? 'individual' : 'agrupado'
+    const totalFisicoRecibido = billetesVal + monedasVal + consignadoVal + nequiReal || Number(efectivoRecibido) || 0
+
+    // ✅ Usar el totalEsperado calculado por el frontend (cargue - novedades + cobros)
+    // Es más preciso que recalcular aquí porque el frontend ya tiene las novedades reales
+    const totalEsperado = totalEsperadoFrontend !== undefined
+      ? Number(totalEsperadoFrontend)
+      : totalCargue - (Number(fiadoFrontend)||0) - (Number(devolucionesFrontend)||0) - (Number(agotadosFrontend)||0) - (Number(repasosFrontend)||0) - (Number(erroresFrontend)||0) - (Number(descuento)||0) + cobrosEfectivo
+
+    const totalRecibido = totalFisicoRecibido
+    const diferencia    = Math.round((totalRecibido - totalEsperado) * 100) / 100
+    const estado        = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
+    const tipoCuadre    = planillaIds.length === 1 ? 'individual' : 'agrupado'
 
     // ─── 6. TRANSACCIÓN: TODO O NADA ─────────────────────────────────────────
     await sql`BEGIN`
