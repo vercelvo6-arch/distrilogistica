@@ -625,10 +625,39 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   // ── HANDLERS NUEVOS ────────────────────────────────────────────────────────
 
+  // Calcula el saldo disponible del pedido descontando novedades ya registradas
+  const calcularSaldoDisponible = (order: any): number => {
+    const totalOriginal = calculateOrderEffectiveTotal(order)
+    // Buscar novedades del pedido en todas las planillas
+    let totalNovedades = 0
+    Object.values(novedadesPorPlanilla).forEach((novedades: any[]) => {
+      novedades
+        .filter((n: any) => n.pedido_id === order.id)
+        .forEach((n: any) => {
+          const monto = Number(n.monto_novedad) || 0
+          switch (n.tipo_novedad) {
+            case "devolucion":
+            case "agotado":
+            case "descuento":
+              totalNovedades += monto
+              break
+            case "fiado_parcial":
+            case "fiado":
+              // fiado ya consumió ese saldo
+              totalNovedades += monto + (Number(n.monto_pagado) || 0)
+              break
+          }
+        })
+    })
+    return Math.max(0, totalOriginal - totalNovedades)
+  }
+
   const handleAbrirNovedad = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setSelectedOrder(order)
     setTipoNovedad(tipo)
-    setMontoNovedad("")
+    // Pre-cargar con el saldo disponible (total - novedades ya registradas)
+    const saldo = calcularSaldoDisponible(order)
+    setMontoNovedad(String(saldo))
     setShowNovedadModal(true)
   }
 
@@ -648,15 +677,15 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const handleSubmitNovedad = async () => {
     if (!selectedOrder || !tipoNovedad) return
 
-    const totalPedido = calculateOrderEffectiveTotal(selectedOrder)
-    const monto = tipoNovedad === "agotado" ? totalPedido : Number(montoNovedad) || 0
+    const totalPedido = calcularSaldoDisponible(selectedOrder)
+    const monto = Number(montoNovedad) || 0
 
-    if (tipoNovedad !== "fiado" && tipoNovedad !== "agotado" && monto <= 0) {
+    if (tipoNovedad !== "fiado" && monto <= 0) {
       toast({ title: "Error", description: "Ingresa un monto válido", variant: "destructive" })
       return
     }
     if (monto > totalPedido) {
-      toast({ title: "Error", description: `El monto debe estar entre $1 y ${formatCOP(totalPedido)}`, variant: "destructive" })
+      toast({ title: "Error", description: `El monto no puede superar ${formatCOP(totalPedido)}`, variant: "destructive" })
       return
     }
 
@@ -1217,7 +1246,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 : "Confirmar Agotado"}
             </DialogTitle>
             <DialogDescription>
-              {selectedOrder?.cliente} — {formatCOP(calculateOrderEffectiveTotal(selectedOrder))}
+              {selectedOrder?.cliente} — {formatCOP(calcularSaldoDisponible(selectedOrder))}
             </DialogDescription>
           </DialogHeader>
 
@@ -1246,7 +1275,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   <div className="p-3 bg-orange-50 rounded">
                     <p className="text-xs text-orange-600">Saldo que queda fiado:</p>
                     <p className="font-bold text-orange-700">
-                      {formatCOP(calculateOrderEffectiveTotal(selectedOrder) - Number(montoNovedad))}
+                      {formatCOP(calcularSaldoDisponible(selectedOrder) - Number(montoNovedad))}
                     </p>
                   </div>
                 )}
