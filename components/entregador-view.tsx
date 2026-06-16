@@ -392,12 +392,16 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
               devoluciones += monto
               totalNovedades += monto
               break
-            case "fiado_parcial":
+            case "fiado_parcial": {
+              // monto_novedad YA es el saldo fiado (total - abono).
+              // El abono (monto_pagado) entra a "entregado/recaudado",
+              // el saldo se acumula completo en "fiado".
               const montoPagadoNov = Number(novedad.monto_pagado) || 0
-              fiado += monto - montoPagadoNov
+              fiado += monto
               entregado += montoPagadoNov
-              totalNovedades += monto - montoPagadoNov
+              totalNovedades += monto + montoPagadoNov
               break
+            }
             case "error_facturacion":
               erroresFacturacion += monto
               totalNovedades += monto
@@ -511,7 +515,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             erroresFacturacion += monto
             break
           case "fiado_parcial":
-            fiado += monto - (Number(novedad.monto_pagado) || 0)
+            // monto_novedad ya es el saldo fiado; el abono va a entregado
+            fiado += monto
             entregado += Number(novedad.monto_pagado) || 0
             break
         }
