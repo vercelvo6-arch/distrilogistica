@@ -96,40 +96,9 @@ export async function GET(request: NextRequest) {
     const esEntregador = rol === 'entregador'
 
     if (esEntregador && entregador) {
-      // ── Lógica automática por ruta ────────────────────────────────────────
-      // 1. Obtener las rutas activas del entregador hoy
-      // Buscar la fecha más reciente con planillas activas <= fecha del filtro
-      const [ultimaFecha] = await sql`
-        SELECT MAX(fecha) as fecha_cuadre
-        FROM planillas
-        WHERE entregador = ${entregador}
-          AND fecha <= ${fecha}::date
-          AND cuadrado_en_caja = false
-          AND estado IN ('en_ruta', 'alistado', 'completado', 'alistando')
-      `
-
-      if (!ultimaFecha?.fecha_cuadre) {
-        return NextResponse.json({ success: true, cobros: [] })
-      }
-
-      const rutasHoy = await sql`
-        SELECT DISTINCT tipo_ruta
-        FROM planillas
-        WHERE entregador = ${entregador}
-          AND fecha = ${ultimaFecha.fecha_cuadre}
-          AND cuadrado_en_caja = false
-          AND estado IN ('en_ruta', 'alistado', 'completado', 'alistando')
-      `
-
-      if (rutasHoy.length === 0) {
-        return NextResponse.json({ success: true, cobros: [] })
-      }
-
-      const rutas = rutasHoy.map((r: any) => r.tipo_ruta)
-
-      // 2. Cobros pendientes en esas rutas
+      // ── Solo cobros asignados explícitamente por admin/caja ───────────────
       const cobros = await sql`
-        SELECT DISTINCT ON (f.cliente, f.ruta)
+        SELECT
           f.id,
           f.cliente,
           f.ruta,
@@ -148,14 +117,14 @@ export async function GET(request: NextRequest) {
         WHERE f.eliminado IS NOT TRUE
           AND f.estado IN ('pendiente', 'abono_parcial')
           AND f.saldo_pendiente > 0
-          AND f.ruta = ANY(${rutas})
+          AND f.entregador_asignado = ${entregador}
           ${busqueda ? sql`
             AND (
               f.cliente ILIKE ${'%' + busqueda + '%'}
               OR f.ruta  ILIKE ${'%' + busqueda + '%'}
             )
           ` : sql``}
-        ORDER BY f.cliente, f.ruta, f.id DESC
+        ORDER BY f.ruta ASC, f.fecha_fiado ASC, f.cliente ASC
       `
 
       return NextResponse.json({ success: true, cobros })
