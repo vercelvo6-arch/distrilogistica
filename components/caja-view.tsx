@@ -127,7 +127,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // Modal de novedad unificado en caja
   const [showNovedadCajaModal, setShowNovedadCajaModal] = useState(false)
   const [novedadCajaOrder, setNovedadCajaOrder] = useState<any>(null)
-  const [novedadCajaTipo, setNovedadCajaTipo] = useState<"fiado" | "devolucion" | "agotado" | null>(null)
+  const [novedadCajaTipo, setNovedadCajaTipo] = useState<"fiado" | "devolucion" | "agotado" | "descuento" | null>(null)
   const [novedadCajaMonto, setNovedadCajaMonto] = useState("")
   const [submittingNovedadCaja, setSubmittingNovedadCaja] = useState(false)
 
@@ -555,7 +555,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
         if (!tieneNovedadFiado && order.estado === 'fiado') {
           const montoPagadoReal = Number(order.montoPagado) || 0
-          const saldoFiado = entregadoDelPedido - montoPagadoReal
+          const saldoFiado = Number(order.saldoPendiente) || (entregadoDelPedido - montoPagadoReal)
           if (saldoFiado > 0) {
             fiado += saldoFiado
             entregado += montoPagadoReal
@@ -617,7 +617,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
         if (order.estado === "fiado") {
           const montoPagadoReal = Number(order.montoPagado) || 0
-          fiado += effectiveTotal - montoPagadoReal
+          const saldoFiado = Number(order.saldoPendiente) || (effectiveTotal - montoPagadoReal)
+          fiado += saldoFiado
           entregado += montoPagadoReal
         } else if (order.estado === "repaso") {
           repasos += effectiveTotal
@@ -1409,7 +1410,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setConsignaciones(prev => prev.map(c => c.id === id ? { ...c, [campo]: valor } : c))
   }
 
-  const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado") => {
+  const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setNovedadCajaOrder(order)
     setNovedadCajaTipo(tipo)
     setNovedadCajaMonto("")
@@ -1434,6 +1435,24 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       setSubmittingNovedadCaja(true)
 
       // fiado: montoNovedad = saldo que queda fiado, montoPagado = lo que abonó
+      // Descuento: llama al endpoint de descuento directamente
+      if (novedadCajaTipo === "descuento") {
+        await fetch(`/api/pedidos/${novedadCajaOrder.id}/descuento`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ descuento: monto, motivo: "Descuento registrado desde caja" }),
+        })
+        setRouteSheets(prevSheets => prevSheets.map(s => ({
+          ...s,
+          orders: s.orders.map(o => o.id === novedadCajaOrder.id ? { ...o, descuento: monto } : o)
+        })))
+        toast({ title: "Descuento registrado", description: formatCOP(monto) })
+        setNovedadCajaOrder(null)
+        setNovedadCajaTipo(null)
+        setNovedadCajaMonto("")
+        return
+      }
+
       const tipoApi        = novedadCajaTipo === "fiado" ? "fiado_parcial" : novedadCajaTipo
       const montoNovedad   = novedadCajaTipo === "fiado" ? totalPedido - monto : monto
       const montoPagado    = novedadCajaTipo === "fiado" ? monto : 0
@@ -3007,6 +3026,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600"
                                                     onClick={() => handleAbrirNovedadCaja(order, "agotado")}>
                                                     Agotado
+                                                  </Button>
+                                                  <Button variant="outline" size="sm" className="h-7 text-xs border-purple-300 text-purple-700"
+                                                    onClick={() => handleAbrirNovedadCaja(order, "descuento")}>
+                                                    Descuento
                                                   </Button>
                                                   <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600"
                                                     onClick={() => handleOpenEliminarPedidoModal(order.id, order.cliente, effectiveTotal, route.id)}>
