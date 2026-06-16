@@ -1435,10 +1435,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
-    setNovedadCajaMonto(String(calcularSaldoDisponibleCaja(order)))
     setNovedadCajaOrder(order)
     setNovedadCajaTipo(tipo)
-    setNovedadCajaMonto("")
+    setNovedadCajaMonto(String(calcularSaldoDisponibleCaja(order)))
     setShowNovedadCajaModal(true)
   }
 
