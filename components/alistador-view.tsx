@@ -451,9 +451,26 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     setExpandedDeliveryPersons(newExpanded)
   }
 
-  // ── Funciones del timer ──────────────────────────────────────────────────
+  // ── Funciones del timer — persisten en BD ────────────────────────────────
+  const callTimerApi = async (planillaId: string, accion: string) => {
+    try {
+      await fetch(`/api/planillas/${planillaId}/timer`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion }),
+      })
+    } catch (e) {
+      console.error('[TIMER]', e)
+    }
+  }
+
   const iniciarTimer = (entregador: string) => {
     if (timerActivo && timerEntregador === entregador) return
+    // Persistir en BD para todas las planillas del entregador en alistamiento
+    const planillasEntregador = routeSheets.filter(
+      s => s.entregador === entregador && s.estado === 'alistando'
+    )
+    planillasEntregador.forEach(s => callTimerApi(s.id, 'iniciar'))
     setTimerEntregador(entregador)
     setTimerActivo(true)
     setTimerPausado(false)
@@ -464,11 +481,23 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   }
 
   const pausarTimer = () => {
+    if (timerEntregador) {
+      const planillasEntregador = routeSheets.filter(
+        s => s.entregador === timerEntregador && s.estado === 'alistando'
+      )
+      planillasEntregador.forEach(s => callTimerApi(s.id, 'pausar'))
+    }
     if (timerRef.current) clearInterval(timerRef.current)
     setTimerPausado(true)
   }
 
   const reanudarTimer = () => {
+    if (timerEntregador) {
+      const planillasEntregador = routeSheets.filter(
+        s => s.entregador === timerEntregador && s.estado === 'alistando'
+      )
+      planillasEntregador.forEach(s => callTimerApi(s.id, 'reanudar'))
+    }
     setTimerPausado(false)
     timerRef.current = setInterval(() => {
       setTimerSegundos(prev => prev + 1)
@@ -476,6 +505,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   }
 
   const detenerTimer = () => {
+    if (timerEntregador) {
+      const planillasEntregador = routeSheets.filter(
+        s => s.entregador === timerEntregador && (s.estado === 'alistando' || s.estado === 'alistado')
+      )
+      planillasEntregador.forEach(s => callTimerApi(s.id, 'finalizar'))
+    }
     if (timerRef.current) clearInterval(timerRef.current)
     setTimerActivo(false)
     setTimerPausado(false)
