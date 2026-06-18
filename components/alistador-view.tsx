@@ -335,6 +335,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         throw new Error(errorData.error || 'Error al guardar estado')
       }
 
+      let yaActualizado = false
       const updatedSheets = routeSheets.map(sheet => {
         if (sheet.entregador === editingProduct.entregador) {
           return {
@@ -343,13 +344,15 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               ...order,
               items: order.items.map(item => {
                 if (item.codigo === editingProduct.product.codigo) {
+                  const obs = !yaActualizado ? observaciones.trim() || null : null
+                  if (!yaActualizado) yaActualizado = true
                   return {
                     ...item,
                     estadoAlistamiento: estadoSeleccionado,
                     cantidadDisponible: disponible,
                     cantidadFaltante: faltante,
                     unidadIncompleta: estadoSeleccionado === 'incompleto',
-                    observacionesFaltante: observaciones.trim() || null,
+                    observacionesFaltante: obs,
                     productoReemplazo: estadoSeleccionado === 'reemplazo' ? productoReemplazo.trim() : null,
                   }
                 }
