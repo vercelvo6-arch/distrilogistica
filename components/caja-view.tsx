@@ -276,26 +276,26 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }))
 
       setRouteSheets(planillas)
-      // Expandir todas las rutas por defecto
       setExpandedRoutes(new Set(planillas.map((p: any) => p.id)))
 
-      // Cargar novedades de cada planilla en paralelo
+      // ✅ Una sola petición para todas las novedades
       const novedadesMap: Record<number, NovedadPedido[]> = {}
-      const promesas = planillas.map(async (planilla) => {
+      if (planillas.length > 0) {
         try {
-          const response = await fetch(`/api/novedades?planillaId=${planilla.id}`)
-          if (response.ok) {
-            const data = await response.json()
-            novedadesMap[planilla.id] = data.novedades || []
-          } else {
-            novedadesMap[planilla.id] = []
+          const ids = planillas.map(p => p.id).join(",")
+          const novedadesRes = await fetch(`/api/novedades?planillaIds=${ids}`)
+          if (novedadesRes.ok) {
+            const novedadesData = await novedadesRes.json()
+            const todas = novedadesData.novedades || []
+            todas.forEach((n: any) => {
+              if (!novedadesMap[n.planilla_id]) novedadesMap[n.planilla_id] = []
+              novedadesMap[n.planilla_id].push(n)
+            })
           }
         } catch (error) {
-          console.error("[CAJA] Error cargando novedades planilla", planilla.id, error)
-          novedadesMap[planilla.id] = []
+          console.error("[CAJA] Error cargando novedades:", error)
         }
-      })
-      await Promise.all(promesas)
+      }
       setNovedadesPorPlanilla(novedadesMap)
 
     } catch (err) {
