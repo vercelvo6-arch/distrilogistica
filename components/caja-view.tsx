@@ -2428,19 +2428,14 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         </div>
                         <div>
                           <span className="text-gray-500">Recibido</span>
-                          <p className="font-semibold">{formatCOP(Number(rec.efectivo_recibido) + Number(rec.monto_consignacion || rec.total_consignado || 0))}</p>
+                          <p className="font-semibold">{formatCOP(Number(rec.efectivo_recibido))}</p>
                         </div>
                         <div>
                           <span className="text-gray-500">Diferencia</span>
-                          {(() => {
-                            const recibidoReal = Number(rec.efectivo_recibido) + Number(rec.monto_consignacion || rec.total_consignado || 0)
-                            const diff = recibidoReal - Number(rec.efectivo_esperado)
-                            return (
-                              <p className={`font-semibold ${diff !== 0 ? "text-red-600" : "text-green-600"}`}>
-                                {diff > 0 ? "+" : ""}{formatCOP(diff)}
-                              </p>
-                            )
-                          })()}
+                          <p className={`font-semibold ${Number(rec.diferencia_efectivo) !== 0 ? "text-red-600" : "text-green-600"}`}>
+                            {Number(rec.diferencia_efectivo) > 0 ? "+" : ""}
+                            {formatCOP(Number(rec.diferencia_efectivo))}
+                          </p>
                         </div>
                       </div>
 
