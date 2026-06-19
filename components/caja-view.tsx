@@ -2642,7 +2642,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             />
                             <CardNovedadesInteractivo
                               planillaId={String(route.id)}
-                              tipo="fiado_parcial"
+                              tipo="fiado"
                               onNovedadActualizada={() => reloadNovedades(route.id)}
                             />
                             <CardNovedadesInteractivo
