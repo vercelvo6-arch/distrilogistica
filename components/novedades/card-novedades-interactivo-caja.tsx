@@ -36,6 +36,14 @@ interface ResumenTipo {
   cantidad: number
 }
 
+// El tipo "fiado" en UI corresponde a "fiado_parcial" en BD
+const TIPOS_BD: Record<string, string[]> = {
+  agotado: ["agotado"],
+  devolucion: ["devolucion"],
+  fiado: ["fiado_parcial", "fiado"],
+  error_facturacion: ["error_facturacion"],
+}
+
 export function CardNovedadesInteractivo({
   planillaId,
   tipo,
@@ -48,6 +56,8 @@ export function CardNovedadesInteractivo({
   const [todasNovedades, setTodasNovedades] = useState<Novedad[]>([])
   const [loading, setLoading] = useState(true)
 
+  const tiposBuscar = TIPOS_BD[tipo] || [tipo]
+
   useEffect(() => {
     loadResumen()
   }, [planillaId, tipo])
@@ -58,20 +68,38 @@ export function CardNovedadesInteractivo({
       if (!response.ok) { setLoading(false); return }
 
       const data = await response.json()
-      const resumenTipo = data.resumen[tipo]
-      setResumen(resumenTipo)
 
-      // Pendientes (no validadas)
+      // El resumen puede venir indexado por "fiado" o "fiado_parcial" según el backend
+      const resumenTipo = data.resumen?.[tipo] || data.resumen?.["fiado_parcial"] || null
+
+      // Pendientes (no validadas) — filtrar por cualquiera de los tipos BD equivalentes
       const pendientes = (data.novedadesPendientes || []).filter(
-        (n: Novedad) => n.tipo_novedad === tipo
+        (n: Novedad) => tiposBuscar.includes(n.tipo_novedad)
       )
       setNovedades(pendientes)
 
-      // Todas (incluyendo validadas) — para permitir eliminar
-      const todas = (data.todasNovedades || data.novedadesPendientes || []).filter(
-        (n: Novedad) => n.tipo_novedad === tipo
-      )
+      // Todas (incluyendo validadas)
+      const todasRaw = data.todasNovedades || data.novedadesPendientes || []
+      const todas = todasRaw.filter((n: Novedad) => tiposBuscar.includes(n.tipo_novedad))
       setTodasNovedades(todas)
+
+      // Si el backend no da resumen para este tipo, calcularlo desde las novedades
+      if (resumenTipo) {
+        setResumen(resumenTipo)
+      } else {
+        const total = todas.reduce((s: number, n: Novedad) => {
+          // Para fiado_parcial, el "total" relevante es el saldo (monto_novedad)
+          return s + (Number(n.monto_novedad) || 0)
+        }, 0)
+        const validadasCount = todas.filter((n: Novedad) => n.validado).length
+        setResumen({
+          total,
+          validadas: validadasCount,
+          pendientes: todas.length - validadasCount,
+          clientes: new Set(todas.map((n: Novedad) => n.pedido_id)).size,
+          cantidad: todas.length,
+        })
+      }
     } catch (error) {
       console.error("[CardNovedades] Error cargando resumen:", error)
     } finally {
@@ -95,7 +123,11 @@ export function CardNovedadesInteractivo({
     }
   }
 
+  // ✅ Eliminar/Revertir ahora siempre disponible — propias o del entregador,
+  // validadas o no. Caja es quien valida, por lo tanto puede revertir cualquier
+  // novedad de este tipo.
   async function handleEliminar(novedadId: string) {
+    if (!confirm("¿Revertir esta novedad? Esto la eliminará y recalculará los totales del cuadre.")) return
     try {
       const response = await fetch("/api/novedades/eliminar", {
         method: "POST",
@@ -103,11 +135,11 @@ export function CardNovedadesInteractivo({
         body: JSON.stringify({ novedadId }),
       })
       if (!response.ok) throw new Error("Error al eliminar")
-      toast({ title: "Eliminado", description: "Novedad eliminada" })
+      toast({ title: "Revertido", description: "Novedad eliminada y totales recalculados" })
       await loadResumen()
       onNovedadActualizada?.()
     } catch {
-      toast({ title: "Error", description: "No se pudo eliminar", variant: "destructive" })
+      toast({ title: "Error", description: "No se pudo revertir", variant: "destructive" })
     }
   }
 
@@ -133,6 +165,7 @@ export function CardNovedadesInteractivo({
       case "devolucion": return "DEVOLUCIONES"
       case "fiado": return "FIADOS"
       case "error_facturacion": return "ERRORES FACTURACIÓN"
+      default: return "NOVEDADES"
     }
   }
 
@@ -142,6 +175,7 @@ export function CardNovedadesInteractivo({
       case "devolucion": return "bg-red-50 border-red-300"
       case "fiado": return "bg-orange-50 border-orange-300"
       case "error_facturacion": return "bg-yellow-50 border-yellow-300"
+      default: return "bg-gray-50 border-gray-200"
     }
   }
 
@@ -151,6 +185,7 @@ export function CardNovedadesInteractivo({
       case "devolucion": return "🔴"
       case "fiado": return "🟠"
       case "error_facturacion": return "🟡"
+      default: return "📋"
     }
   }
 
@@ -214,7 +249,7 @@ export function CardNovedadesInteractivo({
                           <>
                             <p className="text-sm text-green-600">Pagó: {formatCOP(novedad.monto_pagado)}</p>
                             <p className="text-sm text-orange-600 font-medium">
-                              Debe: {formatCOP(novedad.monto_novedad - novedad.monto_pagado)}
+                              Saldo fiado: {formatCOP(novedad.monto_novedad)}
                             </p>
                           </>
                         )}
@@ -226,7 +261,7 @@ export function CardNovedadesInteractivo({
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => handleEliminar(novedad.id)}
                         className="border-red-300 text-red-600 hover:bg-red-50">
-                        🗑 Eliminar
+                        ↩ Revertir
                       </Button>
                       <Select onValueChange={(value) => { if (value) handleCambiarTipo(novedad.id, value) }} defaultValue="">
                         <SelectTrigger className="flex-1">
@@ -235,7 +270,7 @@ export function CardNovedadesInteractivo({
                         <SelectContent>
                           {tipo !== "agotado" && <SelectItem value="agotado">⚫ Agotado</SelectItem>}
                           {tipo !== "devolucion" && <SelectItem value="devolucion">🔴 Devolución</SelectItem>}
-                          {tipo !== "fiado" && <SelectItem value="fiado">🟠 Fiado</SelectItem>}
+                          {tipo !== "fiado" && <SelectItem value="fiado_parcial">🟠 Fiado</SelectItem>}
                           {tipo !== "error_facturacion" && <SelectItem value="error_facturacion">🟡 Error Fact.</SelectItem>}
                         </SelectContent>
                       </Select>
@@ -245,7 +280,7 @@ export function CardNovedadesInteractivo({
               </>
             )}
 
-            {/* Validadas — con opción de eliminar */}
+            {/* Validadas — caja puede revertir incluso estas */}
             {todasNovedades.filter(n => n.validado).length > 0 && (
               <>
                 <p className="text-xs font-medium text-green-700 uppercase mt-4">Validadas</p>
@@ -267,7 +302,7 @@ export function CardNovedadesInteractivo({
                     <div className="flex justify-end mt-2">
                       <Button size="sm" variant="outline" onClick={() => handleEliminar(novedad.id)}
                         className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50">
-                        ↩ Revertir / Eliminar
+                        ↩ Revertir / Anular
                       </Button>
                     </div>
                   </Card>
