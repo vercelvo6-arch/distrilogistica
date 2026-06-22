@@ -130,10 +130,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, cobros })
     }
 
-    // ── Caja/Admin: todos los disponibles ─────────────────────────────────
-    const cobros = await sql`
+    // ── Caja/Admin: todos los disponibles (tabla fiados + pedidos huérfanos) ─
+    const cobrosFiados = await sql`
       SELECT
-        f.id,
+        f.id::text          AS id,
         f.cliente,
         f.ruta,
         f.entregador        AS entregador_origen,
@@ -143,6 +143,7 @@ export async function GET(request: NextRequest) {
         f.estado,
         f.fecha_fiado,
         f.entregador_asignado,
+        'fiados'            AS origen,
         COALESCE(
           (SELECT SUM(monto_abono) FROM abonos_fiados WHERE pedido_id = f.id::text),
           0
@@ -161,8 +162,41 @@ export async function GET(request: NextRequest) {
             OR f.ruta  ILIKE ${'%' + busqueda + '%'}
           )
         ` : sql``}
-      ORDER BY f.fecha_fiado ASC, f.cliente ASC
     `
+
+    // Pedidos con estado='fiado' que NUNCA se migraron a la tabla fiados
+    // (mismo criterio que usa el admin en /api/fiados)
+    const cobrosPedidos = await sql`
+      SELECT
+        p.id                AS id,
+        p.cliente,
+        pl.tipo_ruta         AS ruta,
+        pl.entregador        AS entregador_origen,
+        p.total              AS monto_total,
+        COALESCE(p.monto_pagado, 0)     AS monto_pagado,
+        COALESCE(p.saldo_pendiente, p.total) AS saldo_pendiente,
+        p.estado,
+        pl.fecha             AS fecha_fiado,
+        NULL                 AS entregador_asignado,
+        'pedidos'            AS origen,
+        0                    AS total_abonado
+      FROM pedidos p
+      JOIN planillas pl ON p.planilla_id = pl.id
+      LEFT JOIN fiados f ON f.pedido_id = p.id OR f.id::text = p.id
+      WHERE p.estado = 'fiado'
+        AND COALESCE(p.saldo_pendiente, p.total) > 0
+        AND f.id IS NULL
+        ${busqueda ? sql`
+          AND (
+            p.cliente ILIKE ${'%' + busqueda + '%'}
+            OR pl.tipo_ruta ILIKE ${'%' + busqueda + '%'}
+          )
+        ` : sql``}
+    `
+
+    const cobros = [...cobrosFiados, ...cobrosPedidos].sort(
+      (a: any, b: any) => new Date(a.fecha_fiado).getTime() - new Date(b.fecha_fiado).getTime()
+    )
 
     return NextResponse.json({ success: true, cobros })
 
