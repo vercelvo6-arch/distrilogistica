@@ -199,50 +199,99 @@ export async function POST(request: Request) {
         // Solo marcamos para vincular al cuadre después del INSERT — sin duplicar
         if (cobro.yaRegistrado) continue
 
-        const fiadoId = Number(cobro.id)
+        const totalAbono = efectivo + nequi
+        const esFiadoNumerico = /^\d+$/.test(String(cobro.id))
 
-        const [fiado] = await sql`
-          SELECT id, monto_total, monto_pagado, saldo_pendiente, estado
-          FROM fiados
-          WHERE id = ${fiadoId}
-            AND (eliminado IS NULL OR eliminado = false)
-            AND estado IN ('pendiente', 'abono_parcial')
-        `
-        if (!fiado) continue
+        if (esFiadoNumerico) {
+          // ── Cobro proviene de la tabla `fiados` ──────────────────────────
+          const fiadoId = Number(cobro.id)
 
-        const totalAbono       = efectivo + nequi
-        const saldoActual      = Number(fiado.saldo_pendiente)
-        const nuevoMontoPagado = Number(fiado.monto_pagado) + totalAbono
-        const nuevoSaldo       = Math.max(0, Math.round((saldoActual - totalAbono) * 100) / 100)
-        const pagoCompleto     = nuevoSaldo <= 0
+          const [fiado] = await sql`
+            SELECT id, monto_total, monto_pagado, saldo_pendiente, estado
+            FROM fiados
+            WHERE id = ${fiadoId}
+              AND (eliminado IS NULL OR eliminado = false)
+              AND estado IN ('pendiente', 'abono_parcial')
+          `
+          if (!fiado) continue
 
-        await sql`
-          UPDATE fiados SET
-            monto_pagado    = ${nuevoMontoPagado},
-            saldo_pendiente = ${nuevoSaldo},
-            estado          = ${pagoCompleto ? 'pagado_completo' : 'abono_parcial'},
-            updated_at      = NOW()
-          WHERE id = ${fiadoId}
-        `
+          const saldoActual      = Number(fiado.saldo_pendiente)
+          const nuevoMontoPagado = Number(fiado.monto_pagado) + totalAbono
+          const nuevoSaldo       = Math.max(0, Math.round((saldoActual - totalAbono) * 100) / 100)
+          const pagoCompleto     = nuevoSaldo <= 0
 
-        await sql`
-          INSERT INTO abonos_fiados (
-            pedido_id, monto_abono, monto_nequi, metodo_pago,
-            referencia_pago, fecha_abono, observaciones,
-            entregador_cobro, origen_tabla, created_at
-          ) VALUES (
-            ${String(fiadoId)},
-            ${efectivo},
-            ${nequi},
-            ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
-            ${cobro.referencia?.trim() || null},
-            NOW(),
-            ${'Cobro registrado en cuadre de caja'},
-            ${entregador},
-            'fiados',
-            NOW()
-          )
-        `
+          await sql`
+            UPDATE fiados SET
+              monto_pagado    = ${nuevoMontoPagado},
+              saldo_pendiente = ${nuevoSaldo},
+              estado          = ${pagoCompleto ? 'pagado_completo' : 'abono_parcial'},
+              updated_at      = NOW()
+            WHERE id = ${fiadoId}
+          `
+
+          await sql`
+            INSERT INTO abonos_fiados (
+              pedido_id, monto_abono, monto_nequi, metodo_pago,
+              referencia_pago, fecha_abono, observaciones,
+              entregador_cobro, origen_tabla, created_at
+            ) VALUES (
+              ${String(fiadoId)},
+              ${efectivo},
+              ${nequi},
+              ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
+              ${cobro.referencia?.trim() || null},
+              NOW(),
+              ${'Cobro registrado en cuadre de caja'},
+              ${entregador},
+              'fiados',
+              NOW()
+            )
+          `
+        } else {
+          // ── Cobro proviene de un pedido huérfano (estado='fiado' sin fila en `fiados`) ──
+          const pedidoId = String(cobro.id)
+
+          const [pedido] = await sql`
+            SELECT id, total, monto_pagado, saldo_pendiente, estado
+            FROM pedidos
+            WHERE id = ${pedidoId}
+              AND estado = 'fiado'
+          `
+          if (!pedido) continue
+
+          const saldoActual      = Number(pedido.saldo_pendiente ?? pedido.total)
+          const nuevoMontoPagado = Number(pedido.monto_pagado || 0) + totalAbono
+          const nuevoSaldo       = Math.max(0, Math.round((saldoActual - totalAbono) * 100) / 100)
+          const pagoCompleto     = nuevoSaldo <= 0
+
+          await sql`
+            UPDATE pedidos SET
+              monto_pagado    = ${nuevoMontoPagado},
+              saldo_pendiente = ${nuevoSaldo},
+              estado          = ${pagoCompleto ? 'pagado' : 'fiado'},
+              updated_at      = NOW()
+            WHERE id = ${pedidoId}
+          `
+
+          await sql`
+            INSERT INTO abonos_fiados (
+              pedido_id, monto_abono, monto_nequi, metodo_pago,
+              referencia_pago, fecha_abono, observaciones,
+              entregador_cobro, origen_tabla, created_at
+            ) VALUES (
+              ${pedidoId},
+              ${efectivo},
+              ${nequi},
+              ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
+              ${cobro.referencia?.trim() || null},
+              NOW(),
+              ${'Cobro registrado en cuadre de caja'},
+              ${entregador},
+              'pedidos',
+              NOW()
+            )
+          `
+        }
       }
 
       // 6c. Guardar cuadre
