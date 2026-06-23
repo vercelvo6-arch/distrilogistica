@@ -161,9 +161,68 @@ export async function POST(request: NextRequest) {
     // ✅ NO tocar el estado del pedido — las novedades son la fuente de verdad
     // El estado del pedido lo actualiza caja al momento de cuadrar
 
+    // ✅ SINCRONIZACIÓN INMEDIATA: si es fiado, refleja en la tabla `fiados`
+    // ahora mismo — sin esperar a que caja cuadre la planilla. Esto es lo que
+    // consulta el admin (`fiados-view`), así que debe existir desde el instante
+    // en que el entregador o caja marcan el fiado.
+    let fiadoSincronizado = null
+    if (esFiado) {
+      const [pedidoCompleto] = await sql`
+        SELECT p.id, p.cliente, p.direccion, p.telefono, p.observaciones,
+               pl.fecha, pl.entregador, pl.tipo_ruta
+        FROM pedidos p
+        JOIN planillas pl ON p.planilla_id = pl.id
+        WHERE p.id = ${pedidoId}
+      `
+
+      if (pedidoCompleto) {
+        const saldo        = Math.max(0, Number(montoNovedad))
+        const montoPagadoN = Number(montoPagado || 0)
+        const totalPedido  = saldo + montoPagadoN
+
+        const [existente] = await sql`
+          SELECT id FROM fiados WHERE pedido_id = ${pedidoId}
+        `
+
+        if (existente) {
+          // Ya existe un fiado para este pedido — actualizar saldo/abono
+          const [actualizado] = await sql`
+            UPDATE fiados SET
+              monto_total     = ${totalPedido},
+              monto_pagado    = ${montoPagadoN},
+              saldo_pendiente = ${saldo},
+              estado          = ${saldo > 0 ? 'pendiente' : 'pagado_completo'},
+              updated_at      = NOW()
+            WHERE id = ${existente.id}
+            RETURNING *
+          `
+          fiadoSincronizado = actualizado
+        } else {
+          const [creado] = await sql`
+            INSERT INTO fiados (
+              pedido_id, cliente, direccion, telefono,
+              monto_total, monto_pagado, saldo_pendiente,
+              fecha_fiado, entregador, ruta, estado, observaciones
+            ) VALUES (
+              ${pedidoCompleto.id}, ${pedidoCompleto.cliente}, ${pedidoCompleto.direccion || null},
+              ${pedidoCompleto.telefono || null}, ${totalPedido},
+              ${montoPagadoN}, ${saldo},
+              ${pedidoCompleto.fecha}, ${pedidoCompleto.entregador}, ${pedidoCompleto.tipo_ruta},
+              ${saldo > 0 ? 'pendiente' : 'pagado_completo'},
+              ${pedidoCompleto.observaciones || null}
+            )
+            ON CONFLICT DO NOTHING
+            RETURNING *
+          `
+          fiadoSincronizado = creado
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       novedad,
+      fiado: fiadoSincronizado,
       mensaje: "Novedad registrada exitosamente",
     });
 
