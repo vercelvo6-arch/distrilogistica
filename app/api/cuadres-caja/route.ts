@@ -158,17 +158,24 @@ export async function POST(request: Request) {
     await sql`BEGIN`
 
     try {
-      // 6a. Guardar fiados nuevos
+      // 6a. Guardar fiados nuevos — leer desde novedades_pedido (fuente de verdad real)
+      // ✅ SIN restringir por planillaIds: captura también huérfanos de cuadres previos
+      // que quedaron sin migrar por código anterior a este fix.
       const pedidosFiados = await sql`
-        SELECT p.id, p.cliente, p.direccion, p.telefono, p.total,
-               COALESCE(p.monto_pagado,0) AS monto_pagado,
-               COALESCE(p.saldo_pendiente, p.total - COALESCE(p.monto_pagado,0)) AS saldo_pendiente,
-               p.observaciones, pl.fecha, pl.entregador, pl.tipo_ruta
-        FROM pedidos p
+        SELECT
+          p.id, p.cliente, p.direccion, p.telefono,
+          n.monto_novedad AS saldo_pendiente,
+          COALESCE(n.monto_pagado, 0) AS monto_pagado,
+          (n.monto_novedad + COALESCE(n.monto_pagado,0)) AS total,
+          p.observaciones, pl.fecha, pl.entregador, pl.tipo_ruta,
+          n.id AS novedad_id
+        FROM novedades_pedido n
+        JOIN pedidos p ON n.pedido_id = p.id
         JOIN planillas pl ON p.planilla_id = pl.id
-        WHERE p.estado = 'fiado'
-          AND COALESCE(p.es_cobro, false) = false
-          AND p.planilla_id = ANY(${planillaIds})
+        WHERE n.tipo_novedad = 'fiado_parcial'
+          AND NOT EXISTS (
+            SELECT 1 FROM fiados f WHERE f.pedido_id = p.id
+          )
       `
       for (const pedido of pedidosFiados) {
         const saldo = Math.max(0, Number(pedido.saldo_pendiente))
@@ -186,6 +193,10 @@ export async function POST(request: Request) {
             ${pedido.observaciones || null}
           )
           ON CONFLICT DO NOTHING
+        `
+        // Marcar la novedad como validada — caja ya la cuadró y migró a fiados
+        await sql`
+          UPDATE novedades_pedido SET validado = true WHERE id = ${pedido.novedad_id}
         `
       }
 
