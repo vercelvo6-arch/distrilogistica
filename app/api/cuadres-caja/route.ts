@@ -96,12 +96,8 @@ export async function POST(request: Request) {
     }
 
     // ─── 3. CALCULAR TOTALES ──────────────────────────────────────────────────
-    // Cargue viene de planillas (fuente de verdad)
-    // Novedades: si el body trae valores editados por caja, se usan esos.
-    // Si no, se toman de las planillas como fallback.
     const totalCargue = planillas.reduce((s: number, p: any) => s + Number(p.total_cargue || 0), 0)
 
-    // Novedades — usar valor del modal si fue ingresado, sino sumar desde planillas
     const totalFiadosNuevos = (body.fiados !== undefined && body.fiados !== null)
       ? Number(body.fiados) || 0
       : planillas.reduce((s: number, p: any) => s + Number(p.total_fiado || 0), 0)
@@ -120,7 +116,6 @@ export async function POST(request: Request) {
 
     const totalDescuentos = Number(descuento) || 0
 
-    // Entregado = cargue - novedades (lo que no es novedad fue entregado)
     const totalEntregado = totalCargue - totalFiadosNuevos - totalDevoluciones - totalRepasos - totalAgotados
 
     // ─── 4. CALCULAR COBROS VINCULADOS ────────────────────────────────────────
@@ -130,8 +125,6 @@ export async function POST(request: Request) {
     const totalCobros    = cobrosEfectivo + cobrosNequi
 
     // ─── 5. FÓRMULA DE CUADRE ─────────────────────────────────────────────────
-    // Esperado efectivo = entregado - descuentos + cobros efectivo
-    // Esperado nequi    = cobros nequi
     const efectivoEsperado = Math.round((totalEntregado - totalDescuentos + cobrosEfectivo) * 100) / 100
     const nequiEsperado    = cobrosNequi
 
@@ -143,8 +136,6 @@ export async function POST(request: Request) {
     const nequiReal           = Number(nequiRecibido) || 0
     const totalFisicoRecibido = billetesVal + monedasVal + consignadoVal + nequiReal || Number(efectivoRecibido) || 0
 
-    // ✅ Usar el totalEsperado calculado por el frontend (cargue - novedades + cobros)
-    // Es más preciso que recalcular aquí porque el frontend ya tiene las novedades reales
     const totalEsperado = totalEsperadoFrontend !== undefined
       ? Number(totalEsperadoFrontend)
       : totalCargue - (Number(fiadoFrontend)||0) - (Number(devolucionesFrontend)||0) - (Number(agotadosFrontend)||0) - (Number(repasosFrontend)||0) - (Number(erroresFrontend)||0) - (Number(descuento)||0) + cobrosEfectivo
@@ -159,8 +150,6 @@ export async function POST(request: Request) {
 
     try {
       // 6a. Guardar fiados nuevos — leer desde novedades_pedido (fuente de verdad real)
-      // ✅ SIN restringir por planillaIds: captura también huérfanos de cuadres previos
-      // que quedaron sin migrar por código anterior a este fix.
       const pedidosFiados = await sql`
         SELECT
           p.id, p.cliente, p.direccion, p.telefono,
@@ -194,7 +183,6 @@ export async function POST(request: Request) {
           )
           ON CONFLICT DO NOTHING
         `
-        // Marcar la novedad como validada — caja ya la cuadró y migró a fiados
         await sql`
           UPDATE novedades_pedido SET validado = true WHERE id = ${pedido.novedad_id}
         `
@@ -206,15 +194,12 @@ export async function POST(request: Request) {
         const nequi    = Number(cobro.montoNequi) || 0
         if (!cobro.id || efectivo + nequi <= 0) continue
 
-        // Si yaRegistrado=true el entregador ya lo cobró en ruta
-        // Solo marcamos para vincular al cuadre después del INSERT — sin duplicar
         if (cobro.yaRegistrado) continue
 
         const totalAbono = efectivo + nequi
         const esFiadoNumerico = /^\d+$/.test(String(cobro.id))
 
         if (esFiadoNumerico) {
-          // ── Cobro proviene de la tabla `fiados` ──────────────────────────
           const fiadoId = Number(cobro.id)
 
           const [fiado] = await sql`
@@ -259,7 +244,6 @@ export async function POST(request: Request) {
             )
           `
         } else {
-          // ── Cobro proviene de un pedido huérfano (estado='fiado' sin fila en `fiados`) ──
           const pedidoId = String(cobro.id)
 
           const [pedido] = await sql`
@@ -356,18 +340,34 @@ export async function POST(request: Request) {
 
       const cuadreId = cuadreResult.id
 
-      // 6c.2 Vincular al cuadre los abonos que el entregador ya registró en ruta
+      // 6c.2 Vincular al cuadre los abonos ya registrados (entregador en ruta O Admin)
+      // ✅ FIX: vincular por abonoId exacto en vez de adivinar por fecha.
+      // El bug anterior (DATE(fecha_abono)=CURRENT_DATE) dejaba huérfano
+      // cualquier abono cuyo cuadre se cerrara un día distinto al del abono,
+      // y eso causó conteos duplicados cuando se reconciliaba manualmente.
       const cobrosYaRegistrados = cobros.filter((c: any) => c.yaRegistrado && c.id)
       if (cobrosYaRegistrados.length > 0) {
         for (const cobro of cobrosYaRegistrados) {
-          await sql`
-            UPDATE abonos_fiados SET
-              planilla_cobro_id = ${cuadreId}
-            WHERE pedido_id = ${String(Number(cobro.id))}
-              AND entregador_cobro = ${entregador}
-              AND planilla_cobro_id IS NULL
-              AND DATE(fecha_abono AT TIME ZONE 'America/Bogota') = CURRENT_DATE
-          `
+          if (cobro.abonoId) {
+            // Vínculo exacto — preferido, sin ambigüedad
+            await sql`
+              UPDATE abonos_fiados SET
+                planilla_cobro_id = ${cuadreId}
+              WHERE id = ${Number(cobro.abonoId)}
+                AND planilla_cobro_id IS NULL
+            `
+          } else {
+            // Fallback legado (abonos sin abonoId, flujo antiguo) —
+            // se mantiene por compatibilidad pero ya no es la vía principal
+            await sql`
+              UPDATE abonos_fiados SET
+                planilla_cobro_id = ${cuadreId}
+              WHERE pedido_id = ${String(Number(cobro.id))}
+                AND entregador_cobro = ${entregador}
+                AND planilla_cobro_id IS NULL
+                AND DATE(fecha_abono AT TIME ZONE 'America/Bogota') = CURRENT_DATE
+            `
+          }
         }
       }
 
