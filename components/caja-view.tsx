@@ -2404,50 +2404,37 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
 </div>
                       </div>
 
-                      {/* Detalle de Novedades */}
-                      {(rec.fiado || rec.devoluciones || rec.repasos || rec.agotados || rec.errores_facturacion || rec.descuento) && (
-                        <div className="mt-3 pt-3 border-t">
-                          <p className="text-xs font-medium text-gray-600 mb-2">Detalle de Novedades:</p>
-                          <div className="grid grid-cols-3 gap-2 text-xs">
-                            {rec.fiado && Number(rec.fiado) > 0 && (
-                              <div className="bg-orange-50 p-2 rounded">
-                                <span className="text-orange-600 font-medium">Fiado</span>
-                                <p className="font-bold">{formatCOP(Number(rec.fiado))}</p>
-                              </div>
-                            )}
-                            {rec.devoluciones && Number(rec.devoluciones) > 0 && (
-                              <div className="bg-red-50 p-2 rounded">
-                                <span className="text-red-600 font-medium">Devoluciones</span>
-                                <p className="font-bold">{formatCOP(Number(rec.devoluciones))}</p>
-                              </div>
-                            )}
-                            {rec.repasos && Number(rec.repasos) > 0 && (
-                              <div className="bg-blue-50 p-2 rounded">
-                                <span className="text-blue-600 font-medium">Repasos</span>
-                                <p className="font-bold">{formatCOP(Number(rec.repasos))}</p>
-                              </div>
-                            )}
-                            {rec.agotados && Number(rec.agotados) > 0 && (
-                              <div className="bg-gray-100 p-2 rounded">
-                                <span className="text-gray-600 font-medium">Agotados</span>
-                                <p className="font-bold">{formatCOP(Number(rec.agotados))}</p>
-                              </div>
-                            )}
-                            {rec.errores_facturacion && Number(rec.errores_facturacion) > 0 && (
-                              <div className="bg-orange-100 p-2 rounded">
-                                <span className="text-orange-700 font-medium">Errores Fact.</span>
-                                <p className="font-bold">{formatCOP(Number(rec.errores_facturacion))}</p>
-                              </div>
-                            )}
-                            {rec.descuento && Number(rec.descuento) > 0 && (
-                              <div className="bg-purple-50 p-2 rounded">
-                                <span className="text-purple-600 font-medium">Descuentos</span>
-                                <p className="font-bold">{formatCOP(Number(rec.descuento))}</p>
-                              </div>
-                            )}
+                      {/* Detalle de Novedades — siempre visible, sin esconder en $0 */}
+                      <div className="mt-3 pt-3 border-t">
+                        <p className="text-xs font-medium text-gray-600 mb-2">Detalle de Novedades:</p>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div className="bg-orange-50 p-2 rounded">
+                            <span className="text-orange-600 font-medium">Fiado</span>
+                            <p className="font-bold">{formatCOP(Number(rec.fiado) || 0)}</p>
+                          </div>
+                          <div className="bg-red-50 p-2 rounded">
+                            <span className="text-red-600 font-medium">Devoluciones</span>
+                            <p className="font-bold">{formatCOP(Number(rec.devoluciones) || 0)}</p>
+                          </div>
+                          <div className="bg-blue-50 p-2 rounded">
+                            <span className="text-blue-600 font-medium">Repasos</span>
+                            <p className="font-bold">{formatCOP(Number(rec.repasos) || 0)}</p>
+                          </div>
+                          <div className="bg-gray-100 p-2 rounded">
+                            <span className="text-gray-600 font-medium">Agotados</span>
+                            <p className="font-bold">{formatCOP(Number(rec.agotados) || 0)}</p>
+                          </div>
+                          <div className="bg-orange-100 p-2 rounded">
+                            <span className="text-orange-700 font-medium">Errores Fact.</span>
+                            <p className="font-bold">{formatCOP(Number(rec.errores_facturacion) || 0)}</p>
+                          </div>
+                          <div className="bg-purple-50 p-2 rounded">
+                            <span className="text-purple-600 font-medium">Descuentos</span>
+                            <p className="font-bold">{formatCOP(Number(rec.descuento) || 0)}</p>
                           </div>
                         </div>
-                      )}
+                      </div>
+
 
                       <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
                         <div>
