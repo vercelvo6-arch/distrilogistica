@@ -98,9 +98,7 @@ export async function POST(request: Request) {
     // ─── 3. CALCULAR TOTALES ──────────────────────────────────────────────────
     const totalCargue = planillas.reduce((s: number, p: any) => s + Number(p.total_cargue || 0), 0)
 
-    const totalFiadosNuevos = (body.fiados !== undefined && body.fiados !== null)
-      ? Number(body.fiados) || 0
-      : planillas.reduce((s: number, p: any) => s + Number(p.total_fiado || 0), 0)
+    const totalFiadosNuevos = Number(fiadoFrontend) || 0
 
     const totalDevoluciones = (body.devoluciones !== undefined && body.devoluciones !== null)
       ? Number(body.devoluciones) || 0
