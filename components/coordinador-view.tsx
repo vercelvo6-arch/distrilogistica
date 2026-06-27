@@ -354,6 +354,48 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
   }
 
+  const handleRevertirFaltante = async (producto: any, entregador: string) => {
+    const faltantesDelProducto = faltantes.filter(
+      (f) => f.codigo === producto.codigo && f.entregador === entregador && (f.estado === "resuelto" || f.estado === "definitivo"),
+    )
+
+    if (faltantesDelProducto.length === 0) {
+      alert("No se encontró el registro de faltante para revertir")
+      return
+    }
+
+    const justificacion = window.prompt(
+      `¿Por qué se revierte la subsanación de "${producto.descripcion}"?\n\nEsta justificación quedará registrada.`
+    )
+
+    if (!justificacion || !justificacion.trim()) {
+      return
+    }
+
+    try {
+      const response = await fetch("/api/faltantes/revertir", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          faltanteId: faltantesDelProducto[0].id,
+          justificacion: justificacion.trim(),
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Error al revertir")
+      }
+
+      alert(result.mensaje || "Faltante revertido correctamente")
+      await loadSupervisionData()
+    } catch (err) {
+      console.error("[REVERTIR] ❌ ERROR:", err)
+      alert("Error al revertir faltante: " + (err as Error).message)
+    }
+  }
+
   const handleDevolverAlistamiento = async (planillaId: string, entregador: string, ruta: string) => {
     if (!confirm(`¿Devolver la planilla de ${entregador} - Ruta ${ruta} a estado "Alistando"?\n\nEsto permitirá al alistador completarla correctamente.`)) {
       return
@@ -1148,14 +1190,26 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           ) : producto.observacionesFaltante || "-"}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleAbrirSubsanar(producto, entregador, sheets)}
-                                            disabled={producto.estadoAlistamiento === "completo"}
-                                          >
-                                            Subsanar
-                                          </Button>
+                                          <div className="flex gap-1 justify-center">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleAbrirSubsanar(producto, entregador, sheets)}
+                                              disabled={producto.estadoAlistamiento === "completo"}
+                                            >
+                                              Subsanar
+                                            </Button>
+                                            {(producto.estadoAlistamiento === "completo" || producto.estadoAlistamiento === "no_alistado") && (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-red-600 border-red-300 hover:bg-red-50"
+                                                onClick={() => handleRevertirFaltante(producto, entregador)}
+                                              >
+                                                Revertir
+                                              </Button>
+                                            )}
+                                          </div>
                                         </td>
                                       </tr>
                                     ))}
