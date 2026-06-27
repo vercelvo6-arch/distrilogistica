@@ -51,6 +51,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   const [supervisionSheets, setSupervisionSheets] = useState<RouteSheet[]>([])
   const [selectedEntregadorSupervision, setSelectedEntregadorSupervision] = useState<string>("todos")
   const [faltantes, setFaltantes] = useState<any[]>([])
+  const [faltantesResueltos, setFaltantesResueltos] = useState<any[]>([])
   const [expandedEntregadores, setExpandedEntregadores] = useState<Set<string>>(new Set())
   const [faltanteParaSubsanar, setFaltanteParaSubsanar] = useState<Faltante | null>(null)
 
@@ -264,15 +265,21 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     // 2. Cargar SOLO faltantes pendientes
     const faltantesResponse = await fetch("/api/faltantes")
     let faltantesPendientes: any[] = []
+    let faltantesYaResueltos: any[] = []
     if (faltantesResponse.ok) {
       const faltantesData = await faltantesResponse.json()
       faltantesPendientes = (faltantesData.faltantes || []).filter(
         (f: any) => f.estado === 'pendiente'
       )
+      // ✅ Necesario para poder revertir: el botón "Revertir" busca aquí
+      faltantesYaResueltos = (faltantesData.faltantes || []).filter(
+        (f: any) => f.estado === 'resuelto' || f.estado === 'definitivo'
+      )
       console.log('[SUPERVISION] ✓ Datos cargados:', {
         planillas: planillasSupervision.length,
         totalFaltantes: faltantesData.faltantes?.length || 0,
-        faltantesPendientes: faltantesPendientes.length
+        faltantesPendientes: faltantesPendientes.length,
+        faltantesResueltos: faltantesYaResueltos.length
       })
     }
 
@@ -283,6 +290,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     startTransition(() => {
       setSupervisionSheets(planillasSupervision)
       setFaltantes(faltantesPendientes)
+      setFaltantesResueltos(faltantesYaResueltos)
     })
 
   } catch (err) {
@@ -355,8 +363,8 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
   }
 
   const handleRevertirFaltante = async (producto: any, entregador: string) => {
-    const faltantesDelProducto = faltantes.filter(
-      (f) => f.codigo === producto.codigo && f.entregador === entregador && (f.estado === "resuelto" || f.estado === "definitivo"),
+    const faltantesDelProducto = faltantesResueltos.filter(
+      (f) => f.codigo === producto.codigo && f.entregador === entregador,
     )
 
     if (faltantesDelProducto.length === 0) {
