@@ -1190,7 +1190,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           ) : producto.observacionesFaltante || "-"}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <div className="flex flex-col sm:flex-row gap-1 justify-center items-stretch sm:items-center">
+                                          <div className="flex flex-col gap-1 items-stretch">
                                             <Button
                                               variant="outline"
                                               size="sm"
