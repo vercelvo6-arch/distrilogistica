@@ -362,6 +362,59 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
   }
 
+  const handleReportarErrorAlistamiento = async (producto: any, entregador: string, sheets: any[]) => {
+    const cantidadRealStr = window.prompt(
+      `"${producto.descripcion}" se marcó como Completo (${producto.cantidadTotal} unidades).\n\n¿Cuántas unidades hay REALMENTE disponibles?`
+    )
+    if (cantidadRealStr === null) return
+
+    const cantidadReal = Number(cantidadRealStr)
+    if (isNaN(cantidadReal) || cantidadReal < 0) {
+      alert("Ingresa un número válido")
+      return
+    }
+    if (cantidadReal >= producto.cantidadTotal) {
+      alert("La cantidad real debe ser menor a la cantidad solicitada, de lo contrario no hay error que corregir")
+      return
+    }
+
+    const nota = window.prompt("Nota breve sobre el error de alistamiento (obligatoria):")
+    if (!nota || !nota.trim()) return
+
+    const sheetDelEntregador = sheets.find((s: any) => s.entregador === entregador)
+
+    try {
+      const response = await fetch('/api/faltantes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planilla_id: sheetDelEntregador?.id,
+          codigo: producto.codigo,
+          descripcion: producto.descripcion,
+          categoria: producto.categoria || '',
+          entregador: entregador,
+          ruta: sheets[0]?.ruta || '',
+          cantidadSolicitada: producto.cantidadTotal,
+          cantidadDisponible: cantidadReal,
+          cantidadFaltante: producto.cantidadTotal - cantidadReal,
+          unidadIncompleta: false,
+          observaciones: `[Corregido por coordinador] ${nota.trim()}`,
+          marcadoPor: user.id,
+          estadoAlistamiento: 'incompleto',
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Error al reportar el error de alistamiento')
+
+      alert('Error de alistamiento registrado. Ahora puedes subsanarlo con la cantidad correcta.')
+      await loadSupervisionData()
+    } catch (err) {
+      console.error('[REPORTAR ERROR ALISTAMIENTO] ❌', err)
+      alert('Error al reportar: ' + (err as Error).message)
+    }
+  }
+
   const handleRevertirFaltante = async (producto: any, entregador: string) => {
     const faltantesDelProducto = faltantesResueltos.filter(
       (f) => f.codigo === producto.codigo && f.entregador === entregador,
@@ -1198,27 +1251,44 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           ) : producto.observacionesFaltante || "-"}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <div className="flex flex-col gap-1 items-stretch">
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              onClick={() => handleAbrirSubsanar(producto, entregador, sheets)}
-                                              disabled={producto.estadoAlistamiento === "completo"}
-                                              className="whitespace-nowrap"
-                                            >
-                                              Subsanar
-                                            </Button>
-                                            {(producto.estadoAlistamiento === "completo" || producto.estadoAlistamiento === "no_alistado") && (
-                                              <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="text-red-600 border-red-300 hover:bg-red-50 whitespace-nowrap"
-                                                onClick={() => handleRevertirFaltante(producto, entregador)}
-                                              >
-                                                Revertir
-                                              </Button>
-                                            )}
-                                          </div>
+                                          {(() => {
+                                            const tieneFaltanteResuelto = faltantesResueltos.some(
+                                              (f) => f.codigo === producto.codigo && f.entregador === entregador
+                                            )
+                                            return (
+                                              <div className="flex flex-col gap-1 items-stretch">
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => handleAbrirSubsanar(producto, entregador, sheets)}
+                                                  disabled={producto.estadoAlistamiento === "completo"}
+                                                  className="whitespace-nowrap"
+                                                >
+                                                  Subsanar
+                                                </Button>
+                                                {(producto.estadoAlistamiento === "no_alistado" || (producto.estadoAlistamiento === "completo" && tieneFaltanteResuelto)) && (
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="text-red-600 border-red-300 hover:bg-red-50 whitespace-nowrap"
+                                                    onClick={() => handleRevertirFaltante(producto, entregador)}
+                                                  >
+                                                    Revertir
+                                                  </Button>
+                                                )}
+                                                {producto.estadoAlistamiento === "completo" && !tieneFaltanteResuelto && (
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="text-orange-600 border-orange-300 hover:bg-orange-50 whitespace-nowrap"
+                                                    onClick={() => handleReportarErrorAlistamiento(producto, entregador, sheets)}
+                                                  >
+                                                    Reportar error
+                                                  </Button>
+                                                )}
+                                              </div>
+                                            )
+                                          })()}
                                         </td>
                                       </tr>
                                     ))}
