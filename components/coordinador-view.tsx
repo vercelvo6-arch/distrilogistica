@@ -1190,12 +1190,13 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           ) : producto.observacionesFaltante || "-"}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
-                                          <div className="flex gap-1 justify-center">
+                                          <div className="flex flex-col sm:flex-row gap-1 justify-center items-stretch sm:items-center">
                                             <Button
                                               variant="outline"
                                               size="sm"
                                               onClick={() => handleAbrirSubsanar(producto, entregador, sheets)}
                                               disabled={producto.estadoAlistamiento === "completo"}
+                                              className="whitespace-nowrap"
                                             >
                                               Subsanar
                                             </Button>
@@ -1203,7 +1204,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                               <Button
                                                 variant="outline"
                                                 size="sm"
-                                                className="text-red-600 border-red-300 hover:bg-red-50"
+                                                className="text-red-600 border-red-300 hover:bg-red-50 whitespace-nowrap"
                                                 onClick={() => handleRevertirFaltante(producto, entregador)}
                                               >
                                                 Revertir
