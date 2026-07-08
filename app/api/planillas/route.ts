@@ -256,6 +256,7 @@ export async function GET() {
       FROM planillas p
       LEFT JOIN pedidos pe ON pe.planilla_id = p.id
       LEFT JOIN pedido_productos pp ON pp.pedido_id = pe.id
+      WHERE p.cuadrado_en_caja = false
       ORDER BY p.created_at DESC, pe.secuencia, pp.codigo
     `;
 
