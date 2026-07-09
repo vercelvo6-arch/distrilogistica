@@ -158,10 +158,10 @@ export async function GET(request: NextRequest) {
     
     const sql = getDB();
     
-    // Si NO se especifica estado, solo mostrar pendientes
-    const estadoFiltro = estado && estado !== 'all' ? estado : 'pendiente';
-    
-    // ✅ FIX: planilla_id se mantiene como string (antes tenía Number() que convertía PLN... a NaN)
+    // Si se especifica estado concreto, filtrar por ese. Si no, traer todos (pendiente + resuelto + definitivo)
+    // para que el coordinador pueda determinar qué botón mostrar (Revertir vs Reportar error)
+    const estadoFiltro = estado && estado !== 'all' ? estado : null;
+
     let faltantes = await sql`
       SELECT 
         f.*,
@@ -173,11 +173,11 @@ export async function GET(request: NextRequest) {
       LEFT JOIN usuarios u2 ON f.resuelto_por = u2.id
       LEFT JOIN planillas pl ON f.planilla_id = pl.id
       WHERE 
-        f.estado = ${estadoFiltro}
+        (${estadoFiltro ? sql`f.estado = ${estadoFiltro}` : sql`1=1`})
         AND (${planilla_id ? sql`f.planilla_id = ${planilla_id}` : sql`1=1`})
         AND (${entregador && entregador !== 'all' ? sql`f.entregador = ${entregador}` : sql`1=1`})
         AND (${codigo ? sql`f.codigo ILIKE ${`%${codigo}%`}` : sql`1=1`})
-        AND (${fecha_inicio ? sql`f.fecha_marcado >= ${fecha_inicio}::date` : sql`1=1`})
+        AND (${fecha_inicio ? sql`f.fecha_marcado >= ${fecha_inicio}::date` : sql`f.fecha_marcado >= CURRENT_DATE - INTERVAL '7 days'`})
         AND (${fecha_fin ? sql`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'` : sql`1=1`})
       ORDER BY f.fecha_marcado DESC 
       LIMIT 500
