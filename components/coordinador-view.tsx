@@ -283,15 +283,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       })
     }
 
-    // ✅ FIX: Agrupar ambos setState dentro de startTransition para que React
-    // los procese en un único ciclo de render no-urgente. Esto evita el error
-    // "NotFoundError: removeChild - node is not a child" causado por dos
-    // re-renders consecutivos mientras Radix UI desmonta el tab anterior.
-    startTransition(() => {
-      setSupervisionSheets(planillasSupervision)
-      setFaltantes(faltantesPendientes)
-      setFaltantesResueltos(faltantesYaResueltos)
-    })
+    // Actualizar estado directamente — urgente para reflejar cambios del coordinador en pantalla
+    setSupervisionSheets([...planillasSupervision])
+    setFaltantes(faltantesPendientes)
+    setFaltantesResueltos(faltantesYaResueltos)
 
   } catch (err) {
     console.error("[SUPERVISION] ❌ Error:", err)
