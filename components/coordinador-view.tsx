@@ -377,7 +377,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     if (!nota || !nota.trim()) return
 
     const sheetDelEntregador = sheets.find((s: any) =>
-      s.products?.some((p: any) => p.codigo === producto.codigo)
+      s.orders?.some((o: any) =>
+        o.items?.some((p: any) => p.codigo === producto.codigo)
+      )
     ) || sheets.find((s: any) => s.entregador === entregador)
 
     try {
