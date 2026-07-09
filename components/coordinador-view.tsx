@@ -381,7 +381,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     const nota = window.prompt("Nota breve sobre el error de alistamiento (obligatoria):")
     if (!nota || !nota.trim()) return
 
-    const sheetDelEntregador = sheets.find((s: any) => s.entregador === entregador)
+    const sheetDelEntregador = sheets.find((s: any) =>
+      s.products?.some((p: any) => p.codigo === producto.codigo)
+    ) || sheets.find((s: any) => s.entregador === entregador)
 
     try {
       const response = await fetch('/api/faltantes', {
@@ -393,7 +395,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           descripcion: producto.descripcion,
           categoria: producto.categoria || '',
           entregador: entregador,
-          ruta: sheets[0]?.ruta || '',
+          ruta: sheetDelEntregador?.ruta || sheets[0]?.ruta || '',
           cantidadSolicitada: producto.cantidadTotal,
           cantidadDisponible: cantidadReal,
           cantidadFaltante: producto.cantidadTotal - cantidadReal,
