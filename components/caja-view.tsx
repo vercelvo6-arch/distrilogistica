@@ -170,8 +170,19 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     loadData()
   }, [])
 
+  // ✅ Guardar borrador automáticamente cuando cambian consignaciones, cobros o montos
   useEffect(() => {
-  fetch("/api/entregadores")
+    if (!agrupadoData) return
+    const clave = `cuadre_borrador_${agrupadoData.entregador}_${new Date().toISOString().split("T")[0]}`
+    const borrador = {
+      consignaciones,
+      cobrosVinculados,
+      billetes: formData.billetes,
+      monedas: formData.monedas,
+      observaciones: formData.observaciones,
+    }
+    localStorage.setItem(clave, JSON.stringify(borrador))
+  }, [consignaciones, cobrosVinculados, formData.billetes, formData.monedas, formData.observaciones, agrupadoData])
     .then(r => r.json())
     .then(data => {
       const nombres = (data.entregadores || []).map((e: any) => e.nombre)
@@ -1746,20 +1757,25 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       erroresFacturacion: totalErroresFacturacionAgrupado.toString(),
     })
 
+    const claveborrador = `cuadre_borrador_${rutasSeleccionadas[0].entregador}_${new Date().toISOString().split("T")[0]}`
+    const borradorGuardado = localStorage.getItem(claveborrador)
+    const borrador = borradorGuardado ? JSON.parse(borradorGuardado) : null
+
     setAgrupadoData(agrupado)
-    setCobrosVinculados([])
-    setConsignaciones([])
+    setCobrosVinculados(borrador?.cobrosVinculados || [])
+    setConsignaciones(borrador?.consignaciones || [])
     setBusquedaCobro("")
     setFormData(prev => ({
       ...prev,
-      billetes: "",
-      monedas: "",
+      billetes: borrador?.billetes || "",
+      monedas: borrador?.monedas || "",
       fiados: totalFiadoAgrupado.toString(),
       repasos: totalRepasosAgrupado.toString(),
       devolucionesParciales: totalDevolucionesAgrupado.toString(),
       agotados: totalAgotadosAgrupado.toString(),
       erroresFacturacion: totalErroresFacturacionAgrupado.toString(),
       descuento: totalDescuentosAgrupado.toString(),
+      observaciones: borrador?.observaciones || "",
     }))
     loadCobrosDisponibles(rutasSeleccionadas[0].entregador)
     setShowAgrupadoModal(true)
@@ -1863,6 +1879,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || data.details || "Error al registrar cuadre agrupado")
+
+    // ✅ Limpiar borrador al confirmar cuadre exitosamente
+    const clave = `cuadre_borrador_${agrupadoData.entregador}_${new Date().toISOString().split("T")[0]}`
+    localStorage.removeItem(clave)
 
     toast({ title: "Cuadre Registrado", description: `✅ ${data.mensaje}` })
     setShowAgrupadoModal(false)
