@@ -183,13 +183,16 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
     localStorage.setItem(clave, JSON.stringify(borrador))
   }, [consignaciones, cobrosVinculados, formData.billetes, formData.monedas, formData.observaciones, agrupadoData])
-    .then(r => r.json())
-    .then(data => {
-      const nombres = (data.entregadores || []).map((e: any) => e.nombre)
-      setTodosEntregadores(nombres)
-    })
-    .catch(console.error)
-}, [])
+
+  useEffect(() => {
+    fetch("/api/entregadores")
+      .then(r => r.json())
+      .then(data => {
+        const nombres = (data.entregadores || []).map((e: any) => e.nombre)
+        setTodosEntregadores(nombres)
+      })
+      .catch(console.error)
+  }, [])
 
   useEffect(() => {
     if (selectedView === "historial") {
