@@ -1433,6 +1433,20 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const actualizarConsignacion = (id: string, campo: string, valor: string) => {
+    // ✅ Validar duplicado de número dentro del mismo modal
+    if (campo === "numero" && valor.trim() !== "") {
+      const duplicadoEnModal = consignaciones.some(
+        c => c.id !== id && c.numero.trim().toLowerCase() === valor.trim().toLowerCase()
+      )
+      if (duplicadoEnModal) {
+        toast({
+          title: "Referencia duplicada",
+          description: `El número "${valor}" ya está registrado en este cuadre.`,
+          variant: "destructive",
+        })
+        return
+      }
+    }
     setConsignaciones(prev => prev.map(c => c.id === id ? { ...c, [campo]: valor } : c))
   }
 
@@ -1812,7 +1826,25 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   try {
     setSubmitting(true)
 
-    // 1. Guardar pedidos fiados y repasos
+    // ✅ Validar referencias de consignaciones contra la BD (duplicados globales)
+    const numerosConsignacion = consignaciones.map(c => c.numero.trim()).filter(n => n !== "")
+    if (numerosConsignacion.length > 0) {
+      const resValidacion = await fetch("/api/cuadres-caja/validar-consignaciones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numeros: numerosConsignacion }),
+      })
+      const dataValidacion = await resValidacion.json()
+      if (dataValidacion.duplicados && dataValidacion.duplicados.length > 0) {
+        toast({
+          title: "Consignación duplicada",
+          description: `Los siguientes números ya fueron registrados en un cuadre anterior: ${dataValidacion.duplicados.join(", ")}`,
+          variant: "destructive",
+        })
+        setSubmitting(false)
+        return
+      }
+    }
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
     for (const route of rutasSeleccionadas) {
       if (!Array.isArray(route.orders)) continue
