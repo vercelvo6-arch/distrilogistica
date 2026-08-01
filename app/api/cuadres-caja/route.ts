@@ -223,6 +223,20 @@ export async function POST(request: Request) {
             WHERE id = ${fiadoId}
           `
 
+          // ✅ Verificar que la referencia no esté duplicada antes de insertar
+          const refAbono = cobro.referencia?.trim() || null
+          if (refAbono) {
+            const [refExistente] = await sql`
+              SELECT id FROM abonos_fiados WHERE referencia_pago = ${refAbono} LIMIT 1
+            `
+            if (refExistente) {
+              await sql`ROLLBACK`
+              return NextResponse.json({
+                error: `La referencia de pago "${refAbono}" ya fue registrada en un abono anterior. Verifica el cobro antes de cerrar caja.`
+              }, { status: 409 })
+            }
+          }
+
           await sql`
             INSERT INTO abonos_fiados (
               pedido_id, monto_abono, monto_nequi, metodo_pago,
@@ -233,7 +247,7 @@ export async function POST(request: Request) {
               ${efectivo},
               ${nequi},
               ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
-              ${cobro.referencia?.trim() || null},
+              ${refAbono},
               NOW(),
               ${'Cobro registrado en cuadre de caja'},
               ${entregador},
@@ -266,6 +280,20 @@ export async function POST(request: Request) {
             WHERE id = ${pedidoId}
           `
 
+          // ✅ Verificar que la referencia no esté duplicada antes de insertar
+          const refAbonoPedido = cobro.referencia?.trim() || null
+          if (refAbonoPedido) {
+            const [refExistentePedido] = await sql`
+              SELECT id FROM abonos_fiados WHERE referencia_pago = ${refAbonoPedido} LIMIT 1
+            `
+            if (refExistentePedido) {
+              await sql`ROLLBACK`
+              return NextResponse.json({
+                error: `La referencia de pago "${refAbonoPedido}" ya fue registrada en un abono anterior. Verifica el cobro antes de cerrar caja.`
+              }, { status: 409 })
+            }
+          }
+
           await sql`
             INSERT INTO abonos_fiados (
               pedido_id, monto_abono, monto_nequi, metodo_pago,
@@ -276,7 +304,7 @@ export async function POST(request: Request) {
               ${efectivo},
               ${nequi},
               ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
-              ${cobro.referencia?.trim() || null},
+              ${refAbonoPedido},
               NOW(),
               ${'Cobro registrado en cuadre de caja'},
               ${entregador},
