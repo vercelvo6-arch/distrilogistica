@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Truck, LogOut, Filter, History, Calendar, ChevronDown, ChevronUp } from "lucide-react"
+import { Truck, LogOut, Filter, Calendar, ChevronDown, ChevronUp } from "lucide-react"
 import type { RouteSheet, User, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import {
@@ -40,9 +40,8 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
 
   const [filterFechaDesde, setFilterFechaDesde] = useState(getDateDaysAgo(7))
   const [filterFechaHasta, setFilterFechaHasta] = useState(new Date().toISOString().split("T")[0])
-  const [selectedView, setSelectedView] = useState<"rutas" | "historial">("rutas")
+  const [selectedView, setSelectedView] = useState<"rutas">("rutas")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
-  const [historial, setHistorial] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedRoutes, setExpandedRoutes] = useState<Set<number>>(new Set())
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
@@ -74,12 +73,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   useEffect(() => {
     loadData()
   }, [])
-
-  useEffect(() => {
-    if (selectedView === "historial") {
-      loadHistorial()
-    }
-  }, [selectedView])
 
   // ✅ OPTIMIZADO: Una única petición para todas las novedades del entregador
   async function loadData() {
@@ -193,61 +186,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       })
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function loadHistorial() {
-    try {
-      const responseIndividuales = await fetch("/api/caja/recibir-efectivo")
-      const dataIndividuales = await responseIndividuales.json()
-
-      const responseAgrupados = await fetch("/api/cuadres-caja")
-      const dataAgrupados = await responseAgrupados.json()
-
-      const recepcionesIndividuales = Array.isArray(dataIndividuales.recepciones)
-        ? dataIndividuales.recepciones
-            .filter((r: any) => r && r.entregador === entregador)
-            .map((r: any) => ({ ...r, tipo: "individual" }))
-        : []
-
-      const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
-        ? dataAgrupados.cuadres
-            .filter((c: any) => c && c.entregador === entregador)
-            .map((c: any) => {
-              const numRutas = Array.isArray(c.planillas_ids) ? c.planillas_ids.length : 0
-              const tipoRutaDisplay =
-                c.rutas_nombres && c.rutas_nombres.length > 0
-                  ? c.rutas_nombres.join(", ")
-                  : numRutas > 1
-                    ? `${numRutas} rutas agrupadas`
-                    : "1 ruta"
-
-              return {
-                ...c,
-                tipo: "agrupado",
-                fecha_recepcion: c.fecha_cuadre,
-                efectivo_esperado: c.total_esperado,
-                efectivo_recibido: c.total_efectivo,
-                diferencia_efectivo: c.diferencia,
-                tipo_ruta: tipoRutaDisplay,
-                monto_consignacion:
-                  c.total_consignado !== null && c.total_consignado !== undefined ? c.total_consignado : 0,
-              }
-            })
-        : []
-
-      const todosLosCuadres = [...recepcionesIndividuales, ...cuadresAgrupados].sort(
-        (a, b) => new Date(b.fecha_recepcion).getTime() - new Date(a.fecha_recepcion).getTime(),
-      )
-
-      setHistorial(todosLosCuadres)
-    } catch (err) {
-      console.error("[ENTREGADOR] Error loading historial:", err)
-      toast({
-        title: "Error",
-        description: "No se pudo cargar el historial",
-        variant: "destructive",
-      })
     }
   }
 
@@ -951,66 +889,10 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
               <Truck className="h-4 w-4 mr-2" />
               Mis Rutas
             </Button>
-            <Button
-              variant={selectedView === "historial" ? "default" : "outline"}
-              onClick={() => setSelectedView("historial")}
-              size="sm"
-            >
-              <History className="h-4 w-4 mr-2" />
-              Historial
-            </Button>
+
           </div>
 
-          {selectedView === "historial" ? (
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Mi Historial de Entregas</h2>
-              {historial.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No hay historial disponible</p>
-              ) : (
-                <div className="space-y-4">
-                  {historial.map((rec) => (
-                    <Card key={rec.id} className="p-4 bg-gray-50">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold">{rec.tipo_ruta}</p>
-                            {rec.tipo === "agrupado" && <Badge variant="secondary">AGRUPADO</Badge>}
-                          </div>
-                          <p className="text-sm text-gray-500">
-                            {new Date(rec.fecha_recepcion).toLocaleString("es-CO")}
-                          </p>
-                        </div>
-                        <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
-                          {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="text-gray-500">Esperado</span>
-                          <p className="font-semibold">{formatCOP(Number(rec.efectivo_esperado))}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Recibido</span>
-                          <p className="font-semibold">{formatCOP(Number(rec.efectivo_recibido))}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Diferencia</span>
-                          <p
-                            className={`font-semibold ${Number(rec.diferencia_efectivo) !== 0 ? "text-red-600" : "text-green-600"}`}
-                          >
-                            {Number(rec.diferencia_efectivo) > 0 ? "+" : ""}
-                            {formatCOP(Number(rec.diferencia_efectivo))}
-                          </p>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </Card>
-          ) : (
-            <>
+          <>
               <Card className="p-4 mb-6">
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="flex items-center gap-2">
@@ -1306,7 +1188,6 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 )}
               </div>
             </>
-          )}
         </main>
       </div>
 
