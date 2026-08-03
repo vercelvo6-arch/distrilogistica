@@ -2621,7 +2621,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                     />
                   </div>
 
-                  <Select value={filterEntregador} onValueChange={setFilterEntregador}>
+                  <Select value={filterEntregador} onValueChange={(val) => {
+                    setFilterEntregador(val)
+                    setSelectedRoutes([]) // ✅ Limpiar selección al cambiar entregador
+                  }}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Entregador" />
                     </SelectTrigger>
