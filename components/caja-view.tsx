@@ -1801,7 +1801,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const handleSubmitAgrupado = async () => {
   if (!agrupadoData) return
 
-  if (!formData.efectivoRecibido || Number(formData.efectivoRecibido) < 0) {
+  if (formData.efectivoRecibido === undefined || formData.efectivoRecibido === null || Number(formData.efectivoRecibido) < 0) {
     toast({ title: "Error", description: "El efectivo recibido debe ser un valor válido", variant: "destructive" })
     return
   }
