@@ -1554,33 +1554,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         }
       }
 
-      // ✅ Precargar abonos registrados por Admin (cualquier fecha) que aún
-      // no quedaron vinculados a ningún cuadre — cierra el hueco de los
-      // abonos huérfanos que nunca sumaban a la efectividad del entregador.
-      const resHuerfanos = await fetch(`/api/fiados/abonos-huerfanos?entregador=${encodeURIComponent(entregador)}`)
-      if (resHuerfanos.ok) {
-        const dataHuerfanos = await resHuerfanos.json()
-        const cobrosHuerfanos = (dataHuerfanos.abonos || []).map((a: any) => ({
-          id:              a.fiado_id,
-          abonoId:         a.abono_id, // permite vincular exacto, sin adivinar por fecha
-          cliente:         a.cliente,
-          ruta:            a.ruta,
-          saldo_pendiente: a.saldo_pendiente,
-          resultado:       a.monto_nequi > 0 && a.monto_efectivo > 0 ? "mixto"
-                           : a.monto_nequi > 0 ? "nequi" : "efectivo",
-          montoEfectivo:   String(a.monto_efectivo || 0),
-          montoNequi:      String(a.monto_nequi || 0),
-          referencia:      a.referencia_pago || "",
-          yaRegistrado:    true,
-        }))
-        if (cobrosHuerfanos.length > 0) {
-          setCobrosVinculados((prev) => {
-            const idsExistentes = new Set(prev.map((c: any) => c.id))
-            const nuevos = cobrosHuerfanos.filter((c: any) => !idsExistentes.has(c.id))
-            return [...prev, ...nuevos]
-          })
-        }
-      }
+      // Endpoint abonos-huerfanos no implementado aún — omitir
     } catch (e) {
       console.error("[CAJA] Error cargando cobros:", e)
       setCobrosDisponibles([])
