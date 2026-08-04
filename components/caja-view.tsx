@@ -3356,7 +3356,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           (cons.numero.trim() !== "" && consignaciones.some(
                             c => c.id !== cons.id && c.numero.trim().toLowerCase() === cons.numero.trim().toLowerCase()
                           )) || consignacionesDuplicadasBD.has(cons.numero.trim().toLowerCase())
-                            ? "border-red-500 bg-red-50" : ""
+                            ? "border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500 ring-1 ring-red-500" : ""
                         }`}
                         placeholder="Referencia"
                         value={cons.numero}
@@ -3368,7 +3368,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <p className="text-xs text-red-600 mt-1 font-medium">⚠ Duplicada en este cuadre</p>
                       )}
                       {consignacionesDuplicadasBD.has(cons.numero.trim().toLowerCase()) && (
-                        <p className="text-xs text-red-600 mt-1 font-medium">⚠ Ya registrada en un cuadre anterior</p>
+                        <p className="text-xs text-red-600 mt-1 font-medium">⚠ Ya registrada en cuadre anterior — NO puede usarse</p>
                       )}
                     </div>
                     <div>
@@ -3782,6 +3782,20 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           </div>
 
           <DialogFooter>
+            {(consignacionesDuplicadasBD.size > 0 || consignaciones.some(c => 
+              c.numero.trim() !== "" && consignaciones.filter(x => x.numero.trim().toLowerCase() === c.numero.trim().toLowerCase()).length > 1
+            )) && (
+              <div className="w-full bg-red-100 border border-red-400 rounded-lg p-3 mb-2">
+                <p className="text-red-700 font-bold text-sm text-center">
+                  🚫 HAY CONSIGNACIONES DUPLICADAS — Corrija antes de confirmar el cuadre
+                </p>
+                {Array.from(consignacionesDuplicadasBD).map(num => (
+                  <p key={num} className="text-red-600 text-xs text-center mt-1">
+                    Referencia <strong>{num}</strong> ya fue registrada en un cuadre anterior
+                  </p>
+                ))}
+              </div>
+            )}
             <Button
               variant="outline"
               onClick={() => {
