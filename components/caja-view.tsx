@@ -1433,41 +1433,34 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setConsignaciones(prev => prev.filter(c => c.id !== id))
   }
 
-  const actualizarConsignacion = async (id: string, campo: string, valor: string) => {
+  const actualizarConsignacion = (id: string, campo: string, valor: string) => {
     setConsignaciones(prev => prev.map(c => c.id === id ? { ...c, [campo]: valor } : c))
+  }
 
-    // ✅ Al cambiar el número, verificar contra BD si ya fue usado históricamente
-    if (campo === "numero" && valor.trim().length > 4) {
+  // ✅ Validar duplicados en BD con debounce cuando cambian los números de consignación
+  useEffect(() => {
+    const numeros = consignaciones.map(c => c.numero.trim()).filter(n => n.length > 4)
+    if (numeros.length === 0) {
+      setConsignacionesDuplicadasBD(new Set())
+      return
+    }
+    const timer = setTimeout(async () => {
       try {
         const res = await fetch("/api/cuadres-caja/validar-consignaciones", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ numeros: [valor.trim()] }),
+          body: JSON.stringify({ numeros }),
         })
         if (res.ok) {
           const data = await res.json()
-          if (data.duplicados && data.duplicados.length > 0) {
-            setConsignacionesDuplicadasBD(prev => new Set([...prev, valor.trim().toLowerCase()]))
-          } else {
-            setConsignacionesDuplicadasBD(prev => {
-              const next = new Set(prev)
-              next.delete(valor.trim().toLowerCase())
-              return next
-            })
-          }
+          setConsignacionesDuplicadasBD(new Set((data.duplicados || []).map((d: string) => d.toLowerCase())))
         }
       } catch (e) {
-        // Si falla la validación, no bloquear
+        // Si falla, no bloquear
       }
-    } else if (campo === "numero") {
-      // Si borra el número, limpiar el estado de duplicado para ese campo
-      setConsignacionesDuplicadasBD(prev => {
-        const next = new Set(prev)
-        next.delete(valor.trim().toLowerCase())
-        return next
-      })
-    }
-  }
+    }, 600) // 600ms de debounce — no consulta en cada tecla
+    return () => clearTimeout(timer)
+  }, [consignaciones])
 
   const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setNovedadCajaOrder(order)
