@@ -222,6 +222,9 @@ export async function GET() {
         p.fecha_alistamiento,
         p.alistado_por,
         p.alistado_en,
+        p.timer_inicio,
+        p.timer_fin,
+        p.timer_segundos_pausados,
         pe.id as pedido_id,
         pe.secuencia,
         pe.cliente,
@@ -287,6 +290,9 @@ export async function GET() {
           fecha_alistamiento: row.fecha_alistamiento,
           alistado_por: row.alistado_por,
           alistado_en: row.alistado_en,
+          timer_inicio: row.timer_inicio || null,
+          timer_fin: row.timer_fin || null,
+          timer_segundos_pausados: row.timer_segundos_pausados || 0,
           pedidos: [],
           agotados: 0
         });
