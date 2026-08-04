@@ -3338,8 +3338,21 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                     </div>
                     <div>
                       <Label className="text-xs">Número</Label>
-                      <Input className="h-8 text-sm" placeholder="Referencia"
-                        value={cons.numero} onChange={(e) => actualizarConsignacion(cons.id, "numero", e.target.value)} />
+                      <Input
+                        className={`h-8 text-sm ${
+                          cons.numero.trim() !== "" && consignaciones.some(
+                            c => c.id !== cons.id && c.numero.trim().toLowerCase() === cons.numero.trim().toLowerCase()
+                          ) ? "border-red-500 bg-red-50" : ""
+                        }`}
+                        placeholder="Referencia"
+                        value={cons.numero}
+                        onChange={(e) => actualizarConsignacion(cons.id, "numero", e.target.value)}
+                      />
+                      {cons.numero.trim() !== "" && consignaciones.some(
+                        c => c.id !== cons.id && c.numero.trim().toLowerCase() === cons.numero.trim().toLowerCase()
+                      ) && (
+                        <p className="text-xs text-red-600 mt-1 font-medium">⚠ Referencia duplicada</p>
+                      )}
                     </div>
                     <div>
                       <Label className="text-xs">Monto</Label>
