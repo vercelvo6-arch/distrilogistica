@@ -1766,9 +1766,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const borradorGuardado = localStorage.getItem(claveborrador)
     const borrador = borradorGuardado ? JSON.parse(borradorGuardado) : null
 
+    const borradorConsignaciones = (borrador?.consignaciones || []).map((c: any) => ({
+      ...c,
+      cliente: c.cliente || "",
+      numero_factura: c.numero_factura || "",
+    }))
+
     setAgrupadoData(agrupado)
     setCobrosVinculados(borrador?.cobrosVinculados || [])
-    setConsignaciones(borrador?.consignaciones || [])
+    setConsignaciones(borradorConsignaciones)
     setConsignacionesDuplicadasBD(new Set())
     setBusquedaCobro("")
     setFormData(prev => ({
