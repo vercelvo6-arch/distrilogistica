@@ -103,6 +103,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     erroresFacturacion: "",
   })
   const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string}>>([])
+  const [consignacionesDuplicadasBD, setConsignacionesDuplicadasBD] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
   const [selectedRoutes, setSelectedRoutes] = useState<number[]>([])
@@ -1432,22 +1433,40 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setConsignaciones(prev => prev.filter(c => c.id !== id))
   }
 
-  const actualizarConsignacion = (id: string, campo: string, valor: string) => {
-    // ✅ Validar duplicado de número dentro del mismo modal
-    if (campo === "numero" && valor.trim() !== "") {
-      const duplicadoEnModal = consignaciones.some(
-        c => c.id !== id && c.numero.trim().toLowerCase() === valor.trim().toLowerCase()
-      )
-      if (duplicadoEnModal) {
-        toast({
-          title: "Referencia duplicada",
-          description: `El número "${valor}" ya está registrado en este cuadre.`,
-          variant: "destructive",
-        })
-        return
-      }
-    }
+  const actualizarConsignacion = async (id: string, campo: string, valor: string) => {
     setConsignaciones(prev => prev.map(c => c.id === id ? { ...c, [campo]: valor } : c))
+
+    // ✅ Al cambiar el número, verificar contra BD si ya fue usado históricamente
+    if (campo === "numero" && valor.trim().length > 4) {
+      try {
+        const res = await fetch("/api/cuadres-caja/validar-consignaciones", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ numeros: [valor.trim()] }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.duplicados && data.duplicados.length > 0) {
+            setConsignacionesDuplicadasBD(prev => new Set([...prev, valor.trim().toLowerCase()]))
+          } else {
+            setConsignacionesDuplicadasBD(prev => {
+              const next = new Set(prev)
+              next.delete(valor.trim().toLowerCase())
+              return next
+            })
+          }
+        }
+      } catch (e) {
+        // Si falla la validación, no bloquear
+      }
+    } else if (campo === "numero") {
+      // Si borra el número, limpiar el estado de duplicado para ese campo
+      setConsignacionesDuplicadasBD(prev => {
+        const next = new Set(prev)
+        next.delete(valor.trim().toLowerCase())
+        return next
+      })
+    }
   }
 
   const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
@@ -1755,6 +1774,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setAgrupadoData(agrupado)
     setCobrosVinculados(borrador?.cobrosVinculados || [])
     setConsignaciones(borrador?.consignaciones || [])
+    setConsignacionesDuplicadasBD(new Set())
     setBusquedaCobro("")
     setFormData(prev => ({
       ...prev,
@@ -3340,9 +3360,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       <Label className="text-xs">Número</Label>
                       <Input
                         className={`h-8 text-sm ${
-                          cons.numero.trim() !== "" && consignaciones.some(
+                          (cons.numero.trim() !== "" && consignaciones.some(
                             c => c.id !== cons.id && c.numero.trim().toLowerCase() === cons.numero.trim().toLowerCase()
-                          ) ? "border-red-500 bg-red-50" : ""
+                          )) || consignacionesDuplicadasBD.has(cons.numero.trim().toLowerCase())
+                            ? "border-red-500 bg-red-50" : ""
                         }`}
                         placeholder="Referencia"
                         value={cons.numero}
@@ -3351,7 +3372,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       {cons.numero.trim() !== "" && consignaciones.some(
                         c => c.id !== cons.id && c.numero.trim().toLowerCase() === cons.numero.trim().toLowerCase()
                       ) && (
-                        <p className="text-xs text-red-600 mt-1 font-medium">⚠ Referencia duplicada</p>
+                        <p className="text-xs text-red-600 mt-1 font-medium">⚠ Duplicada en este cuadre</p>
+                      )}
+                      {consignacionesDuplicadasBD.has(cons.numero.trim().toLowerCase()) && (
+                        <p className="text-xs text-red-600 mt-1 font-medium">⚠ Ya registrada en un cuadre anterior</p>
                       )}
                     </div>
                     <div>
@@ -3775,7 +3799,11 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             >
               Cancelar
             </Button>
-            <Button onClick={handleSubmitAgrupado} disabled={submitting}>
+            <Button onClick={handleSubmitAgrupado} disabled={submitting || 
+              consignacionesDuplicadasBD.size > 0 ||
+              consignaciones.some(c => 
+                c.numero.trim() !== "" && consignaciones.filter(x => x.numero.trim().toLowerCase() === c.numero.trim().toLowerCase()).length > 1
+              )}>
               {submitting ? "Guardando..." : "Confirmar Cuadre"}
             </Button>
           </DialogFooter>
