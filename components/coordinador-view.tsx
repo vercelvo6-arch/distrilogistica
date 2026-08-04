@@ -240,7 +240,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         fecha_alistamiento: p.fecha_alistamiento,
         entregador: p.entregador,
         estado: p.estado,
-        cuadrado_en_caja: p.cuadrado_en_caja || false,  // ✅ Agregar indicador
+        cuadrado_en_caja: p.cuadrado_en_caja || false,
+        timer_inicio: p.timer_inicio || null,
+        timer_fin: p.timer_fin || null,
+        timer_segundos_pausados: p.timer_segundos_pausados || 0,
         totalOrders: Array.isArray(p.pedidos) ? p.pedidos.length : 0,
         totalAmount: Number(p.total_cargue) || 0,
         orders: (p.pedidos || []).map((ped: any) => ({
@@ -1061,6 +1064,23 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                       const totalOrders = sheets.reduce((sum, s) => sum + s.totalOrders, 0)
                       const totalAmount = sheets.reduce((sum, s) => sum + s.totalAmount, 0)
 
+                      // ✅ Calcular tiempo neto de alistamiento desde timer en BD
+                      const tiempoAlistamiento = (() => {
+                        const sheetConTimer = sheets.find((s: any) => s.timer_inicio && s.timer_fin)
+                        if (!sheetConTimer) return null
+                        const inicio = new Date((sheetConTimer as any).timer_inicio).getTime()
+                        const fin = new Date((sheetConTimer as any).timer_fin).getTime()
+                        const pausados = (sheetConTimer as any).timer_segundos_pausados || 0
+                        const netos = Math.round((fin - inicio) / 1000) - pausados
+                        if (netos <= 0) return null
+                        const horas = Math.floor(netos / 3600)
+                        const minutos = Math.floor((netos % 3600) / 60)
+                        const segundos = netos % 60
+                        if (horas > 0) return `${horas}h ${minutos}m ${segundos}s`
+                        if (minutos > 0) return `${minutos}m ${segundos}s`
+                        return `${segundos}s`
+                      })()
+
                       const totalCompletos = consolidatedProducts.filter(
                         (p: any) => p.estadoAlistamiento === "completo",
                       ).length
@@ -1107,6 +1127,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                   <span className="text-xs px-2 md:px-3 py-1 bg-white/80 text-blue-700 rounded-full font-medium">
                                     {consolidatedProducts.length} productos
                                   </span>
+                                  {tiempoAlistamiento && (
+                                    <span className="text-xs px-2 md:px-3 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">
+                                      ⏱ {tiempoAlistamiento}
+                                    </span>
+                                  )}
                                   {totalCompletos > 0 && (
                                     <span className="text-xs px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
                                       ✅ {totalCompletos} completos
