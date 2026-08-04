@@ -3737,6 +3737,16 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <Input className="h-8 text-sm" type="date"
                           value={cons.fecha} onChange={(e) => actualizarConsignacion(cons.id, "fecha", e.target.value)} />
                       </div>
+                      <div className="col-span-2">
+                        <Label className="text-xs">Nombre del Cliente</Label>
+                        <Input className="h-8 text-sm" placeholder="Nombre del cliente que consignó"
+                          value={cons.cliente || ""} onChange={(e) => actualizarConsignacion(cons.id, "cliente", e.target.value)} />
+                      </div>
+                      <div className="col-span-2">
+                        <Label className="text-xs">Número de Factura</Label>
+                        <Input className="h-8 text-sm" placeholder="Factura a la que corresponde"
+                          value={cons.numero_factura || ""} onChange={(e) => actualizarConsignacion(cons.id, "numero_factura", e.target.value)} />
+                      </div>
                     </div>
                   </div>
                 ))}
