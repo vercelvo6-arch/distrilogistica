@@ -1797,28 +1797,36 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
-  try {
-    setSubmitting(true)
-
-    // ✅ Validar referencias de consignaciones contra la BD (duplicados globales)
-    const numerosConsignacion = consignaciones.map(c => c.numero.trim()).filter(n => n !== "")
-    if (numerosConsignacion.length > 0) {
+  // ✅ Validar duplicados de consignaciones — si falla el endpoint, no bloquear el cierre
+  const numerosConsignacion = consignaciones.map(c => c.numero.trim()).filter(n => n !== "")
+  if (numerosConsignacion.length > 0) {
+    try {
       const resValidacion = await fetch("/api/cuadres-caja/validar-consignaciones", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ numeros: numerosConsignacion }),
       })
-      const dataValidacion = await resValidacion.json()
-      if (dataValidacion.duplicados && dataValidacion.duplicados.length > 0) {
-        toast({
-          title: "Consignación duplicada",
-          description: `Los siguientes números ya fueron registrados en un cuadre anterior: ${dataValidacion.duplicados.join(", ")}`,
-          variant: "destructive",
-        })
-        setSubmitting(false)
-        return
+      if (resValidacion.ok) {
+        const dataValidacion = await resValidacion.json()
+        if (dataValidacion.duplicados && dataValidacion.duplicados.length > 0) {
+          toast({
+            title: "Consignación duplicada",
+            description: `Los siguientes números ya fueron registrados: ${dataValidacion.duplicados.join(", ")}`,
+            variant: "destructive",
+          })
+          setSubmitting(false)
+          return
+        }
       }
+    } catch (errVal) {
+      console.warn("[CUADRE] Validación duplicados falló, continuando:", errVal)
     }
+  }
+
+  try {
+    setSubmitting(true)
+
+    // 1. Guardar pedidos fiados y repasos
     const rutasSeleccionadas = filteredRoutes.filter((r) => selectedRoutes.includes(r.id))
     for (const route of rutasSeleccionadas) {
       if (!Array.isArray(route.orders)) continue
