@@ -58,6 +58,39 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     loadData()
   }, [])
 
+  // ✅ Restaurar timer activo desde BD cuando cargan las planillas
+  useEffect(() => {
+    if (routeSheets.length === 0) return
+    if (timerActivo) return // ya hay un timer corriendo en memoria
+
+    // Buscar si alguna planilla tiene timer_inicio sin timer_fin (timer activo en BD)
+    const planillaConTimer = routeSheets.find(
+      (s: any) => s.timer_inicio && !s.timer_fin
+    )
+    if (!planillaConTimer) return
+
+    const entregador = planillaConTimer.entregador
+    const inicio = new Date((planillaConTimer as any).timer_inicio).getTime()
+    const pausados = (planillaConTimer as any).timer_segundos_pausados || 0
+    const enPausa = !!(planillaConTimer as any).timer_pausa
+
+    // Calcular segundos transcurridos netos
+    const ahora = Date.now()
+    const transcurridos = Math.round((ahora - inicio) / 1000) - pausados
+    
+    setTimerEntregador(entregador)
+    setTimerSegundos(Math.max(0, transcurridos))
+    setTimerActivo(true)
+    setTimerPausado(enPausa)
+
+    if (!enPausa) {
+      if (timerRef.current) clearInterval(timerRef.current)
+      timerRef.current = setInterval(() => {
+        setTimerSegundos(prev => prev + 1)
+      }, 1000)
+    }
+  }, [routeSheets])
+
   async function loadData() {
   try {
     const response = await fetch('/api/planillas', {
@@ -113,6 +146,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       entregador: p.entregador,
       estado: p.estado,
       fecha_alistamiento: p.fecha_alistamiento,
+      timer_inicio: p.timer_inicio || null,
+      timer_fin: p.timer_fin || null,
+      timer_pausa: p.timer_pausa || null,
+      timer_segundos_pausados: p.timer_segundos_pausados || 0,
       totalOrders: (p.pedidos || []).filter((ped: any) => ped.id !== null).length,
       totalAmount: Number(p.total_cargue) || 0,
       montoCargue: Number(p.total_cargue) || 0,
@@ -469,9 +506,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
   const iniciarTimer = (entregador: string) => {
     if (timerActivo && timerEntregador === entregador) return
-    // Persistir en BD para todas las planillas del entregador en alistamiento
+    // ✅ FIX: incluir 'pendiente' además de 'alistando' porque handleStartPreparation
+    // puede no haber actualizado el estado de React todavía (asincronía de setState)
     const planillasEntregador = routeSheets.filter(
-      s => s.entregador === entregador && s.estado === 'alistando'
+      s => s.entregador === entregador && (s.estado === 'alistando' || s.estado === 'pendiente')
     )
     planillasEntregador.forEach(s => callTimerApi(s.id, 'iniciar'))
     setTimerEntregador(entregador)
