@@ -173,7 +173,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // ✅ Guardar borrador automáticamente cuando cambian consignaciones, cobros o montos
   useEffect(() => {
     if (!agrupadoData) return
-    const clave = `cuadre_borrador_${agrupadoData.entregador}_${new Date().toISOString().split("T")[0]}`
+    const clave = `cuadre_borrador_${agrupadoData.entregador}`
     const borrador = {
       consignaciones,
       cobrosVinculados,
@@ -1748,7 +1748,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       erroresFacturacion: totalErroresFacturacionAgrupado.toString(),
     })
 
-    const claveborrador = `cuadre_borrador_${rutasSeleccionadas[0].entregador}_${new Date().toISOString().split("T")[0]}`
+    const claveborrador = `cuadre_borrador_${rutasSeleccionadas[0].entregador}`
     const borradorGuardado = localStorage.getItem(claveborrador)
     const borrador = borradorGuardado ? JSON.parse(borradorGuardado) : null
 
@@ -1898,7 +1898,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     if (!response.ok) throw new Error(data.error || data.details || "Error al registrar cuadre agrupado")
 
     // ✅ Limpiar borrador al confirmar cuadre exitosamente
-    const clave = `cuadre_borrador_${agrupadoData.entregador}_${new Date().toISOString().split("T")[0]}`
+    const clave = `cuadre_borrador_${agrupadoData.entregador}`
     localStorage.removeItem(clave)
 
     toast({ title: "Cuadre Registrado", description: `✅ ${data.mensaje}` })
