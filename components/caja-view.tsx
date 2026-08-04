@@ -102,7 +102,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     agotados: "",
     erroresFacturacion: "",
   })
-  const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string}>>([])
+  const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string; cliente: string; numero_factura: string}>>([])
   const [consignacionesDuplicadasBD, setConsignacionesDuplicadasBD] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
@@ -1426,6 +1426,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       numero: "",
       monto: "",
       fecha: new Date().toISOString().split("T")[0],
+      cliente: "",
+      numero_factura: "",
     }])
   }
 
@@ -1884,7 +1886,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       efectivoRecibido,
       billetes:           totalBilletes,
       monedas:            totalMonedas,
-      consignaciones:     consignaciones.map(c => ({ banco: c.banco, numero: c.numero, monto: Number(c.monto), fecha: c.fecha })),
+      consignaciones:     consignaciones.map(c => ({ banco: c.banco, numero: c.numero, monto: Number(c.monto), fecha: c.fecha, cliente: c.cliente || "", numero_factura: c.numero_factura || "" })),
       tieneConsignacion:  consignaciones.length > 0,
       observaciones:      formData.observaciones || null,
       descuento:          descuentoFinal,
@@ -2173,7 +2175,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           efectivoRecibido,
           billetes:          totalBilletes,
           monedas:           totalMonedas,
-          consignaciones:    consignaciones.map(c => ({ banco: c.banco, numero: c.numero, monto: Number(c.monto), fecha: c.fecha })),
+          consignaciones:    consignaciones.map(c => ({ banco: c.banco, numero: c.numero, monto: Number(c.monto), fecha: c.fecha, cliente: c.cliente || "", numero_factura: c.numero_factura || "" })),
           tieneConsignacion: consignaciones.length > 0,
           observaciones:     formData.observaciones || null,
           descuento:         Number(formData.descuento || 0),
@@ -3380,6 +3382,16 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       <Label className="text-xs">Fecha</Label>
                       <Input className="h-8 text-sm" type="date"
                         value={cons.fecha} onChange={(e) => actualizarConsignacion(cons.id, "fecha", e.target.value)} />
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">Nombre del Cliente</Label>
+                      <Input className="h-8 text-sm" placeholder="Nombre del cliente que consignó"
+                        value={cons.cliente || ""} onChange={(e) => actualizarConsignacion(cons.id, "cliente", e.target.value)} />
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">Número de Factura</Label>
+                      <Input className="h-8 text-sm" placeholder="Factura a la que corresponde"
+                        value={cons.numero_factura || ""} onChange={(e) => actualizarConsignacion(cons.id, "numero_factura", e.target.value)} />
                     </div>
                   </div>
                 </div>
