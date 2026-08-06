@@ -2950,6 +2950,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                         })
                                       }
 
+                                      // ✅ Si caja ajustó el total manualmente, usar el total de BD
+                                      const totalBD = Number(order.total) || 0
+                                      if (totalBD > 0 && Math.abs(totalBD - effectiveTotal) > 1) {
+                                        effectiveTotal = totalBD
+                                      }
+
                                       return (
                                         <Card key={order.id} className="p-3 bg-gray-50">
                                           <div className="flex justify-between items-start">
