@@ -3045,6 +3045,37 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                                   </span>
                                                 )}
                                               </p>
+                                              {!route.cuadradoEnCaja && (
+                                                <div className="flex items-center gap-2 mt-1">
+                                                  <span className="text-xs text-gray-500">Ajustar valor factura:</span>
+                                                  <Input
+                                                    type="number"
+                                                    className="h-6 text-xs w-32"
+                                                    placeholder={String(Math.round(effectiveTotal))}
+                                                    onBlur={async (e) => {
+                                                      const val = Number(e.target.value)
+                                                      if (!val || val === effectiveTotal) return
+                                                      try {
+                                                        const res = await fetch("/api/pedidos/ajustar-total", {
+                                                          method: "PATCH",
+                                                          headers: { "Content-Type": "application/json" },
+                                                          body: JSON.stringify({ pedidoId: order.id, nuevoTotal: val }),
+                                                        })
+                                                        if (res.ok) {
+                                                          toast({ title: "Ajuste aplicado", description: `Factura actualizada a ${formatCOP(val)}` })
+                                                          await loadData()
+                                                        } else {
+                                                          const d = await res.json()
+                                                          toast({ title: "Error", description: d.error, variant: "destructive" })
+                                                        }
+                                                      } catch {
+                                                        toast({ title: "Error", description: "No se pudo ajustar el valor", variant: "destructive" })
+                                                      }
+                                                      e.target.value = ""
+                                                    }}
+                                                  />
+                                                </div>
+                                              )}
                                             </div>
                                             <Button
                                               variant="ghost"
