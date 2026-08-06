@@ -479,6 +479,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       effectiveTotal -= Number(order.descuento)
     }
 
+    // ✅ Si caja ajustó el total manualmente, usar el total de BD
+    const totalBD = Number(order.total) || 0
+    if (totalBD > 0 && Math.abs(totalBD - effectiveTotal) > 1) {
+      effectiveTotal = totalBD
+    }
+
     return Math.round(effectiveTotal * 100) / 100
   }
 
