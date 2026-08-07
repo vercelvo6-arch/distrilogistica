@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2, Edit2 } from "lucide-react"
@@ -165,7 +165,18 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [cobrosVinculados, setCobrosVinculados] = useState<any[]>([])
   const [busquedaCobro, setBusquedaCobro] = useState("")
   const [loadingCobros, setLoadingCobros] = useState(false)
-  
+  const [autocompleteClienteConsAbierto, setAutocompleteClienteConsAbierto] = useState<string | null>(null)
+
+  // Clientes de las planillas que se están cuadrando — fuente para el autocomplete de consignaciones
+  const clientesAgrupadoData = useMemo(() => {
+    const nombres = new Set<string>()
+    ;(agrupadoData?.planillas || []).forEach((p: RouteSheet) => {
+      ;(p.orders || []).forEach((o) => {
+        if (o.cliente) nombres.add(o.cliente)
+      })
+    })
+    return Array.from(nombres).sort()
+  }, [agrupadoData])
 
   useEffect(() => {
     loadData()
@@ -3788,10 +3799,45 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <Input className="h-8 text-sm" type="date"
                           value={cons.fecha} onChange={(e) => actualizarConsignacion(cons.id, "fecha", e.target.value)} />
                       </div>
-                      <div>
+                      <div className="relative">
                         <Label className="text-xs">Cliente (opcional)</Label>
-                        <Input className="h-8 text-sm" placeholder="Nombre del cliente"
-                          value={cons.cliente || ""} onChange={(e) => actualizarConsignacion(cons.id, "cliente", e.target.value)} />
+                        <Input
+                          className="h-8 text-sm"
+                          placeholder="Nombre del cliente"
+                          autoComplete="off"
+                          value={cons.cliente || ""}
+                          onChange={(e) => {
+                            actualizarConsignacion(cons.id, "cliente", e.target.value)
+                            setAutocompleteClienteConsAbierto(cons.id)
+                          }}
+                          onFocus={() => setAutocompleteClienteConsAbierto(cons.id)}
+                          onBlur={() => setTimeout(() => {
+                            setAutocompleteClienteConsAbierto(prev => prev === cons.id ? null : prev)
+                          }, 150)}
+                        />
+                        {autocompleteClienteConsAbierto === cons.id && clientesAgrupadoData.length > 0 && (() => {
+                          const texto = (cons.cliente || "").trim().toLowerCase()
+                          const sugerencias = clientesAgrupadoData.filter(n => n.toLowerCase().includes(texto)).slice(0, 8)
+                          if (sugerencias.length === 0) return null
+                          return (
+                            <div className="absolute z-10 mt-1 w-full max-h-36 overflow-y-auto bg-white border rounded shadow-md">
+                              {sugerencias.map(nombre => (
+                                <button
+                                  key={nombre}
+                                  type="button"
+                                  className="block w-full text-left px-2 py-1.5 text-xs hover:bg-purple-50"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    actualizarConsignacion(cons.id, "cliente", nombre)
+                                    setAutocompleteClienteConsAbierto(null)
+                                  }}
+                                >
+                                  {nombre}
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        })()}
                       </div>
                       <div>
                         <Label className="text-xs">N° Factura (opcional)</Label>
