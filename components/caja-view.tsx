@@ -1584,7 +1584,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               esPagoAnticipado:      true,
               pagoAnticipadoId:      p.id,
               pagoAnticipadoTipo:    p.tipo,
-              pagoAnticipadoFiadoId: p.fiado_id,
+              pagoAnticipadoFiadoId: p.tipo === "pedido_asesor" ? p.pedido_id : p.fiado_id,
               numeroFactura:         p.referencia,
               medioPago:             p.medio_pago,
               monto:                 String(p.monto),
@@ -2434,7 +2434,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             <Link href="/pagos-anticipados">
               <Button variant="outline" size="sm">
                 <Wallet className="h-4 w-4 mr-2" />
-                Pagos Anticipados
+                Cuadre Administrativo
               </Button>
             </Link>
           </div>
@@ -3370,7 +3370,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           <span className="font-medium">{cobro.cliente}</span>
                           {cobro.esPagoAnticipado && (
                             <Badge variant="outline" className="ml-2 text-xs bg-emerald-100 text-emerald-700 border-emerald-300">
-                              💰 Pago anticipado
+                              💰 Cuadre administrativo
                             </Badge>
                           )}
                           <span className="text-gray-500 ml-2 text-xs">{cobro.ruta ? `${cobro.ruta} — ` : ""}{formatCOP(cobro.saldo_pendiente)}</span>
@@ -3712,7 +3712,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           <span className="font-medium">{cobro.cliente}</span>
                           {cobro.esPagoAnticipado && (
                             <Badge variant="outline" className="ml-2 text-xs bg-emerald-100 text-emerald-700 border-emerald-300">
-                              💰 Pago anticipado
+                              💰 Cuadre administrativo
                             </Badge>
                           )}
                           <span className="text-gray-500 ml-2 text-xs">{cobro.ruta ? `${cobro.ruta} — ` : ""}{formatCOP(cobro.saldo_pendiente)}</span>
@@ -3742,7 +3742,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           )}
                           {cobro.esPagoAnticipado && (
                             <Badge variant="outline" className="ml-2 text-xs bg-emerald-100 text-emerald-700 border-emerald-300">
-                              💰 Pago anticipado
+                              💰 Cuadre administrativo
                             </Badge>
                           )}
                         </div>

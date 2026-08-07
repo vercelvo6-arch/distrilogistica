@@ -247,7 +247,7 @@ export async function POST(request: Request) {
                 ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
                 ${cobro.referencia?.trim() || null},
                 NOW(),
-                ${'Pago anticipado confirmado en cuadre de caja'},
+                ${'Cuadre administrativo confirmado en cuadre de caja'},
                 ${entregador},
                 'fiados',
                 NOW()

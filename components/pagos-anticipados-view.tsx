@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -18,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { LogOut, Wallet, Link2, Clock } from "lucide-react"
+import { LogOut, Wallet, Link2, Clock, X } from "lucide-react"
 import type { User } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useToast } from "@/hooks/use-toast"
@@ -96,6 +97,14 @@ function BadgeEstado({ estado }: { estado: EstadoPago }) {
   return <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">Pendiente</Badge>
 }
 
+function BadgeTipoDestino({ tipo }: { tipo: "fiado" | "pedido_asesor" }) {
+  return tipo === "fiado" ? (
+    <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-300">Fiado</Badge>
+  ) : (
+    <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700 border-purple-300">Pedido asesor</Badge>
+  )
+}
+
 export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewProps) {
   const { toast } = useToast()
 
@@ -107,12 +116,21 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
     medioPago: "Efectivo",
     referencia: "",
     monto: "",
-    cliente: "",
     observaciones: "",
   })
   const [submitting, setSubmitting] = useState(false)
   const [coincidencias, setCoincidencias] = useState<Coincidencia[]>([])
   const [ultimoPagoRegistrado, setUltimoPagoRegistrado] = useState<PagoAnticipado | null>(null)
+
+  // ── Destino elegido en el propio formulario de registro (opcional) ─────────
+  const [tabDestino, setTabDestino] = useState<"fiado" | "pedido_asesor">("fiado")
+  const [destinoSeleccionado, setDestinoSeleccionado] = useState<DestinoCandidato | null>(null)
+  const [busquedaFiado, setBusquedaFiado] = useState("")
+  const [resultadosFiado, setResultadosFiado] = useState<DestinoCandidato[]>([])
+  const [buscandoFiado, setBuscandoFiado] = useState(false)
+  const [busquedaAsesor, setBusquedaAsesor] = useState("")
+  const [resultadosAsesor, setResultadosAsesor] = useState<DestinoCandidato[]>([])
+  const [buscandoAsesor, setBuscandoAsesor] = useState(false)
 
   const [pagoAIdentificar, setPagoAIdentificar] = useState<PagoAnticipado | null>(null)
   const [busquedaDestino, setBusquedaDestino] = useState("")
@@ -131,7 +149,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       setPagos(data.pagos || [])
     } catch (error) {
       console.error("[PAGOS-ANTICIPADOS] Error cargando pagos:", error)
-      toast({ title: "Error", description: "No se pudieron cargar los pagos anticipados", variant: "destructive" })
+      toast({ title: "Error", description: "No se pudo cargar el cuadre administrativo", variant: "destructive" })
     } finally {
       setLoadingPagos(false)
     }
@@ -140,6 +158,62 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
   useEffect(() => {
     loadPagos()
   }, [loadPagos])
+
+  // ── Búsqueda de fiados (Sección A) ──────────────────────────────────────────
+  useEffect(() => {
+    if (!busquedaFiado.trim()) {
+      setResultadosFiado([])
+      return
+    }
+    const timer = setTimeout(async () => {
+      setBuscandoFiado(true)
+      try {
+        const params = new URLSearchParams({ q: busquedaFiado.trim() })
+        if (Number(formData.monto) > 0) params.set("monto", formData.monto)
+        const res = await fetch(`/api/pagos-anticipados/buscar-destino?${params.toString()}`)
+        const data = await res.json()
+        setResultadosFiado((data.resultados || []).filter((r: DestinoCandidato) => r.tipo === "fiado"))
+      } catch (error) {
+        console.error("[PAGOS-ANTICIPADOS] Error buscando fiado:", error)
+        setResultadosFiado([])
+      } finally {
+        setBuscandoFiado(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [busquedaFiado, formData.monto])
+
+  // ── Búsqueda de pedidos de asesor (Sección B) ───────────────────────────────
+  useEffect(() => {
+    if (!busquedaAsesor.trim()) {
+      setResultadosAsesor([])
+      return
+    }
+    const timer = setTimeout(async () => {
+      setBuscandoAsesor(true)
+      try {
+        const params = new URLSearchParams({ q: busquedaAsesor.trim() })
+        if (Number(formData.monto) > 0) params.set("monto", formData.monto)
+        const res = await fetch(`/api/pagos-anticipados/buscar-destino?${params.toString()}`)
+        const data = await res.json()
+        setResultadosAsesor((data.resultados || []).filter((r: DestinoCandidato) => r.tipo === "pedido_asesor"))
+      } catch (error) {
+        console.error("[PAGOS-ANTICIPADOS] Error buscando pedido de asesor:", error)
+        setResultadosAsesor([])
+      } finally {
+        setBuscandoAsesor(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [busquedaAsesor, formData.monto])
+
+  const limpiarDestino = () => {
+    setDestinoSeleccionado(null)
+    setBusquedaFiado("")
+    setBusquedaAsesor("")
+    setResultadosFiado([])
+    setResultadosAsesor([])
+  }
 
   const handleSubmit = async () => {
     if (!formData.medioPago) {
@@ -164,8 +238,11 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
           medioPago: formData.medioPago,
           referencia: formData.referencia.trim(),
           monto: Number(formData.monto),
-          cliente: formData.cliente.trim() || null,
+          cliente: destinoSeleccionado?.cliente || null,
           observaciones: formData.observaciones.trim() || null,
+          destinoTipo: destinoSeleccionado?.tipo || null,
+          destinoId: destinoSeleccionado?.id || null,
+          entregadorVinculado: destinoSeleccionado?.entregador_vinculado || null,
         }),
       })
       const data = await res.json()
@@ -174,7 +251,9 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       toast({ title: "Pago registrado", description: `Voucher de ${formatCOP(Number(formData.monto))} registrado correctamente` })
       setUltimoPagoRegistrado(data.pago)
       setCoincidencias(data.coincidencias || [])
-      setFormData({ medioPago: "Efectivo", referencia: "", monto: "", cliente: "", observaciones: "" })
+      setFormData({ medioPago: "Efectivo", referencia: "", monto: "", observaciones: "" })
+      limpiarDestino()
+      setTabDestino("fiado")
       loadPagos()
     } catch (error) {
       toast({ title: "Error", description: error instanceof Error ? error.message : "Error al registrar el pago", variant: "destructive" })
@@ -252,7 +331,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                 <Wallet className="h-6 w-6 text-emerald-600" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Pagos Anticipados</h1>
+                <h1 className="text-xl font-bold text-gray-900">Cuadre Administrativo</h1>
                 <p className="text-sm text-gray-500">Vouchers y transferencias recibidos antes del cuadre de caja</p>
               </div>
             </div>
@@ -272,8 +351,8 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* Formulario de registro */}
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4">Registrar pago anticipado</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <h2 className="text-lg font-semibold mb-4">Registrar pago</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <Label>Medio de pago</Label>
               <Select value={formData.medioPago} onValueChange={(v) => setFormData({ ...formData, medioPago: v })}>
@@ -304,16 +383,93 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                 onChange={(e) => setFormData({ ...formData, monto: e.target.value })}
               />
             </div>
-            <div>
-              <Label>Cliente (opcional)</Label>
-              <Input
-                className="mt-1"
-                placeholder="Nombre del cliente"
-                value={formData.cliente}
-                onChange={(e) => setFormData({ ...formData, cliente: e.target.value })}
-              />
-            </div>
           </div>
+
+          {/* Destino del pago: fiado o pedido de asesor (opcional) */}
+          <div className="mt-4">
+            <Label className="mb-2 block">¿A qué corresponde este pago? (opcional)</Label>
+
+            {destinoSeleccionado ? (
+              <div className="flex items-center justify-between p-3 bg-white border rounded-lg">
+                <div>
+                  <span className="font-medium">{destinoSeleccionado.cliente}</span>
+                  <BadgeTipoDestino tipo={destinoSeleccionado.tipo} />
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Entregador: {destinoSeleccionado.entregador_vinculado}
+                    {destinoSeleccionado.tipo === "fiado" && destinoSeleccionado.ruta && ` — Ruta ${destinoSeleccionado.ruta}`}
+                    {" — "}Monto: {formatCOP(Number(destinoSeleccionado.monto_referencia))}
+                  </div>
+                </div>
+                <Button size="sm" variant="ghost" onClick={limpiarDestino}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <Tabs value={tabDestino} onValueChange={(v) => setTabDestino(v as "fiado" | "pedido_asesor")}>
+                <TabsList>
+                  <TabsTrigger value="fiado">¿Es abono de un fiado?</TabsTrigger>
+                  <TabsTrigger value="pedido_asesor">¿Es pago de pedido de asesor?</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="fiado" className="p-3 bg-gray-50 border rounded-lg mt-2 space-y-2">
+                  <Input
+                    placeholder="Buscar cliente en fiados..."
+                    value={busquedaFiado}
+                    onChange={(e) => setBusquedaFiado(e.target.value)}
+                  />
+                  {buscandoFiado ? (
+                    <p className="text-xs text-gray-500">Buscando...</p>
+                  ) : (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {resultadosFiado.map((c) => (
+                        <div key={`fiado-${c.id}`} className="flex items-center justify-between p-2 bg-white rounded border text-sm">
+                          <div>
+                            <span className="font-medium">{c.cliente}</span>
+                            <div className="text-xs text-gray-500">
+                              Entregador: {c.entregador_vinculado}{c.ruta && ` — Ruta ${c.ruta}`} — Saldo: {formatCOP(Number(c.monto_referencia))}
+                            </div>
+                          </div>
+                          <Button size="sm" onClick={() => setDestinoSeleccionado(c)}>Elegir</Button>
+                        </div>
+                      ))}
+                      {busquedaFiado.trim() && resultadosFiado.length === 0 && (
+                        <p className="text-xs text-gray-400 text-center py-2">Sin coincidencias en fiados</p>
+                      )}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="pedido_asesor" className="p-3 bg-gray-50 border rounded-lg mt-2 space-y-2">
+                  <Input
+                    placeholder="Buscar cliente en pedidos de asesor..."
+                    value={busquedaAsesor}
+                    onChange={(e) => setBusquedaAsesor(e.target.value)}
+                  />
+                  {buscandoAsesor ? (
+                    <p className="text-xs text-gray-500">Buscando...</p>
+                  ) : (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {resultadosAsesor.map((c) => (
+                        <div key={`asesor-${c.id}`} className="flex items-center justify-between p-2 bg-white rounded border text-sm">
+                          <div>
+                            <span className="font-medium">{c.cliente}</span>
+                            <div className="text-xs text-gray-500">
+                              Asesor: {c.entregador_vinculado} — Total: {formatCOP(Number(c.monto_referencia))}
+                            </div>
+                          </div>
+                          <Button size="sm" onClick={() => setDestinoSeleccionado(c)}>Elegir</Button>
+                        </div>
+                      ))}
+                      {busquedaAsesor.trim() && resultadosAsesor.length === 0 && (
+                        <p className="text-xs text-gray-400 text-center py-2">Sin coincidencias en pedidos de asesor</p>
+                      )}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            )}
+          </div>
+
           <div className="mt-3">
             <Label>Observaciones (opcional)</Label>
             <Textarea
@@ -361,7 +517,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
         {/* Lista de pagos */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Pagos registrados</h2>
+            <h2 className="text-lg font-semibold">Registros de cuadre administrativo</h2>
             <div className="flex gap-2">
               {(["pendiente", "identificado", "vinculado", "todos"] as const).map((estado) => (
                 <Button
@@ -382,7 +538,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
           {loadingPagos ? (
             <p className="text-sm text-gray-500">Cargando...</p>
           ) : pagos.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">No hay pagos anticipados{filtroEstado !== "todos" ? ` en estado "${filtroEstado}"` : ""}.</p>
+            <p className="text-sm text-gray-400 text-center py-6">No hay registros de cuadre administrativo{filtroEstado !== "todos" ? ` en estado "${filtroEstado}"` : ""}.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -467,9 +623,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                   <div key={`${c.tipo}-${c.id}`} className="flex items-center justify-between p-2 bg-gray-50 rounded border text-sm">
                     <div>
                       <span className="font-medium">{c.cliente}</span>
-                      <Badge variant="outline" className={`ml-2 text-xs ${c.tipo === "fiado" ? "bg-purple-100 text-purple-700 border-purple-300" : "bg-blue-100 text-blue-700 border-blue-300"}`}>
-                        {c.tipo === "fiado" ? "Fiado" : "Pedido asesor"}
-                      </Badge>
+                      <BadgeTipoDestino tipo={c.tipo} />
                       <div className="text-gray-500 text-xs mt-0.5">
                         {c.tipo === "fiado" && c.ruta && `Ruta ${c.ruta} — `}
                         Entregador: {c.entregador_vinculado} — Monto: {formatCOP(Number(c.monto_referencia))}

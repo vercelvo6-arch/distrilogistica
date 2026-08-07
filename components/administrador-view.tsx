@@ -210,7 +210,7 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
             <Link href="/pagos-anticipados">
               <Button variant="outline">
                 <CreditCard className="h-4 w-4 mr-2" />
-                Pagos Anticipados
+                Cuadre Administrativo
               </Button>
             </Link>
           </div>

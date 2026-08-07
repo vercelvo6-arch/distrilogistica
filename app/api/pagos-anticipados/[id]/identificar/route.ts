@@ -48,7 +48,7 @@ export async function PATCH(
 
     const [pago] = await sql`SELECT * FROM pagos_anticipados WHERE id = ${pagoId}`
     if (!pago) {
-      return NextResponse.json({ error: 'Pago anticipado no encontrado' }, { status: 404 })
+      return NextResponse.json({ error: 'Registro de cuadre administrativo no encontrado' }, { status: 404 })
     }
     if (pago.estado === 'vinculado') {
       return NextResponse.json({ error: 'Este pago ya fue vinculado en un cuadre' }, { status: 409 })
@@ -57,7 +57,8 @@ export async function PATCH(
     await sql`
       UPDATE pagos_anticipados SET
         tipo                 = ${destinoTipo},
-        fiado_id             = ${String(destinoId)},
+        fiado_id             = ${destinoTipo === 'fiado' ? String(destinoId) : null},
+        pedido_id            = ${destinoTipo === 'pedido_asesor' ? String(destinoId) : null},
         entregador_vinculado = ${String(entregadorVinculado)},
         estado               = 'identificado'
       WHERE id = ${pagoId}

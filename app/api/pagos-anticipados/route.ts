@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { medioPago, referencia, monto, cliente, observaciones } = body
+    const { medioPago, referencia, monto, cliente, observaciones, destinoTipo, destinoId, entregadorVinculado } = body
 
     const medioPagoLimpio = String(medioPago || '').trim()
     if (!medioPagoLimpio) {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     `
     if (dupPago) {
       return NextResponse.json(
-        { error: `La referencia ${referenciaLimpia} ya fue registrada como pago anticipado` },
+        { error: `La referencia ${referenciaLimpia} ya fue registrada en el cuadre administrativo` },
         { status: 409 }
       )
     }
@@ -62,38 +62,62 @@ export async function POST(request: NextRequest) {
 
     const clienteLimpio = cliente ? String(cliente).trim() : null
 
-    const [pago] = await sql`
-      INSERT INTO pagos_anticipados (
-        medio_pago, referencia, monto, cliente, registrado_por, observaciones
-      ) VALUES (
-        ${medioPagoLimpio}, ${referenciaLimpia}, ${montoNum},
-        ${clienteLimpio}, ${session.user.nombre}, ${observaciones?.trim() || null}
-      )
-      RETURNING *
-    `
+    // Si caja ya identificó el destino en el propio formulario de registro
+    // (búsqueda de fiado o de pedido de asesor), el pago nace directamente
+    // en estado 'identificado' — sin destino, nace 'pendiente' como antes.
+    const destinoTipoLimpio = destinoTipo === 'fiado' || destinoTipo === 'pedido_asesor' ? destinoTipo : null
+    const tieneDestino = destinoTipoLimpio && destinoId && entregadorVinculado
 
-    // Buscar coincidencias automáticas en fiados pendientes por nombre de cliente o monto exacto
-    const coincidencias = clienteLimpio
+    const [pago] = tieneDestino
       ? await sql`
-          SELECT id, cliente, ruta, saldo_pendiente, entregador, fecha_fiado
-          FROM fiados
-          WHERE eliminado IS NOT TRUE
-            AND estado IN ('pendiente', 'abono_parcial')
-            AND saldo_pendiente > 0
-            AND (cliente ILIKE ${'%' + clienteLimpio + '%'} OR saldo_pendiente = ${montoNum})
-          ORDER BY fecha_fiado DESC
-          LIMIT 10
+          INSERT INTO pagos_anticipados (
+            medio_pago, referencia, monto, cliente, registrado_por, observaciones,
+            tipo, fiado_id, pedido_id, entregador_vinculado, estado
+          ) VALUES (
+            ${medioPagoLimpio}, ${referenciaLimpia}, ${montoNum},
+            ${clienteLimpio}, ${session.user.nombre}, ${observaciones?.trim() || null},
+            ${destinoTipoLimpio},
+            ${destinoTipoLimpio === 'fiado' ? String(destinoId) : null},
+            ${destinoTipoLimpio === 'pedido_asesor' ? String(destinoId) : null},
+            ${String(entregadorVinculado)},
+            'identificado'
+          )
+          RETURNING *
         `
       : await sql`
-          SELECT id, cliente, ruta, saldo_pendiente, entregador, fecha_fiado
-          FROM fiados
-          WHERE eliminado IS NOT TRUE
-            AND estado IN ('pendiente', 'abono_parcial')
-            AND saldo_pendiente > 0
-            AND saldo_pendiente = ${montoNum}
-          ORDER BY fecha_fiado DESC
-          LIMIT 10
+          INSERT INTO pagos_anticipados (
+            medio_pago, referencia, monto, cliente, registrado_por, observaciones
+          ) VALUES (
+            ${medioPagoLimpio}, ${referenciaLimpia}, ${montoNum},
+            ${clienteLimpio}, ${session.user.nombre}, ${observaciones?.trim() || null}
+          )
+          RETURNING *
         `
+
+    // Si ya se identificó el destino explícitamente no hace falta buscar coincidencias.
+    const coincidencias = tieneDestino
+      ? []
+      : clienteLimpio
+        ? await sql`
+            SELECT id, cliente, ruta, saldo_pendiente, entregador, fecha_fiado
+            FROM fiados
+            WHERE eliminado IS NOT TRUE
+              AND estado IN ('pendiente', 'abono_parcial')
+              AND saldo_pendiente > 0
+              AND (cliente ILIKE ${'%' + clienteLimpio + '%'} OR saldo_pendiente = ${montoNum})
+            ORDER BY fecha_fiado DESC
+            LIMIT 10
+          `
+        : await sql`
+            SELECT id, cliente, ruta, saldo_pendiente, entregador, fecha_fiado
+            FROM fiados
+            WHERE eliminado IS NOT TRUE
+              AND estado IN ('pendiente', 'abono_parcial')
+              AND saldo_pendiente > 0
+              AND saldo_pendiente = ${montoNum}
+            ORDER BY fecha_fiado DESC
+            LIMIT 10
+          `
 
     return NextResponse.json({ success: true, pago, coincidencias })
   } catch (error) {
