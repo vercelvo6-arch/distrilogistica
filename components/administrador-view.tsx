@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { BarChart3, LogOut, Filter, Download, Users, LayoutDashboard, CreditCard, RefreshCw, TrendingUp } from "lucide-react"
@@ -206,6 +207,12 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
               <TrendingUp className="h-4 w-4 mr-2" />
               Rendimiento
             </Button>
+            <Link href="/pagos-anticipados">
+              <Button variant="outline">
+                <CreditCard className="h-4 w-4 mr-2" />
+                Pagos Anticipados
+              </Button>
+            </Link>
           </div>
 
           {selectedView === "dashboard" && <DashboardOverview />}

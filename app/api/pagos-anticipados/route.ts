@@ -1,0 +1,145 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getDB } from '@/lib/db'
+import { getSession } from '@/lib/session'
+import { handleDBError } from '@/lib/db-helpers'
+
+const ROLES_PERMITIDOS = ['caja', 'administrador']
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/pagos-anticipados
+// Registra un voucher/transferencia que llegó antes del cuadre de caja.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+    if (!ROLES_PERMITIDOS.includes(session.user.rol)) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const { medioPago, referencia, monto, cliente, observaciones } = body
+
+    const medioPagoLimpio = String(medioPago || '').trim()
+    if (!medioPagoLimpio) {
+      return NextResponse.json({ error: 'medioPago es requerido' }, { status: 400 })
+    }
+
+    const referenciaLimpia = String(referencia || '').trim()
+    if (!referenciaLimpia) {
+      return NextResponse.json({ error: 'referencia es requerida' }, { status: 400 })
+    }
+
+    const montoNum = Number(monto)
+    if (!montoNum || montoNum <= 0) {
+      return NextResponse.json({ error: 'monto debe ser mayor a 0' }, { status: 400 })
+    }
+
+    const sql = getDB()
+
+    // Validar duplicado contra pagos_anticipados y contra abonos_fiados (referencias ya cobradas)
+    const [dupPago] = await sql`
+      SELECT id FROM pagos_anticipados WHERE LOWER(referencia) = LOWER(${referenciaLimpia}) LIMIT 1
+    `
+    if (dupPago) {
+      return NextResponse.json(
+        { error: `La referencia ${referenciaLimpia} ya fue registrada como pago anticipado` },
+        { status: 409 }
+      )
+    }
+
+    const [dupAbono] = await sql`
+      SELECT id FROM abonos_fiados WHERE LOWER(referencia_pago) = LOWER(${referenciaLimpia}) LIMIT 1
+    `
+    if (dupAbono) {
+      return NextResponse.json(
+        { error: `La referencia ${referenciaLimpia} ya fue registrada en un abono de fiado` },
+        { status: 409 }
+      )
+    }
+
+    const clienteLimpio = cliente ? String(cliente).trim() : null
+
+    const [pago] = await sql`
+      INSERT INTO pagos_anticipados (
+        medio_pago, referencia, monto, cliente, registrado_por, observaciones
+      ) VALUES (
+        ${medioPagoLimpio}, ${referenciaLimpia}, ${montoNum},
+        ${clienteLimpio}, ${session.user.nombre}, ${observaciones?.trim() || null}
+      )
+      RETURNING *
+    `
+
+    // Buscar coincidencias automáticas en fiados pendientes por nombre de cliente o monto exacto
+    const coincidencias = clienteLimpio
+      ? await sql`
+          SELECT id, cliente, ruta, saldo_pendiente, entregador, fecha_fiado
+          FROM fiados
+          WHERE eliminado IS NOT TRUE
+            AND estado IN ('pendiente', 'abono_parcial')
+            AND saldo_pendiente > 0
+            AND (cliente ILIKE ${'%' + clienteLimpio + '%'} OR saldo_pendiente = ${montoNum})
+          ORDER BY fecha_fiado DESC
+          LIMIT 10
+        `
+      : await sql`
+          SELECT id, cliente, ruta, saldo_pendiente, entregador, fecha_fiado
+          FROM fiados
+          WHERE eliminado IS NOT TRUE
+            AND estado IN ('pendiente', 'abono_parcial')
+            AND saldo_pendiente > 0
+            AND saldo_pendiente = ${montoNum}
+          ORDER BY fecha_fiado DESC
+          LIMIT 10
+        `
+
+    return NextResponse.json({ success: true, pago, coincidencias })
+  } catch (error) {
+    return handleDBError(error, 'PAGOS_ANTICIPADOS_POST')
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/pagos-anticipados?estado=pendiente&entregador=nombre
+// Lista los pagos anticipados, opcionalmente filtrados por estado y/o por el
+// entregador al que quedaron vinculados (usado por el modal de cuadre de caja).
+// ─────────────────────────────────────────────────────────────────────────────
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+    }
+    if (!ROLES_PERMITIDOS.includes(session.user.rol)) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const estado = searchParams.get('estado')
+    const entregador = searchParams.get('entregador')
+
+    const sql = getDB()
+    let pagos
+    if (estado && entregador) {
+      pagos = await sql`
+        SELECT * FROM pagos_anticipados
+        WHERE estado = ${estado} AND entregador_vinculado = ${entregador}
+        ORDER BY registrado_en DESC
+      `
+    } else if (estado) {
+      pagos = await sql`SELECT * FROM pagos_anticipados WHERE estado = ${estado} ORDER BY registrado_en DESC`
+    } else if (entregador) {
+      pagos = await sql`
+        SELECT * FROM pagos_anticipados WHERE entregador_vinculado = ${entregador} ORDER BY registrado_en DESC
+      `
+    } else {
+      pagos = await sql`SELECT * FROM pagos_anticipados ORDER BY registrado_en DESC`
+    }
+
+    return NextResponse.json({ success: true, pagos })
+  } catch (error) {
+    return handleDBError(error, 'PAGOS_ANTICIPADOS_GET')
+  }
+}

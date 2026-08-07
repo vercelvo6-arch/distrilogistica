@@ -37,8 +37,8 @@ export async function middleware(request: NextRequest) {
     'coordinador': ['/coordinador'],
     'alistador': ['/alistador'],
     'entregador': ['/entregador'],
-    'caja': ['/caja'],
-    'administrador': ['/admin']
+    'caja': ['/caja', '/pagos-anticipados'],
+    'administrador': ['/admin', '/pagos-anticipados']
   }
 
   // Si está en la raíz "/", redirigir a su dashboard según rol

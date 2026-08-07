@@ -18,19 +18,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { planillaId, entregador, fechaAlistamiento } = body
+    const { planillaId, entregador, fechaAlistamiento, esAsesor, nombreAsesor } = body
 
     // Validaciones
     if (!planillaId || typeof planillaId !== 'string') {
       return NextResponse.json(
         { error: 'planillaId es requerido' },
-        { status: 400 }
-      )
-    }
-
-    if (!entregador || typeof entregador !== 'string') {
-      return NextResponse.json(
-        { error: 'entregador es requerido' },
         { status: 400 }
       )
     }
@@ -44,22 +37,6 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // Verificar entregador existe y está activo
-    const entregadorExists = await sql`
-      SELECT id, nombre, rol, estado 
-      FROM usuarios 
-      WHERE nombre = ${entregador} 
-        AND rol = 'entregador' 
-        AND estado = 'activo'
-    `
-
-    if (entregadorExists.length === 0) {
-      return NextResponse.json(
-        { error: `El entregador "${entregador}" no existe o no está activo` },
-        { status: 400 }
-      )
-    }
-
     // Verificar planilla existe
     const planillaExists = await sql`
       SELECT id, estado FROM planillas WHERE id = ${planillaId}
@@ -69,17 +46,68 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Planilla no encontrada' }, { status: 404 })
     }
 
-    // 🔥 ACTUALIZAR CON FECHA DE ALISTAMIENTO
-    const result = await sql`
-      UPDATE planillas 
-      SET 
-        entregador = ${entregador},
-        fecha_alistamiento = ${fechaAlistamiento},
-        estado = 'pendiente',
-        updated_at = NOW()
-      WHERE id = ${planillaId}
-      RETURNING id, entregador, fecha_alistamiento, tipo_ruta, fecha, estado
-    `
+    let result
+
+    if (esAsesor) {
+      // Planilla de asesor: nombre libre, no valida contra usuarios/entregador
+      const nombreAsesorLimpio = typeof nombreAsesor === 'string' ? nombreAsesor.trim() : ''
+      if (!nombreAsesorLimpio) {
+        return NextResponse.json(
+          { error: 'nombreAsesor es requerido cuando esAsesor es true' },
+          { status: 400 }
+        )
+      }
+
+      result = await sql`
+        UPDATE planillas
+        SET
+          entregador       = ${nombreAsesorLimpio},
+          es_asesor         = true,
+          nombre_asesor     = ${nombreAsesorLimpio},
+          fecha_alistamiento = ${fechaAlistamiento},
+          estado            = 'pendiente',
+          updated_at        = NOW()
+        WHERE id = ${planillaId}
+        RETURNING id, entregador, fecha_alistamiento, tipo_ruta, fecha, estado, es_asesor, nombre_asesor
+      `
+    } else {
+      if (!entregador || typeof entregador !== 'string') {
+        return NextResponse.json(
+          { error: 'entregador es requerido' },
+          { status: 400 }
+        )
+      }
+
+      // Verificar entregador existe y está activo
+      const entregadorExists = await sql`
+        SELECT id, nombre, rol, estado
+        FROM usuarios
+        WHERE nombre = ${entregador}
+          AND rol = 'entregador'
+          AND estado = 'activo'
+      `
+
+      if (entregadorExists.length === 0) {
+        return NextResponse.json(
+          { error: `El entregador "${entregador}" no existe o no está activo` },
+          { status: 400 }
+        )
+      }
+
+      // 🔥 ACTUALIZAR CON FECHA DE ALISTAMIENTO
+      result = await sql`
+        UPDATE planillas
+        SET
+          entregador        = ${entregador},
+          es_asesor          = false,
+          nombre_asesor      = NULL,
+          fecha_alistamiento = ${fechaAlistamiento},
+          estado             = 'pendiente',
+          updated_at         = NOW()
+        WHERE id = ${planillaId}
+        RETURNING id, entregador, fecha_alistamiento, tipo_ruta, fecha, estado, es_asesor, nombre_asesor
+      `
+    }
 
     if (result.length === 0) {
       return NextResponse.json(
@@ -92,7 +120,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Entregador ${entregador} asignado para alistar el ${fechaAlistamiento}`,
+      message: `${result[0].entregador} asignado para alistar el ${fechaAlistamiento}`,
       planilla: result[0]
     }, { status: 200 })
 

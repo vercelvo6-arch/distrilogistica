@@ -195,6 +195,77 @@ export async function POST(request: Request) {
         if (cobro.yaRegistrado) continue
 
         const totalAbono = efectivo + nequi
+
+        // ── Pago anticipado ya identificado — se confirma aquí dentro del cuadre ──
+        if (cobro.esPagoAnticipado) {
+          if (!cobro.pagoAnticipadoId || !cobro.pagoAnticipadoFiadoId) continue
+
+          if (cobro.pagoAnticipadoTipo === 'pedido_asesor') {
+            // Pedido de asesor: solo se marca entregado, NO se crea abono
+            await sql`
+              UPDATE pedidos SET
+                estado     = 'entregado',
+                updated_at = NOW()
+              WHERE id = ${String(cobro.pagoAnticipadoFiadoId)}
+            `
+          } else {
+            // Fiado: mismo tratamiento que un cobro CxC normal sobre 'fiados'
+            const fiadoIdPA = Number(cobro.pagoAnticipadoFiadoId)
+
+            const [fiadoPA] = await sql`
+              SELECT id, monto_pagado, saldo_pendiente
+              FROM fiados
+              WHERE id = ${fiadoIdPA}
+                AND (eliminado IS NULL OR eliminado = false)
+                AND estado IN ('pendiente', 'abono_parcial')
+            `
+            if (!fiadoPA) continue
+
+            const saldoActualPA      = Number(fiadoPA.saldo_pendiente)
+            const nuevoMontoPagadoPA = Number(fiadoPA.monto_pagado) + totalAbono
+            const nuevoSaldoPA       = Math.max(0, Math.round((saldoActualPA - totalAbono) * 100) / 100)
+            const pagoCompletoPA     = nuevoSaldoPA <= 0
+
+            await sql`
+              UPDATE fiados SET
+                monto_pagado    = ${nuevoMontoPagadoPA},
+                saldo_pendiente = ${nuevoSaldoPA},
+                estado          = ${pagoCompletoPA ? 'pagado_completo' : 'abono_parcial'},
+                updated_at      = NOW()
+              WHERE id = ${fiadoIdPA}
+            `
+
+            await sql`
+              INSERT INTO abonos_fiados (
+                pedido_id, monto_abono, monto_nequi, metodo_pago,
+                referencia_pago, fecha_abono, observaciones,
+                entregador_cobro, origen_tabla, created_at
+              ) VALUES (
+                ${String(fiadoIdPA)},
+                ${efectivo},
+                ${nequi},
+                ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
+                ${cobro.referencia?.trim() || null},
+                NOW(),
+                ${'Pago anticipado confirmado en cuadre de caja'},
+                ${entregador},
+                'fiados',
+                NOW()
+              )
+            `
+          }
+
+          await sql`
+            UPDATE pagos_anticipados SET
+              estado        = 'vinculado',
+              vinculado_en  = NOW(),
+              vinculado_por = ${session.user.nombre}
+            WHERE id = ${Number(cobro.pagoAnticipadoId)}
+          `
+
+          continue
+        }
+
         const esFiadoNumerico = /^\d+$/.test(String(cobro.id))
 
         if (esFiadoNumerico) {

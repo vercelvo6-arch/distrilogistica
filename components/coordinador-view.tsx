@@ -23,6 +23,7 @@ import type { RouteSheet, User as UserType } from "@/lib/types"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
@@ -65,6 +66,8 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     ruta: string
     entregadorSeleccionado: string
     fechaAlistamiento: string
+    esAsesor: boolean
+    nombreAsesor: string
   } | null>(null)
 
   useEffect(() => {
@@ -614,11 +617,20 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       ruta,
       entregadorSeleccionado: "",
       fechaAlistamiento: today,
+      esAsesor: false,
+      nombreAsesor: "",
     })
   }
 
   const handleConfirmAssignment = async () => {
-    if (!assignmentModal || !assignmentModal.entregadorSeleccionado) {
+    if (!assignmentModal) return
+
+    if (assignmentModal.esAsesor) {
+      if (!assignmentModal.nombreAsesor.trim()) {
+        alert("Ingrese el nombre del asesor")
+        return
+      }
+    } else if (!assignmentModal.entregadorSeleccionado) {
       alert("Seleccione un entregador")
       return
     }
@@ -631,6 +643,8 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           planillaId: assignmentModal.sheetId,
           entregador: assignmentModal.entregadorSeleccionado,
           fechaAlistamiento: assignmentModal.fechaAlistamiento,
+          esAsesor: assignmentModal.esAsesor,
+          nombreAsesor: assignmentModal.nombreAsesor.trim(),
         }),
       })
 
@@ -1487,29 +1501,67 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
             </DialogHeader>
 
             <div className="space-y-4 py-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Entregador</label>
-                <Select
-                  value={assignmentModal.entregadorSeleccionado}
-                  onValueChange={(value) =>
+              {!assignmentModal.esAsesor && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Entregador</label>
+                  <Select
+                    value={assignmentModal.entregadorSeleccionado}
+                    onValueChange={(value) =>
+                      setAssignmentModal({
+                        ...assignmentModal,
+                        entregadorSeleccionado: value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar entregador" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {entregadores.map((entregador) => (
+                        <SelectItem key={entregador} value={entregador}>
+                          {entregador}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="esAsesorCheckbox"
+                  checked={assignmentModal.esAsesor}
+                  onCheckedChange={(checked) =>
                     setAssignmentModal({
                       ...assignmentModal,
-                      entregadorSeleccionado: value,
+                      esAsesor: checked === true,
+                      entregadorSeleccionado: checked === true ? "" : assignmentModal.entregadorSeleccionado,
+                      nombreAsesor: checked === true ? assignmentModal.nombreAsesor : "",
                     })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar entregador" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {entregadores.map((entregador) => (
-                      <SelectItem key={entregador} value={entregador}>
-                        {entregador}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
+                <label htmlFor="esAsesorCheckbox" className="text-sm font-medium cursor-pointer">
+                  Es planilla de asesor
+                </label>
               </div>
+
+              {assignmentModal.esAsesor && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Nombre del asesor</label>
+                  <input
+                    type="text"
+                    value={assignmentModal.nombreAsesor}
+                    onChange={(e) =>
+                      setAssignmentModal({
+                        ...assignmentModal,
+                        nombreAsesor: e.target.value,
+                      })
+                    }
+                    placeholder="Nombre del asesor"
+                    className="w-full px-3 py-2 border rounded-md"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium mb-2">Fecha de Alistamiento</label>

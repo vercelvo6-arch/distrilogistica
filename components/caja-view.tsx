@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2, Edit2 } from "lucide-react"
@@ -1555,13 +1556,46 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
-  const loadCobrosDisponibles = async (entregador: string) => {
+  // incluirPagosAnticipados: solo el flujo de cuadre AGRUPADO sabe mostrar los
+  // cobros de tipo "pago anticipado" (campos medioPago/monto/numeroFactura). El
+  // modal de cuadre individual sigue usando el formato viejo (montoEfectivo/montoNequi)
+  // y no debe recibirlos.
+  const loadCobrosDisponibles = async (entregador: string, incluirPagosAnticipados = false) => {
     setLoadingCobros(true)
     try {
       // Cobros disponibles para vincular (asignados al entregador, sin cobrar aún)
       const res = await fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}`)
       const data = await res.json()
-      setCobrosDisponibles(data.cobros || [])
+      const cobrosFiados = data.cobros || []
+
+      // ✅ Pagos anticipados ya identificados para este entregador — se muestran como
+      // un cobro CxC más, listos para que caja los confirme dentro de este cuadre.
+      let cobrosPagosAnticipados: any[] = []
+      if (incluirPagosAnticipados) {
+        try {
+          const resPA = await fetch(`/api/pagos-anticipados?estado=identificado&entregador=${encodeURIComponent(entregador)}`)
+          if (resPA.ok) {
+            const dataPA = await resPA.json()
+            cobrosPagosAnticipados = (dataPA.pagos || []).map((p: any) => ({
+              id:                    `pa-${p.id}`,
+              cliente:               p.cliente || "(sin nombre)",
+              ruta:                  null,
+              saldo_pendiente:       Number(p.monto),
+              esPagoAnticipado:      true,
+              pagoAnticipadoId:      p.id,
+              pagoAnticipadoTipo:    p.tipo,
+              pagoAnticipadoFiadoId: p.fiado_id,
+              numeroFactura:         p.referencia,
+              medioPago:             p.medio_pago,
+              monto:                 String(p.monto),
+            }))
+          }
+        } catch (ePA) {
+          console.error("[CAJA] Error cargando pagos anticipados identificados:", ePA)
+        }
+      }
+
+      setCobrosDisponibles([...cobrosFiados, ...cobrosPagosAnticipados])
 
       // ✅ Precargar automáticamente los cobros que el entregador ya registró en ruta hoy
       const hoy = new Date().toISOString().split("T")[0]
@@ -1599,7 +1633,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const handleVincularCobro = (cobro: any) => {
     if (cobrosVinculados.find(c => c.id === cobro.id)) return
-    setCobrosVinculados(prev => [...prev, { ...cobro, numeroFactura: "", medioPago: "Efectivo", monto: "" }])
+    // Los pagos anticipados llegan con medioPago/monto/numeroFactura ya definidos desde su registro — no se resetean.
+    setCobrosVinculados(prev => [...prev, cobro.esPagoAnticipado
+      ? { ...cobro }
+      : { ...cobro, numeroFactura: "", medioPago: "Efectivo", monto: "" }
+    ])
   }
 
   const handleDesvincularCobro = (cobroId: number) => {
@@ -1823,7 +1861,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       descuento: totalDescuentosAgrupado.toString(),
       observaciones: borrador?.observaciones || "",
     }))
-    loadCobrosDisponibles(rutasSeleccionadas[0].entregador)
+    loadCobrosDisponibles(rutasSeleccionadas[0].entregador, true)
     setShowAgrupadoModal(true)
   }
 
@@ -1927,20 +1965,34 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       devoluciones:       devolucionesFinal,
       repasos:            repasosFinal,
       erroresFacturacion: erroresFacturacionFinal,
-      cobrosVinculados:   cobrosVinculados.map(c => c.yaRegistrado
-        ? {
+      cobrosVinculados:   cobrosVinculados.map(c => {
+        if (c.esPagoAnticipado) {
+          return {
+            id:                    c.id,
+            montoEfectivo:         Number(c.monto) || 0,
+            montoNequi:            0,
+            referencia:            buildReferenciaCobro(c),
+            esPagoAnticipado:      true,
+            pagoAnticipadoId:      c.pagoAnticipadoId,
+            pagoAnticipadoTipo:    c.pagoAnticipadoTipo,
+            pagoAnticipadoFiadoId: c.pagoAnticipadoFiadoId,
+          }
+        }
+        if (c.yaRegistrado) {
+          return {
             id:            c.id,
             montoEfectivo: Number(c.montoEfectivo) || 0,
             montoNequi:    Number(c.montoNequi) || 0,
             referencia:    c.referencia?.trim() || null,
           }
-        : {
-            id:            c.id,
-            montoEfectivo: Number(c.monto) || 0,
-            montoNequi:    0,
-            referencia:    buildReferenciaCobro(c),
-          }
-      ),
+        }
+        return {
+          id:            c.id,
+          montoEfectivo: Number(c.monto) || 0,
+          montoNequi:    0,
+          referencia:    buildReferenciaCobro(c),
+        }
+      }),
     }
 
     const response = await fetch("/api/cuadres-caja", {
@@ -2379,6 +2431,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               <DollarSign className="h-4 w-4 mr-2" />
               Comisiones
             </Button>
+            <Link href="/pagos-anticipados">
+              <Button variant="outline" size="sm">
+                <Wallet className="h-4 w-4 mr-2" />
+                Pagos Anticipados
+              </Button>
+            </Link>
           </div>
 
           {selectedView === "comisiones" ? (
@@ -3310,7 +3368,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       <div key={cobro.id} className="flex items-center justify-between p-2 bg-white rounded border text-sm">
                         <div>
                           <span className="font-medium">{cobro.cliente}</span>
-                          <span className="text-gray-500 ml-2 text-xs">{cobro.ruta} — {formatCOP(cobro.saldo_pendiente)}</span>
+                          {cobro.esPagoAnticipado && (
+                            <Badge variant="outline" className="ml-2 text-xs bg-emerald-100 text-emerald-700 border-emerald-300">
+                              💰 Pago anticipado
+                            </Badge>
+                          )}
+                          <span className="text-gray-500 ml-2 text-xs">{cobro.ruta ? `${cobro.ruta} — ` : ""}{formatCOP(cobro.saldo_pendiente)}</span>
                         </div>
                         <Button size="sm" variant="outline" className="h-6 text-xs border-purple-300 text-purple-700"
                           onClick={() => handleVincularCobro(cobro)}>
@@ -3647,7 +3710,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       <div key={cobro.id} className="flex items-center justify-between p-2 bg-white rounded border text-sm">
                         <div>
                           <span className="font-medium">{cobro.cliente}</span>
-                          <span className="text-gray-500 ml-2 text-xs">{cobro.ruta} — {formatCOP(cobro.saldo_pendiente)}</span>
+                          {cobro.esPagoAnticipado && (
+                            <Badge variant="outline" className="ml-2 text-xs bg-emerald-100 text-emerald-700 border-emerald-300">
+                              💰 Pago anticipado
+                            </Badge>
+                          )}
+                          <span className="text-gray-500 ml-2 text-xs">{cobro.ruta ? `${cobro.ruta} — ` : ""}{formatCOP(cobro.saldo_pendiente)}</span>
                         </div>
                         <Button size="sm" variant="outline" className="h-6 text-xs border-purple-300 text-purple-700"
                           onClick={() => handleVincularCobro(cobro)}>
@@ -3672,6 +3740,11 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           {cobro.yaRegistrado && (
                             <span className="text-xs text-green-600 ml-2">✓ Registrado en ruta</span>
                           )}
+                          {cobro.esPagoAnticipado && (
+                            <Badge variant="outline" className="ml-2 text-xs bg-emerald-100 text-emerald-700 border-emerald-300">
+                              💰 Pago anticipado
+                            </Badge>
+                          )}
                         </div>
                         <Button size="sm" variant="ghost" className="h-6 text-red-500"
                           onClick={() => handleDesvincularCobro(cobro.id)}>
@@ -3679,10 +3752,11 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         </Button>
                       </div>
 
-                      {cobro.yaRegistrado ? (
+                      {cobro.yaRegistrado || cobro.esPagoAnticipado ? (
                         <div className="text-xs text-gray-600 flex items-center gap-4">
                           <span>Medio: <strong>{cobro.medioPago}</strong></span>
                           <span>Monto: <strong>{formatCOP(getCobroMontoTotal(cobro))}</strong></span>
+                          {cobro.numeroFactura && <span>Ref: <strong>{cobro.numeroFactura}</strong></span>}
                         </div>
                       ) : (
                         <div className="grid grid-cols-3 gap-2">
