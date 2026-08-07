@@ -1567,6 +1567,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           montoEfectivo:   String(a.monto_efectivo || 0),
           montoNequi:      String(a.monto_nequi || 0),
           referencia:      a.referencia_pago || "",
+          numeroFactura:   "",
+          medioPago:       a.monto_nequi > 0 && a.monto_efectivo > 0 ? "Mixto" : a.monto_nequi > 0 ? "Nequi" : "Efectivo",
+          monto:           String((Number(a.monto_efectivo) || 0) + (Number(a.monto_nequi) || 0)),
           yaRegistrado:    true, // flag para que caja sepa que viene del entregador
         }))
         if (cobrosYaRegistrados.length > 0) {
@@ -1585,11 +1588,25 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   const handleVincularCobro = (cobro: any) => {
     if (cobrosVinculados.find(c => c.id === cobro.id)) return
-    setCobrosVinculados(prev => [...prev, { ...cobro, resultado: null, montoEfectivo: "", montoNequi: "", referencia: "" }])
+    setCobrosVinculados(prev => [...prev, { ...cobro, numeroFactura: "", medioPago: "Efectivo", monto: "" }])
   }
 
   const handleDesvincularCobro = (cobroId: number) => {
     setCobrosVinculados(prev => prev.filter(c => c.id !== cobroId))
+  }
+
+  // Monto total que aporta un cobro CxC al esperado, sin importar el medio de pago.
+  // Los cobros ya registrados por el entregador conservan su desglose efectivo/nequi original;
+  // los cobros agregados en caja usan el campo unificado "monto".
+  const getCobroMontoTotal = (cobro: any) =>
+    cobro.yaRegistrado
+      ? (Number(cobro.montoEfectivo) || 0) + (Number(cobro.montoNequi) || 0)
+      : Number(cobro.monto) || 0
+
+  const buildReferenciaCobro = (cobro: any) => {
+    if (cobro.yaRegistrado) return cobro.referencia?.trim() || null
+    const partes = [cobro.medioPago, cobro.numeroFactura?.trim() ? `Fact. ${cobro.numeroFactura.trim()}` : null].filter(Boolean)
+    return partes.length ? partes.join(" · ") : null
   }
 
   const handleActualizarResultadoCobro = (cobroId: number, campo: string, valor: any) => {
@@ -1816,14 +1833,6 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     if (existe) return
   }
 
-  // Validar referencias Nequi de cobros
-  for (const cobro of cobrosVinculados) {
-    if (Number(cobro.montoNequi) > 0 && !cobro.referencia?.trim()) {
-      toast({ title: "Error", description: `Ingresa la referencia Nequi para el cobro de ${cobro.cliente}`, variant: "destructive" })
-      return
-    }
-  }
-
   // ✅ Validar duplicados de consignaciones — si falla el endpoint, no bloquear el cierre
   const numerosConsignacion = consignaciones.map(c => c.numero.trim()).filter(n => n !== "")
   if (numerosConsignacion.length > 0) {
@@ -1871,7 +1880,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
 
     // 2. Calcular totales
-    const totalCobrosEfectivo    = cobrosVinculados.reduce((s, c) => s + (Number(c.montoEfectivo) || 0), 0)
+    const totalCobrosCxC         = cobrosVinculados.reduce((s, c) => s + getCobroMontoTotal(c), 0)
     const totalBilletes          = Number(formData.billetes || 0)
     const totalMonedas           = Number(formData.monedas || 0)
     const totalConsignaciones    = consignaciones.reduce((s, c) => s + (Number(c.monto) || 0), 0)
@@ -1889,7 +1898,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       - descuentoFinal
       - repasosFinal
       - erroresFacturacionFinal
-      + totalCobrosEfectivo
+      + totalCobrosCxC
 
     const payload = {
       planillaIds:        agrupadoData.planillaIds,
@@ -1907,12 +1916,20 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       devoluciones:       devolucionesFinal,
       repasos:            repasosFinal,
       erroresFacturacion: erroresFacturacionFinal,
-      cobrosVinculados:   cobrosVinculados.map(c => ({
-        id:            c.id,
-        montoEfectivo: Number(c.montoEfectivo) || 0,
-        montoNequi:    Number(c.montoNequi) || 0,
-        referencia:    c.referencia?.trim() || null,
-      })),
+      cobrosVinculados:   cobrosVinculados.map(c => c.yaRegistrado
+        ? {
+            id:            c.id,
+            montoEfectivo: Number(c.montoEfectivo) || 0,
+            montoNequi:    Number(c.montoNequi) || 0,
+            referencia:    c.referencia?.trim() || null,
+          }
+        : {
+            id:            c.id,
+            montoEfectivo: Number(c.monto) || 0,
+            montoNequi:    0,
+            referencia:    buildReferenciaCobro(c),
+          }
+      ),
     }
 
     const response = await fetch("/api/cuadres-caja", {
@@ -3550,7 +3567,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
         open={showAgrupadoModal}
         onOpenChange={(open) => (open ? setShowAgrupadoModal(true) : setShowAgrupadoModal(false))}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cuadre Agrupado - Manual</DialogTitle>
             <DialogDescription>
@@ -3559,12 +3576,46 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* ── COBROS CxC ─────────────────────────────────────────── */}
+            {/* ── 1. NOVEDADES (solo lectura) ───────────────────────── */}
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <h3 className="font-semibold text-sm mb-3">📊 Novedades</h3>
+              <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-100 border border-orange-200">
+                  <span className="text-xs text-orange-700 font-medium">Fiado</span>
+                  <span className="text-xs font-bold text-orange-800">{formatCOP(Number(formData.fiados) || 0)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-100 border border-red-200">
+                  <span className="text-xs text-red-700 font-medium">Devoluciones</span>
+                  <span className="text-xs font-bold text-red-800">{formatCOP(Number(formData.devolucionesParciales) || 0)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-200 border border-gray-300">
+                  <span className="text-xs text-gray-700 font-medium">Agotados</span>
+                  <span className="text-xs font-bold text-gray-800">{formatCOP(Number(formData.agotados) || 0)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-100 border border-blue-200">
+                  <span className="text-xs text-blue-700 font-medium">Repasos</span>
+                  <span className="text-xs font-bold text-blue-800">{formatCOP(Number(formData.repasos) || 0)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-100 border border-purple-200">
+                  <span className="text-xs text-purple-700 font-medium">Descuentos</span>
+                  <span className="text-xs font-bold text-purple-800">{formatCOP(Number(formData.descuento) || 0)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 border border-amber-200">
+                  <span className="text-xs text-amber-700 font-medium">Errores Facturación</span>
+                  <span className="text-xs font-bold text-amber-800">{formatCOP(Number(formData.erroresFacturacion) || 0)}</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-3">
+                Registradas automáticamente desde las novedades de las rutas — no editables aquí.
+              </p>
+            </div>
+
+            {/* ── 2. COBROS CxC (suman al esperado) ─────────────────── */}
             <div className="border rounded-lg p-4 bg-purple-50">
               <h3 className="font-semibold text-sm text-purple-800 mb-3">💳 Cobros CxC</h3>
               <div className="flex gap-2 mb-3">
                 <Input
-                  placeholder="Buscar por cliente o ruta..."
+                  placeholder="Buscar cliente en fiados..."
                   value={busquedaCobro}
                   onChange={(e) => setBusquedaCobro(e.target.value)}
                   className="flex-1"
@@ -3607,38 +3658,60 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <div>
                           <span className="font-medium text-sm">{cobro.cliente}</span>
                           <span className="text-xs text-gray-500 ml-2">Saldo: {formatCOP(cobro.saldo_pendiente)}</span>
+                          {cobro.yaRegistrado && (
+                            <span className="text-xs text-green-600 ml-2">✓ Registrado en ruta</span>
+                          )}
                         </div>
                         <Button size="sm" variant="ghost" className="h-6 text-red-500"
                           onClick={() => handleDesvincularCobro(cobro.id)}>
                           <X className="h-3 w-3" />
                         </Button>
                       </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <Label className="text-xs">Efectivo</Label>
-                          <Input type="number" min={0} placeholder="0" className="h-7 text-sm"
-                            value={cobro.montoEfectivo}
-                            onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoEfectivo", e.target.value)} />
+
+                      {cobro.yaRegistrado ? (
+                        <div className="text-xs text-gray-600 flex items-center gap-4">
+                          <span>Medio: <strong>{cobro.medioPago}</strong></span>
+                          <span>Monto: <strong>{formatCOP(getCobroMontoTotal(cobro))}</strong></span>
                         </div>
-                        <div>
-                          <Label className="text-xs">Nequi</Label>
-                          <Input type="number" min={0} placeholder="0" className="h-7 text-sm"
-                            value={cobro.montoNequi}
-                            onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoNequi", e.target.value)} />
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <Label className="text-xs">N° Factura</Label>
+                            <Input placeholder="Factura" className="h-8 text-sm"
+                              value={cobro.numeroFactura || ""}
+                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "numeroFactura", e.target.value)} />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Medio de pago</Label>
+                            <Select
+                              value={cobro.medioPago || "Efectivo"}
+                              onValueChange={(v) => handleActualizarResultadoCobro(cobro.id, "medioPago", v)}
+                            >
+                              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Efectivo">Efectivo</SelectItem>
+                                <SelectItem value="Nequi">Nequi</SelectItem>
+                                <SelectItem value="Bancolombia">Bancolombia</SelectItem>
+                                <SelectItem value="Daviplata">Daviplata</SelectItem>
+                                <SelectItem value="Datafono">Datafono</SelectItem>
+                                <SelectItem value="Aval">Aval</SelectItem>
+                                <SelectItem value="Nu">Nu</SelectItem>
+                                <SelectItem value="Transferencia">Transferencia</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-xs">Monto</Label>
+                            <Input type="number" min={0} placeholder="0" className="h-8 text-sm"
+                              value={cobro.monto || ""}
+                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "monto", e.target.value)} />
+                          </div>
                         </div>
-                        <div>
-                          <Label className="text-xs">Referencia {Number(cobro.montoNequi) > 0 && <span className="text-red-500">*</span>}</Label>
-                          <Input placeholder="Ref. Nequi" className="h-7 text-sm"
-                            value={cobro.referencia}
-                            onChange={(e) => handleActualizarResultadoCobro(cobro.id, "referencia", e.target.value)} />
-                        </div>
-                      </div>
-                      {(Number(cobro.montoEfectivo) > 0 || Number(cobro.montoNequi) > 0) && (
-                        <div className="text-xs text-right text-purple-700 font-medium">
-                          Total: {formatCOP((Number(cobro.montoEfectivo) || 0) + (Number(cobro.montoNequi) || 0))}
-                          {(Number(cobro.montoEfectivo) || 0) + (Number(cobro.montoNequi) || 0) < cobro.saldo_pendiente && (
-                            <span className="text-amber-600 ml-2">· Saldo queda: {formatCOP(cobro.saldo_pendiente - (Number(cobro.montoEfectivo) || 0) - (Number(cobro.montoNequi) || 0))}</span>
-                          )}
+                      )}
+
+                      {!cobro.yaRegistrado && Number(cobro.monto) > 0 && Number(cobro.monto) < Number(cobro.saldo_pendiente) && (
+                        <div className="text-xs text-right text-amber-600">
+                          Saldo queda: {formatCOP(Number(cobro.saldo_pendiente) - Number(cobro.monto))}
                         </div>
                       )}
                     </div>
@@ -3647,102 +3720,29 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               )}
             </div>
 
-            {/* ── NOVEDADES ──────────────────────────────────────────── */}
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <h3 className="font-semibold text-sm mb-3">📊 Novedades (Editable)</h3>
+            {/* ── 3. DINERO RECIBIDO ─────────────────────────────────── */}
+            <div className="border rounded-lg p-4 bg-green-50">
+              <h3 className="font-semibold text-sm text-green-800 mb-3">💰 Dinero Recibido</h3>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 mb-4">
                 <div>
-                  <Label className="text-xs text-orange-600 font-medium">Fiados</Label>
-                  <Input
-                    type="number"
-                    value={formData.fiados}
-                    onChange={(e) => setFormData({ ...formData, fiados: e.target.value })}
-                    className="mt-1 font-semibold"
-                  />
+                  <Label>Billetes</Label>
+                  <Input value={formData.billetes}
+                    onChange={(e) => setFormData({ ...formData, billetes: e.target.value })}
+                    type="number" placeholder="0" className="bg-white" />
                 </div>
-
                 <div>
-                  <Label className="text-xs text-blue-600 font-medium">Repasos</Label>
-                  <Input
-                    type="number"
-                    value={formData.repasos}
-                    onChange={(e) => setFormData({ ...formData, repasos: e.target.value })}
-                    className="mt-1 font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs text-red-600 font-medium">Devoluciones</Label>
-                  <Input
-                    type="number"
-                    value={formData.devolucionesParciales}
-                    onChange={(e) => setFormData({ ...formData, devolucionesParciales: e.target.value })}
-                    className="mt-1 font-semibold border-red-300"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs text-gray-600 font-medium">Agotados</Label>
-                  <Input
-                    type="number"
-                    value={formData.agotados}
-                    onChange={(e) => setFormData({ ...formData, agotados: e.target.value })}
-                    className="mt-1 font-semibold border-gray-300"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs text-orange-700 font-medium">Errores Facturación</Label>
-                  <Input
-                    id="erroresFactAgrupado"
-                    type="number"
-                    value={formData.erroresFacturacion || "0"}
-                    onChange={(e) => setFormData({ ...formData, erroresFacturacion: e.target.value })}
-                    className="mt-1 font-semibold border-orange-300"
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs text-purple-600 font-medium">Descuentos</Label>
-                  <Input
-                    type="number"
-                    value={formData.descuento}
-                    onChange={(e) => setFormData({ ...formData, descuento: e.target.value })}
-                    className="mt-1 font-semibold border-purple-300"
-                  />
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-500 mt-3">
-                💡 Tip: Los valores están pre-cargados con las novedades registradas. Puedes editarlos si necesitas ajustar manualmente.
-              </p>
-            </div>
-
-            {/* Efectivo y Consignaciones */}
-            <div className="space-y-4">
-              <div className="space-y-3">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Efectivo físico</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Billetes</Label>
-                    <Input value={formData.billetes}
-                      onChange={(e) => setFormData({ ...formData, billetes: e.target.value })}
-                      type="number" placeholder="0" />
-                  </div>
-                  <div>
-                    <Label>Monedas</Label>
-                    <Input value={formData.monedas}
-                      onChange={(e) => setFormData({ ...formData, monedas: e.target.value })}
-                      type="number" placeholder="0" />
-                  </div>
+                  <Label>Monedas</Label>
+                  <Input value={formData.monedas}
+                    onChange={(e) => setFormData({ ...formData, monedas: e.target.value })}
+                    type="number" placeholder="0" className="bg-white" />
                 </div>
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Consignaciones</p>
-                  <Button variant="outline" size="sm" onClick={agregarConsignacion} className="h-7 text-xs">
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Consignaciones</p>
+                  <Button variant="outline" size="sm" onClick={agregarConsignacion} className="h-7 text-xs bg-white">
                     <Plus className="h-3 w-3 mr-1" />
                     Agregar
                   </Button>
@@ -3751,7 +3751,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                   <p className="text-xs text-gray-400 text-center py-2">Sin consignaciones</p>
                 )}
                 {consignaciones.map((cons, idx) => (
-                  <div key={cons.id} className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                  <div key={cons.id} className="border rounded-lg p-3 bg-white space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-gray-600">Consignación {idx + 1}</span>
                       <Button variant="ghost" size="sm" className="h-6 text-red-500 p-0"
@@ -3766,9 +3766,17 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           value={cons.banco} onChange={(e) => actualizarConsignacion(cons.id, "banco", e.target.value)} />
                       </div>
                       <div>
-                        <Label className="text-xs">Número</Label>
+                        <Label className="text-xs">Número de referencia</Label>
                         <Input className="h-8 text-sm" placeholder="Referencia"
                           value={cons.numero} onChange={(e) => actualizarConsignacion(cons.id, "numero", e.target.value)} />
+                        {cons.numero.trim() !== "" && consignaciones.some(
+                          x => x.id !== cons.id && x.numero.trim().toLowerCase() === cons.numero.trim().toLowerCase()
+                        ) && (
+                          <p className="text-xs text-red-600 mt-0.5">Duplicada en este cuadre</p>
+                        )}
+                        {consignacionesDuplicadasBD.has(cons.numero.trim().toLowerCase()) && (
+                          <p className="text-xs text-red-600 mt-0.5">Ya registrada en la BD</p>
+                        )}
                       </div>
                       <div>
                         <Label className="text-xs">Monto</Label>
@@ -3780,80 +3788,92 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <Input className="h-8 text-sm" type="date"
                           value={cons.fecha} onChange={(e) => actualizarConsignacion(cons.id, "fecha", e.target.value)} />
                       </div>
-                      <div className="col-span-2">
-                        <Label className="text-xs">Nombre del Cliente</Label>
-                        <Input className="h-8 text-sm" placeholder="Nombre del cliente que consignó"
+                      <div>
+                        <Label className="text-xs">Cliente (opcional)</Label>
+                        <Input className="h-8 text-sm" placeholder="Nombre del cliente"
                           value={cons.cliente || ""} onChange={(e) => actualizarConsignacion(cons.id, "cliente", e.target.value)} />
                       </div>
-                      <div className="col-span-2">
-                        <Label className="text-xs">Número de Factura</Label>
-                        <Input className="h-8 text-sm" placeholder="Factura a la que corresponde"
+                      <div>
+                        <Label className="text-xs">N° Factura (opcional)</Label>
+                        <Input className="h-8 text-sm" placeholder="Factura"
                           value={cons.numero_factura || ""} onChange={(e) => actualizarConsignacion(cons.id, "numero_factura", e.target.value)} />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-
-              <div>
-                <Label>Observaciones</Label>
-                <Textarea value={formData.observaciones}
-                  onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                  rows={3} />
-              </div>
             </div>
 
-            {/* Resumen Final */}
+            <div>
+              <Label>Observaciones</Label>
+              <Textarea value={formData.observaciones}
+                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                rows={3} />
+            </div>
+
+            {/* ── 4. RESULTADO (tiempo real) ─────────────────────────── */}
             {(() => {
-              const totalCobrosEfectivo = cobrosVinculados.reduce((s, c) => s + (Number(c.montoEfectivo) || 0), 0)
-              const totalCobrosNequi    = cobrosVinculados.reduce((s, c) => s + (Number(c.montoNequi) || 0), 0)
-              const totalBilletes       = Number(formData.billetes || 0)
-              const totalMonedas        = Number(formData.monedas || 0)
+              const totalCobrosCxC     = cobrosVinculados.reduce((s, c) => s + getCobroMontoTotal(c), 0)
+              const totalBilletes      = Number(formData.billetes || 0)
+              const totalMonedas       = Number(formData.monedas || 0)
+              const totalEfectivo      = totalBilletes + totalMonedas
               const totalConsignaciones = consignaciones.reduce((s, c) => s + (Number(c.monto) || 0), 0)
-              const totalNovedades      = (Number(formData.fiados)||0)
-                                        + (Number(formData.repasos)||0)
-                                        + (Number(formData.devolucionesParciales)||0)
-                                        + (Number(formData.agotados)||0)
-                                        + (Number(formData.descuento)||0)
-                                        + (Number(formData.erroresFacturacion)||0)
-              const esperado            = (agrupadoData?.totales.cargue || 0) - totalNovedades + totalCobrosEfectivo
-              const recibido            = totalBilletes + totalMonedas + totalConsignaciones
-              const diferencia          = recibido - esperado
+              const totalNovedades     = (Number(formData.fiados)||0)
+                                       + (Number(formData.repasos)||0)
+                                       + (Number(formData.devolucionesParciales)||0)
+                                       + (Number(formData.agotados)||0)
+                                       + (Number(formData.descuento)||0)
+                                       + (Number(formData.erroresFacturacion)||0)
+              const cargue             = agrupadoData?.totales.cargue || 0
+              const esperado           = cargue + totalCobrosCxC - totalNovedades
+              const totalRecibido      = totalEfectivo + totalConsignaciones
+              const diferencia         = totalRecibido - esperado
               return (
-                <>
-                  <div className="border-t pt-4 grid grid-cols-4 gap-3 text-sm">
-                    <div className="text-center p-2 bg-blue-50 rounded">
-                      <span className="text-xs text-blue-600 font-medium">Cargue Total</span>
-                      <p className="font-bold text-blue-700">{formatCOP(agrupadoData?.totales.cargue || 0)}</p>
+                <div className="border-t pt-4 space-y-3">
+                  <p className="text-sm font-semibold text-gray-700">📋 Resultado</p>
+                  <p className="text-xs text-gray-500">
+                    Cargue {formatCOP(cargue)} + Cobros CxC {formatCOP(totalCobrosCxC)} − Novedades {formatCOP(totalNovedades)} = Esperado
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-emerald-50 rounded text-center">
+                      <span className="text-xs text-emerald-600 font-medium">Esperado</span>
+                      <p className="font-bold text-emerald-700 text-lg">{formatCOP(esperado)}</p>
                     </div>
-                    <div className="text-center p-2 bg-red-50 rounded">
-                      <span className="text-xs text-red-600 font-medium">Novedades</span>
-                      <p className="font-bold text-red-700">
-                        {formatCOP((Number(formData.fiados)||0)+(Number(formData.repasos)||0)+(Number(formData.devolucionesParciales)||0)+(Number(formData.agotados)||0)+(Number(formData.descuento)||0)+(Number(formData.erroresFacturacion)||0))}
-                      </p>
-                    </div>
-                    <div className="text-center p-2 bg-purple-50 rounded">
-                      <span className="text-xs text-purple-600 font-medium">Cobros CxC</span>
-                      <p className="font-bold text-purple-700">{formatCOP(totalCobrosEfectivo + totalCobrosNequi)}</p>
-                    </div>
-                    <div className="text-center p-2 bg-green-50 rounded">
-                      <span className="text-xs text-green-600 font-medium">Efectivo Esperado</span>
-                      <p className="font-bold text-green-700">{formatCOP(esperado)}</p>
+                    <div className="p-3 bg-blue-50 rounded text-center">
+                      <span className="text-xs text-blue-600 font-medium">Total Recibido</span>
+                      <p className="font-bold text-blue-700 text-lg">{formatCOP(totalRecibido)}</p>
                     </div>
                   </div>
-                  <div className="border-t pt-4 flex justify-between items-center">
-                    <span className="font-semibold">Diferencia:</span>
-                    <span className={`font-bold text-lg ${Math.abs(diferencia) < 1 ? "text-green-600" : "text-red-600"}`}>
-                      {diferencia > 0 ? '+' : ''}{formatCOP(Math.round(diferencia))}
-                    </span>
+
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div className="p-2 bg-gray-50 rounded text-center">
+                      <span className="text-xs text-gray-500">Efectivo (Billetes+Monedas)</span>
+                      <p className="font-semibold">{formatCOP(totalEfectivo)}</p>
+                    </div>
+                    <div className="p-2 bg-gray-50 rounded text-center">
+                      <span className="text-xs text-gray-500">Consignaciones</span>
+                      <p className="font-semibold">{formatCOP(totalConsignaciones)}</p>
+                    </div>
+                    <div className="p-2 bg-gray-50 rounded text-center">
+                      <span className="text-xs text-gray-500">Cobros CxC</span>
+                      <p className="font-semibold">{formatCOP(totalCobrosCxC)}</p>
+                    </div>
                   </div>
-                </>
+
+                  <div className={`p-3 rounded text-center ${Math.abs(diferencia) < 1 ? "bg-green-50" : "bg-red-50"}`}>
+                    <span className="text-xs font-medium">Diferencia</span>
+                    <p className={`font-bold text-lg ${Math.abs(diferencia) < 1 ? "text-green-700" : "text-red-700"}`}>
+                      {diferencia > 0 ? "+" : ""}{formatCOP(Math.round(diferencia))}
+                    </p>
+                  </div>
+                </div>
               )
             })()}
           </div>
 
           <DialogFooter>
-            {(consignacionesDuplicadasBD.size > 0 || consignaciones.some(c => 
+            {(consignacionesDuplicadasBD.size > 0 || consignaciones.some(c =>
               c.numero.trim() !== "" && consignaciones.filter(x => x.numero.trim().toLowerCase() === c.numero.trim().toLowerCase()).length > 1
             )) && (
               <div className="w-full bg-red-100 border border-red-400 rounded-lg p-3 mb-2">
@@ -3877,9 +3897,9 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             >
               Cancelar
             </Button>
-            <Button onClick={handleSubmitAgrupado} disabled={submitting || 
+            <Button onClick={handleSubmitAgrupado} disabled={submitting ||
               consignacionesDuplicadasBD.size > 0 ||
-              consignaciones.some(c => 
+              consignaciones.some(c =>
                 c.numero.trim() !== "" && consignaciones.filter(x => x.numero.trim().toLowerCase() === c.numero.trim().toLowerCase()).length > 1
               )}>
               {submitting ? "Guardando..." : "Confirmar Cuadre"}
