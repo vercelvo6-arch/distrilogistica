@@ -52,8 +52,23 @@ export function CuadreEditModal({ cuadreId, onClose, onSuccess }: CuadreEditModa
       if (!response.ok) throw new Error((await response.json()).error || 'Error al cargar cuadre')
       const data = await response.json()
       setCuadre(data.cuadre)
+
+      // ✅ El efectivo recibido se precarga SOLO desde billetes + monedas — nunca
+      // desde total_efectivo, porque esa columna ya trae sumadas las consignaciones
+      // (y el Nequi recibido). Sumarlas de nuevo en calcularRecibido() duplicaba el monto.
+      // Fallback para cuadres antiguos (creados por el flujo individual, que nunca
+      // guardó billetes/monedas por separado): billetes y monedas llegan null en ese
+      // caso, así que se deriva restando las consignaciones del total_efectivo guardado.
+      const billetesRaw = data.cuadre.billetes
+      const monedasRaw  = data.cuadre.monedas
+      const tieneDesglose = (billetesRaw !== null && billetesRaw !== undefined)
+        || (monedasRaw !== null && monedasRaw !== undefined)
+      const efectivoInicial = tieneDesglose
+        ? (Number(billetesRaw) || 0) + (Number(monedasRaw) || 0)
+        : (Number(data.cuadre.total_efectivo) || 0) - (Number(data.cuadre.total_consignado) || 0)
+
       setFormData({
-        efectivoRecibido:   data.cuadre.total_efectivo?.toString()       || "0",
+        efectivoRecibido:   efectivoInicial.toString(),
         montoConsignacion:  data.cuadre.total_consignado?.toString()     || "0",
         tieneConsignacion:  data.cuadre.tiene_consignacion               || false,
         numeroConsignacion: data.cuadre.numero_consignacion              || "",
