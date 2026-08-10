@@ -196,6 +196,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       billetes: formData.billetes,
       monedas: formData.monedas,
       observaciones: formData.observaciones,
+      planillaIds: agrupadoData.planillaIds,
+      guardadoEn: Date.now(),
     }
     localStorage.setItem(clave, JSON.stringify(borrador))
   }, [consignaciones, cobrosVinculados, formData.billetes, formData.monedas, formData.observaciones, agrupadoData, showAgrupadoModal])
@@ -1839,7 +1841,22 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     const claveborrador = `cuadre_borrador_${rutasSeleccionadas[0].entregador}`
     const borradorGuardado = localStorage.getItem(claveborrador)
-    const borrador = borradorGuardado ? JSON.parse(borradorGuardado) : null
+    let borrador = borradorGuardado ? JSON.parse(borradorGuardado) : null
+
+    // ✅ Descartar borradores que no correspondan a este cuadre: viejos (>24h) o de
+    // otro conjunto de planillas — evita restaurar residuos de una sesión anterior
+    // sin relación con lo que se está cuadrando ahora, aunque sea el mismo entregador.
+    if (borrador) {
+      const VEINTICUATRO_HORAS = 24 * 60 * 60 * 1000
+      const esViejo = !borrador.guardadoEn || (Date.now() - borrador.guardadoEn) > VEINTICUATRO_HORAS
+      const mismasPlanillas = Array.isArray(borrador.planillaIds) &&
+        JSON.stringify([...borrador.planillaIds].sort()) === JSON.stringify([...selectedRoutes].sort())
+
+      if (esViejo || !mismasPlanillas) {
+        localStorage.removeItem(claveborrador)
+        borrador = null
+      }
+    }
 
     const borradorConsignaciones = (borrador?.consignaciones || []).map((c: any) => ({
       ...c,
@@ -2021,6 +2038,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setSelectedRoutes([])
     setAgrupadoData(null)
     setCobrosVinculados([])
+    setConsignaciones([])
     await loadData()
   } catch (error) {
     toast({ title: "Error", description: error instanceof Error ? error.message : "Error al registrar cuadre", variant: "destructive" })
