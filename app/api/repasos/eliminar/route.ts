@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { registrarSnapshotPedido } from '@/lib/eliminaciones-historial'
 
 export async function GET(request: NextRequest) {
   try {
@@ -152,52 +153,68 @@ export async function POST(request: NextRequest) {
     const totalPedido = Number(pedido[0].total)
     const planillaId = pedido[0].planilla_id
 
-    // Eliminar productos del pedido
-    console.log('[ELIMINAR REPASO] 🗑️ Eliminando productos del pedido...')
-    
-    await sql`
-      DELETE FROM pedido_productos
-      WHERE pedido_id = ${pedidoId}
-    `
+    await sql`BEGIN`
+    try {
+      // Respaldar el pedido + sus productos antes de borrar
+      await registrarSnapshotPedido(
+        sql,
+        pedidoId,
+        { id: session.user.id, nombre: session.user.nombre },
+        'repasos/eliminar'
+      )
 
-    console.log('[ELIMINAR REPASO] ✅ Productos eliminados')
+      // Eliminar productos del pedido
+      console.log('[ELIMINAR REPASO] 🗑️ Eliminando productos del pedido...')
 
-    // Eliminar el pedido
-    console.log('[ELIMINAR REPASO] 🗑️ Eliminando pedido...')
-    
-    await sql`
-      DELETE FROM pedidos
-      WHERE id = ${pedidoId}
-    `
-
-    console.log('[ELIMINAR REPASO] ✅ Pedido eliminado')
-
-    // Actualizar total_cargue de la planilla (RESTAR)
-    if (planillaId) {
-      console.log('[ELIMINAR REPASO] 📝 Actualizando cargue de planilla...')
-      
-      const planillaActual = await sql`
-        SELECT total_cargue FROM planillas WHERE id = ${planillaId}
+      await sql`
+        DELETE FROM pedido_productos
+        WHERE pedido_id = ${pedidoId}
       `
 
-      if (planillaActual.length > 0) {
-        const cargueActual = Number(planillaActual[0].total_cargue) || 0
-        const nuevoCargue = cargueActual - totalPedido
+      console.log('[ELIMINAR REPASO] ✅ Productos eliminados')
 
-        console.log('[ELIMINAR REPASO]   Cargue actual:', cargueActual)
-        console.log('[ELIMINAR REPASO]   - Repaso:', totalPedido)
-        console.log('[ELIMINAR REPASO]   = Nuevo cargue:', nuevoCargue)
+      // Eliminar el pedido
+      console.log('[ELIMINAR REPASO] 🗑️ Eliminando pedido...')
 
-        await sql`
-          UPDATE planillas
-          SET 
-            total_cargue = ${nuevoCargue},
-            updated_at = NOW()
-          WHERE id = ${planillaId}
+      await sql`
+        DELETE FROM pedidos
+        WHERE id = ${pedidoId}
+      `
+
+      console.log('[ELIMINAR REPASO] ✅ Pedido eliminado')
+
+      // Actualizar total_cargue de la planilla (RESTAR)
+      if (planillaId) {
+        console.log('[ELIMINAR REPASO] 📝 Actualizando cargue de planilla...')
+
+        const planillaActual = await sql`
+          SELECT total_cargue FROM planillas WHERE id = ${planillaId}
         `
 
-        console.log('[ELIMINAR REPASO] ✅ Cargue actualizado correctamente')
+        if (planillaActual.length > 0) {
+          const cargueActual = Number(planillaActual[0].total_cargue) || 0
+          const nuevoCargue = cargueActual - totalPedido
+
+          console.log('[ELIMINAR REPASO]   Cargue actual:', cargueActual)
+          console.log('[ELIMINAR REPASO]   - Repaso:', totalPedido)
+          console.log('[ELIMINAR REPASO]   = Nuevo cargue:', nuevoCargue)
+
+          await sql`
+            UPDATE planillas
+            SET
+              total_cargue = ${nuevoCargue},
+              updated_at = NOW()
+            WHERE id = ${planillaId}
+          `
+
+          console.log('[ELIMINAR REPASO] ✅ Cargue actualizado correctamente')
+        }
       }
+
+      await sql`COMMIT`
+    } catch (txError) {
+      await sql`ROLLBACK`
+      throw txError
     }
 
     const resultado = {

@@ -27,6 +27,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
+import { EliminadosView } from "@/components/eliminados-view"
 import { devolverAlistamiento } from "@/lib/actions/planillas"
 
 interface CoordinadorViewProps {
@@ -858,7 +859,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
 
       <main className="container mx-auto px-3 md:px-4 py-4 md:py-8 max-w-5xl">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4 mb-6">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
             <TabsTrigger value="generar">
               <Upload className="h-4 w-4 mr-2" />
               Generar Hoy
@@ -874,6 +875,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
             <TabsTrigger value="historial">
               <Calendar className="h-4 w-4 mr-2" />
               Historial
+            </TabsTrigger>
+            <TabsTrigger value="eliminados">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminados
             </TabsTrigger>
           </TabsList>
 
@@ -1489,6 +1494,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                 </div>
               )}
             </Card>
+          </TabsContent>
+
+          {/* PESTAÑA 5: ELIMINADOS */}
+          <TabsContent value="eliminados" className="space-y-4">
+            <EliminadosView />
           </TabsContent>
         </Tabs>
       </main>

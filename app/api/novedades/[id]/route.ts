@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDB } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { handleDBError } from "@/lib/db-helpers";
+import { registrarSnapshotNovedad } from "@/lib/eliminaciones-historial";
 
 export const dynamic = "force-dynamic";
 
@@ -134,10 +135,25 @@ export async function DELETE(
     }
 
     // Eliminar la novedad
-    await sql`
-      DELETE FROM novedades_pedido
-      WHERE id = ${novedadId}
-    `;
+    await sql`BEGIN`;
+    try {
+      await registrarSnapshotNovedad(
+        sql,
+        novedadId,
+        { id: session.user?.id || "desconocido", nombre: session.user?.nombre || "desconocido" },
+        "novedades/[id] DELETE"
+      );
+
+      await sql`
+        DELETE FROM novedades_pedido
+        WHERE id = ${novedadId}
+      `;
+
+      await sql`COMMIT`;
+    } catch (txError) {
+      await sql`ROLLBACK`;
+      throw txError;
+    }
 
     console.log("[API novedades DELETE] ✅ Novedad eliminada");
 

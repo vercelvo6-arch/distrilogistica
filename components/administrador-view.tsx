@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { BarChart3, LogOut, Filter, Download, Users, LayoutDashboard, CreditCard, RefreshCw, TrendingUp } from "lucide-react"
+import { BarChart3, LogOut, Filter, Download, Users, LayoutDashboard, CreditCard, RefreshCw, TrendingUp, Trash2 } from "lucide-react"
 import type { RouteSheet, User } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -15,6 +15,7 @@ import { DashboardOverview } from "@/components/dashboard-overview"
 import { FiadosView } from "@/components/fiados-view"
 import { RepassosView } from "@/components/repasos-view"
 import { RendimientoView } from "@/components/rendimiento-view"
+import { EliminadosView } from "@/components/eliminados-view"
 
 interface AdministradorViewProps {
   onLogout: () => void
@@ -22,7 +23,7 @@ interface AdministradorViewProps {
 }
 
 export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
-  const [selectedView, setSelectedView] = useState<"dashboard" | "general" | "fiados" | "repasos" | "devoluciones" | "productos-devueltos" | "usuarios" | "comisiones" | "rendimiento">("dashboard")
+  const [selectedView, setSelectedView] = useState<"dashboard" | "general" | "fiados" | "repasos" | "devoluciones" | "productos-devueltos" | "usuarios" | "comisiones" | "rendimiento" | "eliminados">("dashboard")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [loading, setLoading] = useState(true)
   const [filterEntregador, setFilterEntregador] = useState<string>("all")
@@ -213,6 +214,13 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
                 Cuadre Administrativo
               </Button>
             </Link>
+            <Button
+              variant={selectedView === "eliminados" ? "default" : "outline"}
+              onClick={() => setSelectedView("eliminados")}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminados
+            </Button>
           </div>
 
           {selectedView === "dashboard" && <DashboardOverview />}
@@ -229,6 +237,7 @@ export function AdministradorView({ onLogout, user }: AdministradorViewProps) {
           {selectedView === "rendimiento" && (
             <RendimientoView onLogout={onLogout} userRole="administrador" />
           )}
+          {selectedView === "eliminados" && <EliminadosView />}
         </div>
       </main>
     </div>

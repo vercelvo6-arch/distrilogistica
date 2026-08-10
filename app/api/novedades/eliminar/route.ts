@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getDB } from "@/lib/db"
 import { getSession } from "@/lib/session"
 import { handleDBError } from "@/lib/db-helpers"
+import { registrarSnapshotNovedad } from "@/lib/eliminaciones-historial"
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,10 +23,25 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    await sql`
-      DELETE FROM novedades_pedido
-      WHERE id = ${novedadId}
-    `
+    await sql`BEGIN`
+    try {
+      await registrarSnapshotNovedad(
+        sql,
+        novedadId,
+        { id: session.user.id, nombre: session.user.nombre },
+        "novedades/eliminar"
+      )
+
+      await sql`
+        DELETE FROM novedades_pedido
+        WHERE id = ${novedadId}
+      `
+
+      await sql`COMMIT`
+    } catch (txError) {
+      await sql`ROLLBACK`
+      throw txError
+    }
 
     return NextResponse.json({ success: true, mensaje: "Novedad eliminada" })
 

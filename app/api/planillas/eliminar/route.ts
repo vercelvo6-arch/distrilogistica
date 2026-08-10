@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getDB } from "@/lib/db"
 import { getSession } from "@/lib/session"
+import { registrarSnapshotPlanilla } from "@/lib/eliminaciones-historial"
 
 export const dynamic = "force-dynamic"
 
@@ -48,36 +49,44 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API /planillas/eliminar] Eliminando planilla ${planillaId} (Ruta: ${planilla.tipo_ruta})`)
 
-    // 2. Obtener todos los pedidos de esta planilla
+    // 2. Obtener todos los pedidos de esta planilla (para el conteo de respuesta)
     const pedidos = await sql`
       SELECT id FROM pedidos WHERE planilla_id = ${planillaId}
     `
 
     console.log(`[API /planillas/eliminar] ${pedidos.length} pedidos encontrados`)
 
-    // 3. Eliminar productos de cada pedido
-    if (pedidos.length > 0) {
-      const pedidoIds = pedidos.map(p => p.id)
-      
+    await sql`BEGIN`
+    try {
+      // 3. Respaldar planilla + pedidos + productos antes de borrar (permite restaurar después)
+      await registrarSnapshotPlanilla(
+        sql,
+        planillaId,
+        { id: session.user.id, nombre: session.user.nombre },
+        "planillas/eliminar"
+      )
+
+      // 4. Eliminar productos de cada pedido
       await sql`
-        DELETE FROM pedido_productos 
-        WHERE pedido_id = ANY(${pedidoIds})
+        DELETE FROM pedido_productos
+        WHERE pedido_id IN (SELECT id FROM pedidos WHERE planilla_id = ${planillaId})
       `
-      
-      console.log(`[API /planillas/eliminar] Productos eliminados`)
+
+      // 5. Eliminar todos los pedidos
+      await sql`
+        DELETE FROM pedidos WHERE planilla_id = ${planillaId}
+      `
+
+      // 6. Eliminar la planilla
+      await sql`
+        DELETE FROM planillas WHERE id = ${planillaId}
+      `
+
+      await sql`COMMIT`
+    } catch (txError) {
+      await sql`ROLLBACK`
+      throw txError
     }
-
-    // 4. Eliminar todos los pedidos
-    await sql`
-      DELETE FROM pedidos WHERE planilla_id = ${planillaId}
-    `
-
-    console.log(`[API /planillas/eliminar] Pedidos eliminados`)
-
-    // 5. Eliminar la planilla
-    await sql`
-      DELETE FROM planillas WHERE id = ${planillaId}
-    `
 
     console.log(`[API /planillas/eliminar] ✓ Planilla ${planillaId} eliminada exitosamente`)
 
@@ -91,7 +100,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[API /planillas/eliminar] ERROR:", error)
     return NextResponse.json(
-      { 
+      {
         error: "Error al eliminar planilla",
         details: error instanceof Error ? error.message : "Error desconocido"
       },

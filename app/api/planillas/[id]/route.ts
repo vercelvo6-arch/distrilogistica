@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { registrarSnapshotPlanilla } from '@/lib/eliminaciones-historial';
 
 export async function PATCH(
   request: NextRequest,
@@ -106,20 +107,36 @@ export async function DELETE(
       return NextResponse.json({ error: 'Planilla no encontrada' }, { status: 404 });
     }
 
-    const deletedProducts = await sql`
-      DELETE FROM pedido_productos
-      WHERE pedido_id IN (
-        SELECT id FROM pedidos WHERE planilla_id = ${planillaId}
-      )
-    `;
+    await sql`BEGIN`;
+    let deletedProducts, deletedOrders, deletedSheet;
+    try {
+      await registrarSnapshotPlanilla(
+        sql,
+        planillaId,
+        { id: session.user.id, nombre: session.user.nombre },
+        'planillas/[id] DELETE'
+      );
 
-    const deletedOrders = await sql`
-      DELETE FROM pedidos WHERE planilla_id = ${planillaId}
-    `;
+      deletedProducts = await sql`
+        DELETE FROM pedido_productos
+        WHERE pedido_id IN (
+          SELECT id FROM pedidos WHERE planilla_id = ${planillaId}
+        )
+      `;
 
-    const deletedSheet = await sql`
-      DELETE FROM planillas WHERE id = ${planillaId}
-    `;
+      deletedOrders = await sql`
+        DELETE FROM pedidos WHERE planilla_id = ${planillaId}
+      `;
+
+      deletedSheet = await sql`
+        DELETE FROM planillas WHERE id = ${planillaId}
+      `;
+
+      await sql`COMMIT`;
+    } catch (txError) {
+      await sql`ROLLBACK`;
+      throw txError;
+    }
 
     console.log(`[API DELETE] Planilla ${planillaId} eliminada`);
 

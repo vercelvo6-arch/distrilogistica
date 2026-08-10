@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getDB } from "@/lib/db"
+import { getSession } from "@/lib/session"
+import { registrarSnapshotPedido } from "@/lib/eliminaciones-historial"
 
 export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSession()
     const { pedidoId, planillaId } = await request.json()
 
     // Validar datos
@@ -31,28 +34,45 @@ export async function POST(request: NextRequest) {
 
     const totalPedido = Number(pedidoResult[0].total) || 0
 
-    // 2. Eliminar los productos del pedido
-    await sql`
-      DELETE FROM pedido_productos WHERE pedido_id = ${pedidoId}
-    `
+    await sql`BEGIN`
+    let planillaResult
+    try {
+      // 2. Respaldar el pedido + sus productos antes de borrar
+      await registrarSnapshotPedido(
+        sql,
+        pedidoId,
+        { id: session?.user?.id || "desconocido", nombre: session?.user?.nombre || "desconocido" },
+        "pedidos/eliminar"
+      )
 
-    // 3. Eliminar el pedido
-    await sql`
-      DELETE FROM pedidos WHERE id = ${pedidoId}
-    `
+      // 3. Eliminar los productos del pedido
+      await sql`
+        DELETE FROM pedido_productos WHERE pedido_id = ${pedidoId}
+      `
 
-    // 4. Actualizar el total_cargue de la planilla
-    await sql`
-      UPDATE planillas 
-      SET total_cargue = total_cargue - ${totalPedido},
-          updated_at = NOW()
-      WHERE id = ${planillaId}
-    `
+      // 4. Eliminar el pedido
+      await sql`
+        DELETE FROM pedidos WHERE id = ${pedidoId}
+      `
 
-    // 5. Obtener el nuevo total
-    const planillaResult = await sql`
-      SELECT total_cargue FROM planillas WHERE id = ${planillaId}
-    `
+      // 5. Actualizar el total_cargue de la planilla
+      await sql`
+        UPDATE planillas
+        SET total_cargue = total_cargue - ${totalPedido},
+            updated_at = NOW()
+        WHERE id = ${planillaId}
+      `
+
+      // 6. Obtener el nuevo total
+      planillaResult = await sql`
+        SELECT total_cargue FROM planillas WHERE id = ${planillaId}
+      `
+
+      await sql`COMMIT`
+    } catch (txError) {
+      await sql`ROLLBACK`
+      throw txError
+    }
 
     const nuevoTotalCargue = Number(planillaResult[0].total_cargue) || 0
 
