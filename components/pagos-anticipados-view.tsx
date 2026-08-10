@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { Fragment, useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { LogOut, Wallet, Link2, Clock, X } from "lucide-react"
+import { LogOut, Wallet, Link2, Clock, X, ChevronDown, ChevronUp, Users } from "lucide-react"
 import type { User } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useToast } from "@/hooks/use-toast"
@@ -65,6 +65,17 @@ interface DestinoCandidato {
   entregador_vinculado: string
   ruta?: string
   planilla_id?: string
+}
+
+interface PedidoAsesorPendiente {
+  id: string
+  cliente: string
+  total: number | string
+  created_at: string
+  asesor: string | null
+  planilla_id: string
+  ruta: string | null
+  fecha: string
 }
 
 function antiguedadDias(registradoEn: string) {
@@ -137,6 +148,47 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
   const [candidatosDestino, setCandidatosDestino] = useState<DestinoCandidato[]>([])
   const [loadingCandidatos, setLoadingCandidatos] = useState(false)
   const [identificando, setIdentificando] = useState(false)
+
+  // ── Rendición de cuentas por asesor ─────────────────────────────────────────
+  const [pedidosAsesor, setPedidosAsesor] = useState<PedidoAsesorPendiente[]>([])
+  const [loadingPedidosAsesor, setLoadingPedidosAsesor] = useState(true)
+  const [filtroAsesorTexto, setFiltroAsesorTexto] = useState("")
+  const [asesorExpandido, setAsesorExpandido] = useState<string | null>(null)
+
+  const loadPedidosAsesor = useCallback(async () => {
+    setLoadingPedidosAsesor(true)
+    try {
+      const res = await fetch("/api/pagos-anticipados/pedidos-asesor")
+      const data = await res.json()
+      setPedidosAsesor(data.pedidos || [])
+    } catch (error) {
+      console.error("[PAGOS-ANTICIPADOS] Error cargando pedidos de asesor:", error)
+    } finally {
+      setLoadingPedidosAsesor(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadPedidosAsesor()
+  }, [loadPedidosAsesor])
+
+  const resumenAsesores = useMemo(() => {
+    const mapa = new Map<string, { asesor: string; numPedidos: number; total: number; pedidos: PedidoAsesorPendiente[] }>()
+    for (const p of pedidosAsesor) {
+      const nombre = p.asesor || "(sin nombre)"
+      if (!mapa.has(nombre)) {
+        mapa.set(nombre, { asesor: nombre, numPedidos: 0, total: 0, pedidos: [] })
+      }
+      const entry = mapa.get(nombre)!
+      entry.numPedidos += 1
+      entry.total += Number(p.total) || 0
+      entry.pedidos.push(p)
+    }
+    const filtro = filtroAsesorTexto.trim().toLowerCase()
+    return Array.from(mapa.values())
+      .filter((e) => !filtro || e.asesor.toLowerCase().includes(filtro))
+      .sort((a, b) => b.total - a.total)
+  }, [pedidosAsesor, filtroAsesorTexto])
 
   const loadPagos = useCallback(async () => {
     setLoadingPagos(true)
@@ -511,6 +563,76 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                 ))}
               </div>
             </div>
+          )}
+        </Card>
+
+        {/* Rendición de cuentas por asesor */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-purple-600" />
+              <h2 className="text-lg font-semibold">Pedidos de Asesores Pendientes por Cuadrar</h2>
+            </div>
+            <Input
+              className="max-w-xs"
+              placeholder="Buscar asesor..."
+              value={filtroAsesorTexto}
+              onChange={(e) => setFiltroAsesorTexto(e.target.value)}
+            />
+          </div>
+
+          {loadingPedidosAsesor ? (
+            <p className="text-sm text-gray-500">Cargando...</p>
+          ) : resumenAsesores.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">
+              {filtroAsesorTexto.trim() ? "Ningún asesor coincide con la búsqueda." : "No hay pedidos de asesor pendientes por cuadrar."}
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead></TableHead>
+                  <TableHead>Asesor</TableHead>
+                  <TableHead>Facturas/Pedidos</TableHead>
+                  <TableHead>Total a responder</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {resumenAsesores.map((r) => (
+                  <Fragment key={r.asesor}>
+                    <TableRow
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => setAsesorExpandido(asesorExpandido === r.asesor ? null : r.asesor)}
+                    >
+                      <TableCell className="w-6">
+                        {asesorExpandido === r.asesor ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </TableCell>
+                      <TableCell className="font-medium">{r.asesor}</TableCell>
+                      <TableCell>{r.numPedidos}</TableCell>
+                      <TableCell className="font-semibold">{formatCOP(r.total)}</TableCell>
+                    </TableRow>
+                    {asesorExpandido === r.asesor && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="bg-gray-50 p-0">
+                          <div className="p-3 space-y-1">
+                            {r.pedidos.map((p) => (
+                              <div key={p.id} className="flex items-center justify-between text-sm bg-white rounded border p-2">
+                                <span>
+                                  <strong>{p.cliente}</strong>
+                                  {p.ruta && <span className="text-gray-500"> — Ruta {p.ruta}</span>}
+                                  <span className="text-gray-500"> — {new Date(p.fecha).toLocaleDateString("es-CO")}</span>
+                                </span>
+                                <span className="font-semibold">{formatCOP(Number(p.total))}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </Card>
 
