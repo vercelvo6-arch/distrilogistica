@@ -184,8 +184,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }, [])
 
   // ✅ Guardar borrador automáticamente cuando cambian consignaciones, cobros o montos
+  // Solo mientras el modal agrupado está realmente abierto — de lo contrario, abrir/cerrar
+  // el modal de cuadre individual (que reutiliza estas mismas variables) sobrescribe el
+  // borrador guardado con un estado vacío, aunque el usuario ya haya cerrado el agrupado.
   useEffect(() => {
-    if (!agrupadoData) return
+    if (!agrupadoData || !showAgrupadoModal) return
     const clave = `cuadre_borrador_${agrupadoData.entregador}`
     const borrador = {
       consignaciones,
@@ -195,7 +198,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       observaciones: formData.observaciones,
     }
     localStorage.setItem(clave, JSON.stringify(borrador))
-  }, [consignaciones, cobrosVinculados, formData.billetes, formData.monedas, formData.observaciones, agrupadoData])
+  }, [consignaciones, cobrosVinculados, formData.billetes, formData.monedas, formData.observaciones, agrupadoData, showAgrupadoModal])
 
   useEffect(() => {
     fetch("/api/entregadores")
