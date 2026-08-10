@@ -1636,7 +1636,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     // Los pagos anticipados llegan con medioPago/monto/numeroFactura ya definidos desde su registro — no se resetean.
     setCobrosVinculados(prev => [...prev, cobro.esPagoAnticipado
       ? { ...cobro }
-      : { ...cobro, numeroFactura: "", medioPago: "Efectivo", monto: "" }
+      : { ...cobro, numeroFactura: "", medioPago: "Efectivo", monto: "", fecha: new Date().toISOString().split("T")[0], numeroReferencia: "" }
     ])
   }
 
@@ -1986,11 +1986,16 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             referencia:    c.referencia?.trim() || null,
           }
         }
+        const montoCobro = Number(c.monto) || 0
+        const esEfectivo = (c.medioPago || "Efectivo") === "Efectivo"
         return {
-          id:            c.id,
-          montoEfectivo: Number(c.monto) || 0,
-          montoNequi:    0,
-          referencia:    buildReferenciaCobro(c),
+          id:               c.id,
+          montoEfectivo:    esEfectivo ? montoCobro : 0,
+          montoNequi:       esEfectivo ? 0 : montoCobro,
+          referencia:       c.numeroReferencia?.trim() || null,
+          medioPagoDetalle: c.medioPago || null,
+          numeroFactura:    c.numeroFactura?.trim() || null,
+          fecha:            c.fecha || null,
         }
       }),
     }
@@ -3790,6 +3795,18 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             <Input type="number" min={0} placeholder="0" className="h-8 text-sm"
                               value={cobro.monto || ""}
                               onChange={(e) => handleActualizarResultadoCobro(cobro.id, "monto", e.target.value)} />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Fecha</Label>
+                            <Input type="date" className="h-8 text-sm"
+                              value={cobro.fecha || ""}
+                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "fecha", e.target.value)} />
+                          </div>
+                          <div className="col-span-2">
+                            <Label className="text-xs">N° Referencia</Label>
+                            <Input placeholder="Referencia" className="h-8 text-sm"
+                              value={cobro.numeroReferencia || ""}
+                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "numeroReferencia", e.target.value)} />
                           </div>
                         </div>
                       )}

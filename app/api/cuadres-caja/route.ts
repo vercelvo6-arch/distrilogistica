@@ -195,6 +195,7 @@ export async function POST(request: Request) {
         if (cobro.yaRegistrado) continue
 
         const totalAbono = efectivo + nequi
+        const fechaAbono = cobro.fecha ? new Date(`${cobro.fecha}T12:00:00`) : new Date()
 
         // ── Pago anticipado ya identificado — se confirma aquí dentro del cuadre ──
         if (cobro.esPagoAnticipado) {
@@ -303,18 +304,21 @@ export async function POST(request: Request) {
             INSERT INTO abonos_fiados (
               pedido_id, monto_abono, monto_nequi, metodo_pago,
               referencia_pago, fecha_abono, observaciones,
-              entregador_cobro, origen_tabla, created_at
+              entregador_cobro, origen_tabla, created_at,
+              medio_pago_detalle, numero_factura
             ) VALUES (
               ${String(fiadoId)},
               ${efectivo},
               ${nequi},
               ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
               ${refAbono},
-              NOW(),
+              ${fechaAbono},
               ${'Cobro registrado en cuadre de caja'},
               ${entregador},
               'fiados',
-              NOW()
+              NOW(),
+              ${cobro.medioPagoDetalle || null},
+              ${cobro.numeroFactura || null}
             )
           `
         } else {
@@ -349,18 +353,21 @@ export async function POST(request: Request) {
             INSERT INTO abonos_fiados (
               pedido_id, monto_abono, monto_nequi, metodo_pago,
               referencia_pago, fecha_abono, observaciones,
-              entregador_cobro, origen_tabla, created_at
+              entregador_cobro, origen_tabla, created_at,
+              medio_pago_detalle, numero_factura
             ) VALUES (
               ${pedidoId},
               ${efectivo},
               ${nequi},
               ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
               ${refAbonoPedido},
-              NOW(),
+              ${fechaAbono},
               ${'Cobro registrado en cuadre de caja'},
               ${entregador},
               'pedidos',
-              NOW()
+              NOW(),
+              ${cobro.medioPagoDetalle || null},
+              ${cobro.numeroFactura || null}
             )
           `
         }
