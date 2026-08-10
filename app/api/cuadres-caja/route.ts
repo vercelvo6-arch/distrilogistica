@@ -132,11 +132,11 @@ export async function POST(request: Request) {
       ? consignacionesArray.reduce((s: number, c: any) => s + Number(c.monto || 0), 0)
       : Number(montoConsignacion) || 0
     const nequiReal           = Number(nequiRecibido) || 0
-    const totalFisicoRecibido = billetesVal + monedasVal + consignadoVal + nequiReal || Number(efectivoRecibido) || 0
+    const totalFisicoRecibido = billetesVal + monedasVal + consignadoVal + nequiReal + cobrosEfectivo + cobrosNequi || Number(efectivoRecibido) || 0
 
     const totalEsperado = totalEsperadoFrontend !== undefined
       ? Number(totalEsperadoFrontend)
-      : totalCargue - (Number(fiadoFrontend)||0) - (Number(devolucionesFrontend)||0) - (Number(agotadosFrontend)||0) - (Number(repasosFrontend)||0) - (Number(erroresFrontend)||0) - (Number(descuento)||0) + cobrosEfectivo
+      : totalCargue - (Number(fiadoFrontend)||0) - (Number(devolucionesFrontend)||0) - (Number(agotadosFrontend)||0) - (Number(repasosFrontend)||0) - (Number(erroresFrontend)||0) - (Number(descuento)||0) + cobrosEfectivo + cobrosNequi
 
     const totalRecibido = totalFisicoRecibido
     const diferencia    = Math.round((totalRecibido - totalEsperado) * 100) / 100

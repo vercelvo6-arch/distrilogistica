@@ -1933,7 +1933,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const totalBilletes          = Number(formData.billetes || 0)
     const totalMonedas           = Number(formData.monedas || 0)
     const totalConsignaciones    = consignaciones.reduce((s, c) => s + (Number(c.monto) || 0), 0)
-    const efectivoRecibido       = totalBilletes + totalMonedas + totalConsignaciones
+    const efectivoRecibido       = totalBilletes + totalMonedas + totalConsignaciones + totalCobrosCxC
     const fiadoFinal             = Number(formData.fiados) || 0
     const repasosFinal           = Number(formData.repasos) || 0
     const devolucionesFinal      = Number(formData.devolucionesParciales) || 0
@@ -3963,7 +3963,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                        + (Number(formData.erroresFacturacion)||0)
               const cargue             = agrupadoData?.totales.cargue || 0
               const esperado           = cargue + totalCobrosCxC - totalNovedades
-              const totalRecibido      = totalEfectivo + totalConsignaciones
+              const totalRecibido      = totalEfectivo + totalConsignaciones + totalCobrosCxC
               const diferencia         = totalRecibido - esperado
               return (
                 <div className="border-t pt-4 space-y-3">
