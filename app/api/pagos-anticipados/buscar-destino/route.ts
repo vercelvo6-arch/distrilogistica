@@ -65,36 +65,39 @@ export async function GET(request: NextRequest) {
       `
     }
 
-    // ── Pedidos de planillas de asesor ──────────────────────────────────────
+    // ── Pedidos de planillas de asesor (incluye pedidos manuales sin planilla) ──
     let pedidosAsesor: any[] = []
     if (q && monto !== null) {
       pedidosAsesor = await sql`
-        SELECT pe.id, pe.cliente, pe.total, p.entregador AS asesor, p.id AS planilla_id
+        SELECT pe.id, pe.cliente, pe.total,
+               COALESCE(p.entregador, pe.asesor_manual) AS asesor, p.id AS planilla_id
         FROM pedidos pe
-        JOIN planillas p ON pe.planilla_id = p.id
-        WHERE p.es_asesor = true
+        LEFT JOIN planillas p ON pe.planilla_id = p.id
+        WHERE (p.es_asesor = true OR (pe.planilla_id IS NULL AND pe.asesor_manual IS NOT NULL))
           AND pe.estado = 'pendiente'
-          AND (pe.cliente ILIKE ${'%' + q + '%'} OR pe.total = ${monto})
+          AND (pe.cliente ILIKE ${'%' + q + '%'} OR pe.total = ${monto} OR pe.asesor_manual ILIKE ${'%' + q + '%'} OR p.entregador ILIKE ${'%' + q + '%'})
         ORDER BY pe.created_at DESC
         LIMIT 15
       `
     } else if (q) {
       pedidosAsesor = await sql`
-        SELECT pe.id, pe.cliente, pe.total, p.entregador AS asesor, p.id AS planilla_id
+        SELECT pe.id, pe.cliente, pe.total,
+               COALESCE(p.entregador, pe.asesor_manual) AS asesor, p.id AS planilla_id
         FROM pedidos pe
-        JOIN planillas p ON pe.planilla_id = p.id
-        WHERE p.es_asesor = true
+        LEFT JOIN planillas p ON pe.planilla_id = p.id
+        WHERE (p.es_asesor = true OR (pe.planilla_id IS NULL AND pe.asesor_manual IS NOT NULL))
           AND pe.estado = 'pendiente'
-          AND pe.cliente ILIKE ${'%' + q + '%'}
+          AND (pe.cliente ILIKE ${'%' + q + '%'} OR pe.asesor_manual ILIKE ${'%' + q + '%'} OR p.entregador ILIKE ${'%' + q + '%'})
         ORDER BY pe.created_at DESC
         LIMIT 15
       `
     } else if (monto !== null) {
       pedidosAsesor = await sql`
-        SELECT pe.id, pe.cliente, pe.total, p.entregador AS asesor, p.id AS planilla_id
+        SELECT pe.id, pe.cliente, pe.total,
+               COALESCE(p.entregador, pe.asesor_manual) AS asesor, p.id AS planilla_id
         FROM pedidos pe
-        JOIN planillas p ON pe.planilla_id = p.id
-        WHERE p.es_asesor = true
+        LEFT JOIN planillas p ON pe.planilla_id = p.id
+        WHERE (p.es_asesor = true OR (pe.planilla_id IS NULL AND pe.asesor_manual IS NOT NULL))
           AND pe.estado = 'pendiente'
           AND pe.total = ${monto}
         ORDER BY pe.created_at DESC

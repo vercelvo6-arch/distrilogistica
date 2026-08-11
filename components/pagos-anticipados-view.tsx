@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { LogOut, Wallet, Link2, Clock, X, ChevronDown, ChevronUp, Users } from "lucide-react"
+import { LogOut, Wallet, Link2, Clock, X, ChevronDown, ChevronUp, Users, Plus } from "lucide-react"
 import type { User } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import { useToast } from "@/hooks/use-toast"
@@ -156,6 +156,87 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
   const [loadingPedidosAsesor, setLoadingPedidosAsesor] = useState(true)
   const [filtroAsesorTexto, setFiltroAsesorTexto] = useState("")
   const [asesorExpandido, setAsesorExpandido] = useState<string | null>(null)
+
+  // ── Registrar pedido de asesor histórico (sin planilla) ─────────────────────
+  const [showDialogPedidoAsesor, setShowDialogPedidoAsesor] = useState(false)
+  const [formPedidoAsesor, setFormPedidoAsesor] = useState({
+    ruta: "", cliente: "", monto: "", asesor: "",
+    fecha: new Date().toISOString().split("T")[0], observaciones: "",
+  })
+  const [submittingPedidoAsesor, setSubmittingPedidoAsesor] = useState(false)
+
+  const handleCrearPedidoAsesor = async () => {
+    if (!formPedidoAsesor.cliente.trim() || !formPedidoAsesor.asesor.trim() || !formPedidoAsesor.monto || Number(formPedidoAsesor.monto) <= 0) {
+      toast({ title: "Error", description: "Cliente, asesor y monto son obligatorios", variant: "destructive" })
+      return
+    }
+    setSubmittingPedidoAsesor(true)
+    try {
+      const res = await fetch("/api/pagos-anticipados/crear-pedido-asesor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ruta: formPedidoAsesor.ruta.trim() || null,
+          cliente: formPedidoAsesor.cliente.trim(),
+          monto: Number(formPedidoAsesor.monto),
+          asesor: formPedidoAsesor.asesor.trim(),
+          fecha: formPedidoAsesor.fecha,
+          observaciones: formPedidoAsesor.observaciones.trim() || null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error al registrar el pedido")
+
+      toast({ title: "Pedido registrado", description: `Se agregó el pedido de ${formPedidoAsesor.cliente} para ${formPedidoAsesor.asesor}` })
+      setShowDialogPedidoAsesor(false)
+      setFormPedidoAsesor({ ruta: "", cliente: "", monto: "", asesor: "", fecha: new Date().toISOString().split("T")[0], observaciones: "" })
+      loadPedidosAsesor()
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Error al registrar el pedido", variant: "destructive" })
+    } finally {
+      setSubmittingPedidoAsesor(false)
+    }
+  }
+
+  // ── Registrar fiado histórico (sin pedido) ──────────────────────────────────
+  const [showDialogFiado, setShowDialogFiado] = useState(false)
+  const [formFiado, setFormFiado] = useState({
+    cliente: "", entregador: "", ruta: "", monto: "",
+    fecha: new Date().toISOString().split("T")[0], observaciones: "",
+  })
+  const [submittingFiado, setSubmittingFiado] = useState(false)
+
+  const handleCrearFiado = async () => {
+    if (!formFiado.cliente.trim() || !formFiado.entregador.trim() || !formFiado.monto || Number(formFiado.monto) <= 0) {
+      toast({ title: "Error", description: "Cliente, entregador y monto son obligatorios", variant: "destructive" })
+      return
+    }
+    setSubmittingFiado(true)
+    try {
+      const res = await fetch("/api/pagos-anticipados/crear-fiado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente: formFiado.cliente.trim(),
+          entregador: formFiado.entregador.trim(),
+          ruta: formFiado.ruta.trim() || null,
+          monto: Number(formFiado.monto),
+          fecha: formFiado.fecha,
+          observaciones: formFiado.observaciones.trim() || null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error al registrar el fiado")
+
+      toast({ title: "Fiado registrado", description: `Se agregó el fiado de ${formFiado.cliente} a cargo de ${formFiado.entregador}` })
+      setShowDialogFiado(false)
+      setFormFiado({ cliente: "", entregador: "", ruta: "", monto: "", fecha: new Date().toISOString().split("T")[0], observaciones: "" })
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Error al registrar el fiado", variant: "destructive" })
+    } finally {
+      setSubmittingFiado(false)
+    }
+  }
 
   const loadPedidosAsesor = useCallback(async () => {
     setLoadingPedidosAsesor(true)
@@ -602,12 +683,22 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
               <Users className="h-5 w-5 text-purple-600" />
               <h2 className="text-lg font-semibold">Pedidos de Asesores Pendientes por Cuadrar</h2>
             </div>
-            <Input
-              className="max-w-xs"
-              placeholder="Buscar asesor..."
-              value={filtroAsesorTexto}
-              onChange={(e) => setFiltroAsesorTexto(e.target.value)}
-            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input
+                className="max-w-xs"
+                placeholder="Buscar asesor..."
+                value={filtroAsesorTexto}
+                onChange={(e) => setFiltroAsesorTexto(e.target.value)}
+              />
+              <Button size="sm" variant="outline" onClick={() => setShowDialogPedidoAsesor(true)}>
+                <Plus className="h-3 w-3 mr-1" />
+                Pedido histórico
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowDialogFiado(true)}>
+                <Plus className="h-3 w-3 mr-1" />
+                Fiado histórico
+              </Button>
+            </div>
           </div>
 
           {loadingPedidosAsesor ? (
@@ -796,6 +887,110 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
           <DialogFooter>
             <Button variant="outline" onClick={cerrarIdentificar} disabled={identificando}>
               Cancelar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar pedido de asesor histórico (sin planilla) */}
+      <Dialog open={showDialogPedidoAsesor} onOpenChange={setShowDialogPedidoAsesor}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Registrar pedido histórico de asesor</DialogTitle>
+            <DialogDescription>
+              Para facturas que un asesor se llevó pero que nunca tuvieron planilla en el sistema.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Ruta <span className="text-gray-400 text-xs">(opcional)</span></Label>
+              <Input className="mt-1" value={formPedidoAsesor.ruta}
+                onChange={(e) => setFormPedidoAsesor({ ...formPedidoAsesor, ruta: e.target.value })} />
+            </div>
+            <div>
+              <Label>Asesor</Label>
+              <Input className="mt-1" value={formPedidoAsesor.asesor}
+                onChange={(e) => setFormPedidoAsesor({ ...formPedidoAsesor, asesor: e.target.value })} />
+            </div>
+            <div className="col-span-2">
+              <Label>Cliente</Label>
+              <Input className="mt-1" value={formPedidoAsesor.cliente}
+                onChange={(e) => setFormPedidoAsesor({ ...formPedidoAsesor, cliente: e.target.value })} />
+            </div>
+            <div>
+              <Label>Monto</Label>
+              <Input className="mt-1" type="number" placeholder="0" value={formPedidoAsesor.monto}
+                onChange={(e) => setFormPedidoAsesor({ ...formPedidoAsesor, monto: e.target.value })} />
+            </div>
+            <div>
+              <Label>Fecha</Label>
+              <Input className="mt-1" type="date" value={formPedidoAsesor.fecha}
+                onChange={(e) => setFormPedidoAsesor({ ...formPedidoAsesor, fecha: e.target.value })} />
+            </div>
+            <div className="col-span-2">
+              <Label>Observaciones <span className="text-gray-400 text-xs">(opcional)</span></Label>
+              <Textarea className="mt-1" rows={2} value={formPedidoAsesor.observaciones}
+                onChange={(e) => setFormPedidoAsesor({ ...formPedidoAsesor, observaciones: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialogPedidoAsesor(false)} disabled={submittingPedidoAsesor}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCrearPedidoAsesor} disabled={submittingPedidoAsesor}>
+              {submittingPedidoAsesor ? "Guardando..." : "Registrar pedido"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar fiado histórico */}
+      <Dialog open={showDialogFiado} onOpenChange={setShowDialogFiado}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Registrar fiado histórico</DialogTitle>
+            <DialogDescription>
+              Para fiados que un entregador dejó pendientes y nunca quedaron registrados en el sistema.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Label>Cliente</Label>
+              <Input className="mt-1" value={formFiado.cliente}
+                onChange={(e) => setFormFiado({ ...formFiado, cliente: e.target.value })} />
+            </div>
+            <div>
+              <Label>Entregador</Label>
+              <Input className="mt-1" value={formFiado.entregador}
+                onChange={(e) => setFormFiado({ ...formFiado, entregador: e.target.value })} />
+            </div>
+            <div>
+              <Label>Ruta <span className="text-gray-400 text-xs">(opcional)</span></Label>
+              <Input className="mt-1" value={formFiado.ruta}
+                onChange={(e) => setFormFiado({ ...formFiado, ruta: e.target.value })} />
+            </div>
+            <div>
+              <Label>Monto</Label>
+              <Input className="mt-1" type="number" placeholder="0" value={formFiado.monto}
+                onChange={(e) => setFormFiado({ ...formFiado, monto: e.target.value })} />
+            </div>
+            <div>
+              <Label>Fecha</Label>
+              <Input className="mt-1" type="date" value={formFiado.fecha}
+                onChange={(e) => setFormFiado({ ...formFiado, fecha: e.target.value })} />
+            </div>
+            <div className="col-span-2">
+              <Label>Observaciones <span className="text-gray-400 text-xs">(opcional)</span></Label>
+              <Textarea className="mt-1" rows={2} value={formFiado.observaciones}
+                onChange={(e) => setFormFiado({ ...formFiado, observaciones: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialogFiado(false)} disabled={submittingFiado}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCrearFiado} disabled={submittingFiado}>
+              {submittingFiado ? "Guardando..." : "Registrar fiado"}
             </Button>
           </DialogFooter>
         </DialogContent>
