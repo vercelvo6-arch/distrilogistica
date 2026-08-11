@@ -20,16 +20,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { medioPago, referencia, monto, cliente, observaciones, destinoTipo, destinoId, entregadorVinculado } = body
+    const { medioPago, referencia, monto, cliente, observaciones, destinoTipo, destinoId, entregadorVinculado, fechaPago, numeroFactura } = body
 
     const medioPagoLimpio = String(medioPago || '').trim()
     if (!medioPagoLimpio) {
       return NextResponse.json({ error: 'medioPago es requerido' }, { status: 400 })
     }
 
+    // La referencia (número de consignación/transacción) solo tiene sentido para
+    // medios electrónicos — un pago en Efectivo no tiene ningún número que registrar.
     const referenciaLimpia = String(referencia || '').trim()
-    if (!referenciaLimpia) {
-      return NextResponse.json({ error: 'referencia es requerida' }, { status: 400 })
+    if (medioPagoLimpio !== 'Efectivo' && !referenciaLimpia) {
+      return NextResponse.json({ error: 'referencia es requerida para este medio de pago' }, { status: 400 })
     }
 
     const montoNum = Number(monto)
@@ -39,28 +41,50 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // Validar duplicado contra pagos_anticipados y contra abonos_fiados (referencias ya cobradas)
-    const [dupPago] = await sql`
-      SELECT id FROM pagos_anticipados WHERE LOWER(referencia) = LOWER(${referenciaLimpia}) LIMIT 1
-    `
-    if (dupPago) {
-      return NextResponse.json(
-        { error: `La referencia ${referenciaLimpia} ya fue registrada en el cuadre administrativo` },
-        { status: 409 }
-      )
-    }
+    // Validar duplicado/fraude contra las 3 fuentes donde puede haber quedado ya
+    // esta misma referencia: pagos_anticipados, abonos_fiados y consignaciones de
+    // cuadres ya cerrados (mismo criterio que usa el modal de cuadre agrupado).
+    if (referenciaLimpia) {
+      const [dupPago] = await sql`
+        SELECT id FROM pagos_anticipados WHERE LOWER(referencia) = LOWER(${referenciaLimpia}) LIMIT 1
+      `
+      if (dupPago) {
+        return NextResponse.json(
+          { error: `La referencia ${referenciaLimpia} ya fue registrada en el cuadre administrativo` },
+          { status: 409 }
+        )
+      }
 
-    const [dupAbono] = await sql`
-      SELECT id FROM abonos_fiados WHERE LOWER(referencia_pago) = LOWER(${referenciaLimpia}) LIMIT 1
-    `
-    if (dupAbono) {
-      return NextResponse.json(
-        { error: `La referencia ${referenciaLimpia} ya fue registrada en un abono de fiado` },
-        { status: 409 }
-      )
+      const [dupAbono] = await sql`
+        SELECT id FROM abonos_fiados WHERE LOWER(referencia_pago) = LOWER(${referenciaLimpia}) LIMIT 1
+      `
+      if (dupAbono) {
+        return NextResponse.json(
+          { error: `La referencia ${referenciaLimpia} ya fue registrada en un abono de fiado` },
+          { status: 409 }
+        )
+      }
+
+      const [dupConsignacion] = await sql`
+        SELECT cc.id
+        FROM cuadres_caja cc,
+        jsonb_array_elements(
+          CASE WHEN jsonb_typeof(cc.consignaciones) = 'array' THEN cc.consignaciones ELSE '[]'::jsonb END
+        ) AS elem
+        WHERE LOWER(elem->>'numero') = LOWER(${referenciaLimpia})
+        LIMIT 1
+      `
+      if (dupConsignacion) {
+        return NextResponse.json(
+          { error: `La referencia ${referenciaLimpia} ya fue registrada como consignación en un cuadre de caja anterior` },
+          { status: 409 }
+        )
+      }
     }
 
     const clienteLimpio = cliente ? String(cliente).trim() : null
+    const fechaPagoLimpia = fechaPago ? String(fechaPago) : new Date().toISOString().split('T')[0]
+    const numeroFacturaLimpio = numeroFactura ? String(numeroFactura).trim() || null : null
 
     // Si caja ya identificó el destino en el propio formulario de registro
     // (búsqueda de fiado o de pedido de asesor), el pago nace directamente
@@ -72,24 +96,28 @@ export async function POST(request: NextRequest) {
       ? await sql`
           INSERT INTO pagos_anticipados (
             medio_pago, referencia, monto, cliente, registrado_por, observaciones,
-            tipo, fiado_id, pedido_id, entregador_vinculado, estado
+            tipo, fiado_id, pedido_id, entregador_vinculado, estado,
+            fecha_pago, numero_factura
           ) VALUES (
-            ${medioPagoLimpio}, ${referenciaLimpia}, ${montoNum},
+            ${medioPagoLimpio}, ${referenciaLimpia || null}, ${montoNum},
             ${clienteLimpio}, ${session.user.nombre}, ${observaciones?.trim() || null},
             ${destinoTipoLimpio},
             ${destinoTipoLimpio === 'fiado' ? String(destinoId) : null},
             ${destinoTipoLimpio === 'pedido_asesor' ? String(destinoId) : null},
             ${String(entregadorVinculado)},
-            'identificado'
+            'identificado',
+            ${fechaPagoLimpia}, ${numeroFacturaLimpio}
           )
           RETURNING *
         `
       : await sql`
           INSERT INTO pagos_anticipados (
-            medio_pago, referencia, monto, cliente, registrado_por, observaciones
+            medio_pago, referencia, monto, cliente, registrado_por, observaciones,
+            fecha_pago, numero_factura
           ) VALUES (
-            ${medioPagoLimpio}, ${referenciaLimpia}, ${montoNum},
-            ${clienteLimpio}, ${session.user.nombre}, ${observaciones?.trim() || null}
+            ${medioPagoLimpio}, ${referenciaLimpia || null}, ${montoNum},
+            ${clienteLimpio}, ${session.user.nombre}, ${observaciones?.trim() || null},
+            ${fechaPagoLimpia}, ${numeroFacturaLimpio}
           )
           RETURNING *
         `

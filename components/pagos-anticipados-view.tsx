@@ -128,6 +128,8 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
     referencia: "",
     monto: "",
     observaciones: "",
+    fechaPago: new Date().toISOString().split("T")[0],
+    numeroFactura: "",
   })
   const [submitting, setSubmitting] = useState(false)
   const [coincidencias, setCoincidencias] = useState<Coincidencia[]>([])
@@ -272,8 +274,9 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       toast({ title: "Error", description: "Selecciona el medio de pago", variant: "destructive" })
       return
     }
-    if (!formData.referencia.trim()) {
-      toast({ title: "Error", description: "La referencia es requerida", variant: "destructive" })
+    // La referencia (número de consignación/transacción) no aplica a pagos en Efectivo.
+    if (formData.medioPago !== "Efectivo" && !formData.referencia.trim()) {
+      toast({ title: "Error", description: "La referencia es requerida para este medio de pago", variant: "destructive" })
       return
     }
     if (!formData.monto || Number(formData.monto) <= 0) {
@@ -295,6 +298,8 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
           destinoTipo: destinoSeleccionado?.tipo || null,
           destinoId: destinoSeleccionado?.id || null,
           entregadorVinculado: destinoSeleccionado?.entregador_vinculado || null,
+          fechaPago: formData.fechaPago,
+          numeroFactura: formData.numeroFactura.trim() || null,
         }),
       })
       const data = await res.json()
@@ -303,7 +308,10 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       toast({ title: "Pago registrado", description: `Voucher de ${formatCOP(Number(formData.monto))} registrado correctamente` })
       setUltimoPagoRegistrado(data.pago)
       setCoincidencias(data.coincidencias || [])
-      setFormData({ medioPago: "Efectivo", referencia: "", monto: "", observaciones: "" })
+      setFormData({
+        medioPago: "Efectivo", referencia: "", monto: "", observaciones: "",
+        fechaPago: new Date().toISOString().split("T")[0], numeroFactura: "",
+      })
       limpiarDestino()
       setTabDestino("fiado")
       loadPagos()
@@ -417,7 +425,10 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
               </Select>
             </div>
             <div>
-              <Label>Referencia</Label>
+              <Label>
+                Referencia {formData.medioPago !== "Efectivo" && <span className="text-red-500">*</span>}
+                {formData.medioPago === "Efectivo" && <span className="text-gray-400 text-xs"> (opcional)</span>}
+              </Label>
               <Input
                 className="mt-1"
                 placeholder="Número de comprobante"
@@ -433,6 +444,24 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                 placeholder="0"
                 value={formData.monto}
                 onChange={(e) => setFormData({ ...formData, monto: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Fecha del pago</Label>
+              <Input
+                className="mt-1"
+                type="date"
+                value={formData.fechaPago}
+                onChange={(e) => setFormData({ ...formData, fechaPago: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>N° Factura <span className="text-gray-400 text-xs">(opcional)</span></Label>
+              <Input
+                className="mt-1"
+                placeholder="Factura a la que corresponde"
+                value={formData.numeroFactura}
+                onChange={(e) => setFormData({ ...formData, numeroFactura: e.target.value })}
               />
             </div>
           </div>
