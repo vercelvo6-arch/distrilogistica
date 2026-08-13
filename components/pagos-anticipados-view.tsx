@@ -167,6 +167,31 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
   const [candidatosDestino, setCandidatosDestino] = useState<DestinoCandidato[]>([])
   const [loadingCandidatos, setLoadingCandidatos] = useState(false)
   const [identificando, setIdentificando] = useState(false)
+  // Destino elegido dentro del modal de Identificar, pendiente de confirmar
+  // el entregador antes de vincular de verdad (ver destinoParaConfirmar abajo).
+  const [destinoParaConfirmar, setDestinoParaConfirmar] = useState<DestinoCandidato | null>(null)
+  const [entregadorConfirmar, setEntregadorConfirmar] = useState("")
+
+  // ── Entregadores con rutas abiertas hoy (aún no cuadradas) ──────────────────
+  // El modal de cuadre agrupado de caja filtra los pagos anticipados por
+  // coincidencia exacta de este nombre (`entregador_vinculado`), sin importar
+  // quién dejó originalmente el fiado/pedido — por eso siempre se puede elegir
+  // a quién realmente está cobrando/cuadrando hoy, no solo al que lo dejó.
+  const [entregadoresActivos, setEntregadoresActivos] = useState<string[]>([])
+  useEffect(() => {
+    fetch("/api/planillas")
+      .then((res) => res.json())
+      .then((data) => {
+        const nombres = Array.from(
+          new Set((data.planillas || []).map((p: any) => p.entregador).filter((e: any) => e && String(e).trim()))
+        ) as string[]
+        setEntregadoresActivos(nombres.sort())
+      })
+      .catch((error) => console.error("[PAGOS-ANTICIPADOS] Error cargando entregadores activos:", error))
+  }, [])
+
+  const opcionesEntregador = (actual: string) =>
+    Array.from(new Set([...entregadoresActivos, ...(actual ? [actual] : [])]))
 
   // ── Rendición de cuentas por asesor ─────────────────────────────────────────
   const [pedidosAsesor, setPedidosAsesor] = useState<PedidoAsesorPendiente[]>([])
@@ -461,12 +486,24 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
     setPagoAIdentificar(pago)
     setBusquedaDestino(pago.cliente || "")
     setCandidatosDestino([])
+    setDestinoParaConfirmar(null)
+    setEntregadorConfirmar("")
   }
 
   const cerrarIdentificar = () => {
     setPagoAIdentificar(null)
     setBusquedaDestino("")
     setCandidatosDestino([])
+    setDestinoParaConfirmar(null)
+    setEntregadorConfirmar("")
+  }
+
+  // Elegir un candidato no vincula todavía — primero deja confirmar (o cambiar)
+  // el entregador al que queda el pago, para el caso en que quien cobró hoy no
+  // sea el mismo que dejó originalmente el fiado/pedido en ruta.
+  const elegirDestinoParaConfirmar = (destino: DestinoCandidato) => {
+    setDestinoParaConfirmar(destino)
+    setEntregadorConfirmar(destino.entregador_vinculado)
   }
 
   useEffect(() => {
@@ -490,8 +527,12 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
     return () => clearTimeout(timer)
   }, [pagoAIdentificar, busquedaDestino])
 
-  const handleIdentificar = async (destino: DestinoCandidato) => {
+  const handleIdentificar = async (destino: DestinoCandidato, entregadorFinal: string) => {
     if (!pagoAIdentificar) return
+    if (!entregadorFinal.trim()) {
+      toast({ title: "Error", description: "Selecciona el entregador que cobra este pago", variant: "destructive" })
+      return
+    }
     setIdentificando(true)
     try {
       const res = await fetch(`/api/pagos-anticipados/${pagoAIdentificar.id}/identificar`, {
@@ -500,7 +541,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
         body: JSON.stringify({
           destinoTipo: destino.tipo,
           destinoId: destino.id,
-          entregadorVinculado: destino.entregador_vinculado,
+          entregadorVinculado: entregadorFinal.trim(),
         }),
       })
       const data = await res.json()
@@ -643,19 +684,37 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
             <Label className="mb-2 block">¿A qué corresponde este pago? (opcional)</Label>
 
             {destinoSeleccionado ? (
-              <div className="flex items-center justify-between p-3 bg-white border rounded-lg">
-                <div>
-                  <span className="font-medium">{destinoSeleccionado.cliente}</span>
-                  <BadgeTipoDestino tipo={destinoSeleccionado.tipo} />
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    Entregador: {destinoSeleccionado.entregador_vinculado}
-                    {destinoSeleccionado.tipo === "fiado" && destinoSeleccionado.ruta && ` — Ruta ${destinoSeleccionado.ruta}`}
-                    {" — "}Monto: {formatCOP(Number(destinoSeleccionado.monto_referencia))}
+              <div className="p-3 bg-white border rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-medium">{destinoSeleccionado.cliente}</span>
+                    <BadgeTipoDestino tipo={destinoSeleccionado.tipo} />
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {destinoSeleccionado.tipo === "fiado" && destinoSeleccionado.ruta && `Ruta ${destinoSeleccionado.ruta} — `}
+                      Monto: {formatCOP(Number(destinoSeleccionado.monto_referencia))}
+                    </div>
                   </div>
+                  <Button size="sm" variant="ghost" onClick={limpiarDestino}>
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button size="sm" variant="ghost" onClick={limpiarDestino}>
-                  <X className="h-4 w-4" />
-                </Button>
+                <div>
+                  <Label className="text-xs">Entregador que cobra este pago</Label>
+                  <Select
+                    value={destinoSeleccionado.entregador_vinculado}
+                    onValueChange={(v) => setDestinoSeleccionado(prev => (prev ? { ...prev, entregador_vinculado: v } : prev))}
+                  >
+                    <SelectTrigger className="h-8 text-sm mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {opcionesEntregador(destinoSeleccionado.entregador_vinculado).map((e) => (
+                        <SelectItem key={e} value={e}>{e}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Por defecto se sugiere quien dejó esto en ruta — cámbialo si quien realmente está cobrando/cuadrando hoy es otra persona.
+                  </p>
+                </div>
               </div>
             ) : (
               <Tabs value={tabDestino} onValueChange={(v) => setTabDestino(v as "fiado" | "pedido_asesor")}>
@@ -939,46 +998,82 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <Input
-              placeholder="Buscar cliente en fiados o pedidos de asesor..."
-              value={busquedaDestino}
-              onChange={(e) => setBusquedaDestino(e.target.value)}
-            />
-
-            {loadingCandidatos ? (
-              <p className="text-xs text-gray-500">Buscando...</p>
-            ) : candidatosDestino.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-4">No se encontraron coincidencias con ese criterio.</p>
-            ) : (
-              <div className="space-y-1 max-h-72 overflow-y-auto">
-                {candidatosDestino.map((c) => (
-                  <div key={`${c.tipo}-${c.id}`} className="flex items-center justify-between p-2 bg-gray-50 rounded border text-sm">
-                    <div>
-                      <span className="font-medium">{c.cliente}</span>
-                      <BadgeTipoDestino tipo={c.tipo} />
-                      <div className="text-gray-500 text-xs mt-0.5">
-                        {c.tipo === "fiado" && c.ruta && `Ruta ${c.ruta} — `}
-                        Entregador: {c.entregador_vinculado} — Monto: {formatCOP(Number(c.monto_referencia))}
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      disabled={identificando}
-                      onClick={() => handleIdentificar(c)}
-                    >
-                      Elegir
-                    </Button>
-                  </div>
-                ))}
+          {destinoParaConfirmar ? (
+            <div className="space-y-3">
+              <div className="p-3 bg-gray-50 rounded border text-sm">
+                <span className="font-medium">{destinoParaConfirmar.cliente}</span>
+                <BadgeTipoDestino tipo={destinoParaConfirmar.tipo} />
+                <div className="text-gray-500 text-xs mt-0.5">
+                  {destinoParaConfirmar.tipo === "fiado" && destinoParaConfirmar.ruta && `Ruta ${destinoParaConfirmar.ruta} — `}
+                  Monto: {formatCOP(Number(destinoParaConfirmar.monto_referencia))}
+                </div>
               </div>
-            )}
-          </div>
+              <div>
+                <Label>Entregador que cobra este pago</Label>
+                <Select value={entregadorConfirmar} onValueChange={setEntregadorConfirmar}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {opcionesEntregador(entregadorConfirmar).map((e) => (
+                      <SelectItem key={e} value={e}>{e}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400 mt-1">
+                  Por defecto se sugiere quien dejó este {destinoParaConfirmar.tipo === "fiado" ? "fiado" : "pedido"} en ruta —
+                  cámbialo si quien realmente está cobrando/cuadrando hoy es otra persona. El pago quedará disponible
+                  en el cuadre de quien elijas aquí, sin pedir de nuevo el soporte.
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" className="text-xs" onClick={() => setDestinoParaConfirmar(null)}>
+                ← Volver a buscar
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Input
+                placeholder="Buscar cliente en fiados o pedidos de asesor..."
+                value={busquedaDestino}
+                onChange={(e) => setBusquedaDestino(e.target.value)}
+              />
+
+              {loadingCandidatos ? (
+                <p className="text-xs text-gray-500">Buscando...</p>
+              ) : candidatosDestino.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">No se encontraron coincidencias con ese criterio.</p>
+              ) : (
+                <div className="space-y-1 max-h-72 overflow-y-auto">
+                  {candidatosDestino.map((c) => (
+                    <div key={`${c.tipo}-${c.id}`} className="flex items-center justify-between p-2 bg-gray-50 rounded border text-sm">
+                      <div>
+                        <span className="font-medium">{c.cliente}</span>
+                        <BadgeTipoDestino tipo={c.tipo} />
+                        <div className="text-gray-500 text-xs mt-0.5">
+                          {c.tipo === "fiado" && c.ruta && `Ruta ${c.ruta} — `}
+                          Entregador: {c.entregador_vinculado} — Monto: {formatCOP(Number(c.monto_referencia))}
+                        </div>
+                      </div>
+                      <Button size="sm" onClick={() => elegirDestinoParaConfirmar(c)}>
+                        Elegir
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={cerrarIdentificar} disabled={identificando}>
               Cancelar
             </Button>
+            {destinoParaConfirmar && (
+              <Button
+                disabled={identificando}
+                onClick={() => handleIdentificar(destinoParaConfirmar, entregadorConfirmar)}
+              >
+                {identificando ? "Guardando..." : "Confirmar identificación"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
