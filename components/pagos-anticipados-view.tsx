@@ -124,13 +124,30 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
   const [filtroEstado, setFiltroEstado] = useState<EstadoPago | "todos">("pendiente")
 
   const [formData, setFormData] = useState({
-    medioPago: "Efectivo",
-    referencia: "",
-    monto: "",
     observaciones: "",
     fechaPago: new Date().toISOString().split("T")[0],
     numeroFactura: "",
   })
+  // ── Líneas de pago: un cliente puede pagar el mismo saldo en varias partes
+  // (dos transferencias con referencias distintas, o una transferencia + un
+  // efectivo) — cada línea se registra como su propia fila en pagos_anticipados,
+  // pero todas comparten fecha/factura/observaciones/destino y se envían juntas.
+  const [lineasPago, setLineasPago] = useState<{ id: string; medioPago: string; referencia: string; monto: string }[]>([
+    { id: crypto.randomUUID(), medioPago: "Efectivo", referencia: "", monto: "" },
+  ])
+  const montoTotalLineas = useMemo(
+    () => lineasPago.reduce((s, l) => s + (Number(l.monto) || 0), 0),
+    [lineasPago]
+  )
+  const agregarLineaPago = () => {
+    setLineasPago(prev => [...prev, { id: crypto.randomUUID(), medioPago: "Efectivo", referencia: "", monto: "" }])
+  }
+  const eliminarLineaPago = (id: string) => {
+    setLineasPago(prev => (prev.length > 1 ? prev.filter(l => l.id !== id) : prev))
+  }
+  const actualizarLineaPago = (id: string, campo: "medioPago" | "referencia" | "monto", valor: string) => {
+    setLineasPago(prev => prev.map(l => (l.id === id ? { ...l, [campo]: valor } : l)))
+  }
   const [submitting, setSubmitting] = useState(false)
   const [coincidencias, setCoincidencias] = useState<Coincidencia[]>([])
   const [ultimoPagoRegistrado, setUltimoPagoRegistrado] = useState<PagoAnticipado | null>(null)
@@ -304,7 +321,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       setBuscandoFiado(true)
       try {
         const params = new URLSearchParams({ q: busquedaFiado.trim() })
-        if (Number(formData.monto) > 0) params.set("monto", formData.monto)
+        if (montoTotalLineas > 0) params.set("monto", String(montoTotalLineas))
         const res = await fetch(`/api/pagos-anticipados/buscar-destino?${params.toString()}`)
         const data = await res.json()
         setResultadosFiado((data.resultados || []).filter((r: DestinoCandidato) => r.tipo === "fiado"))
@@ -316,7 +333,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [busquedaFiado, formData.monto])
+  }, [busquedaFiado, montoTotalLineas])
 
   // ── Búsqueda de pedidos de asesor (Sección B) ───────────────────────────────
   useEffect(() => {
@@ -328,7 +345,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       setBuscandoAsesor(true)
       try {
         const params = new URLSearchParams({ q: busquedaAsesor.trim() })
-        if (Number(formData.monto) > 0) params.set("monto", formData.monto)
+        if (montoTotalLineas > 0) params.set("monto", String(montoTotalLineas))
         const res = await fetch(`/api/pagos-anticipados/buscar-destino?${params.toString()}`)
         const data = await res.json()
         setResultadosAsesor((data.resultados || []).filter((r: DestinoCandidato) => r.tipo === "pedido_asesor"))
@@ -340,7 +357,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [busquedaAsesor, formData.monto])
+  }, [busquedaAsesor, montoTotalLineas])
 
   const limpiarDestino = () => {
     setDestinoSeleccionado(null)
@@ -351,53 +368,90 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
   }
 
   const handleSubmit = async () => {
-    if (!formData.medioPago) {
-      toast({ title: "Error", description: "Selecciona el medio de pago", variant: "destructive" })
+    const lineasValidas = lineasPago.filter(l => l.monto && Number(l.monto) > 0)
+    if (lineasValidas.length === 0) {
+      toast({ title: "Error", description: "Agrega al menos una línea con monto mayor a 0", variant: "destructive" })
       return
     }
     // La referencia (número de consignación/transacción) no aplica a pagos en Efectivo.
-    if (formData.medioPago !== "Efectivo" && !formData.referencia.trim()) {
-      toast({ title: "Error", description: "La referencia es requerida para este medio de pago", variant: "destructive" })
-      return
-    }
-    if (!formData.monto || Number(formData.monto) <= 0) {
-      toast({ title: "Error", description: "El monto debe ser mayor a 0", variant: "destructive" })
-      return
+    for (const linea of lineasValidas) {
+      if (linea.medioPago !== "Efectivo" && !linea.referencia.trim()) {
+        toast({
+          title: "Error",
+          description: `Falta la referencia en la línea de ${linea.medioPago} (${formatCOP(Number(linea.monto) || 0)})`,
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     setSubmitting(true)
+    const idsExitosos = new Set<string>()
+    const errores: string[] = []
+    let ultimoPago: PagoAnticipado | null = null
+    let ultimasCoincidencias: Coincidencia[] = []
     try {
-      const res = await fetch("/api/pagos-anticipados", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          medioPago: formData.medioPago,
-          referencia: formData.referencia.trim(),
-          monto: Number(formData.monto),
-          cliente: destinoSeleccionado?.cliente || null,
-          observaciones: formData.observaciones.trim() || null,
-          destinoTipo: destinoSeleccionado?.tipo || null,
-          destinoId: destinoSeleccionado?.id || null,
-          entregadorVinculado: destinoSeleccionado?.entregador_vinculado || null,
-          fechaPago: formData.fechaPago,
-          numeroFactura: formData.numeroFactura.trim() || null,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Error al registrar el pago")
+      for (const linea of lineasValidas) {
+        try {
+          const res = await fetch("/api/pagos-anticipados", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              medioPago: linea.medioPago,
+              referencia: linea.referencia.trim(),
+              monto: Number(linea.monto),
+              cliente: destinoSeleccionado?.cliente || null,
+              observaciones: formData.observaciones.trim() || null,
+              destinoTipo: destinoSeleccionado?.tipo || null,
+              destinoId: destinoSeleccionado?.id || null,
+              entregadorVinculado: destinoSeleccionado?.entregador_vinculado || null,
+              fechaPago: formData.fechaPago,
+              numeroFactura: formData.numeroFactura.trim() || null,
+            }),
+          })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error || "Error al registrar el pago")
+          idsExitosos.add(linea.id)
+          ultimoPago = data.pago
+          ultimasCoincidencias = data.coincidencias || []
+        } catch (error) {
+          errores.push(
+            `${linea.medioPago} ${formatCOP(Number(linea.monto) || 0)}: ${error instanceof Error ? error.message : "error desconocido"}`
+          )
+        }
+      }
 
-      toast({ title: "Pago registrado", description: `Voucher de ${formatCOP(Number(formData.monto))} registrado correctamente` })
-      setUltimoPagoRegistrado(data.pago)
-      setCoincidencias(data.coincidencias || [])
-      setFormData({
-        medioPago: "Efectivo", referencia: "", monto: "", observaciones: "",
-        fechaPago: new Date().toISOString().split("T")[0], numeroFactura: "",
-      })
-      limpiarDestino()
-      setTabDestino("fiado")
+      const numExitosos = idsExitosos.size
+      if (numExitosos > 0) {
+        setUltimoPagoRegistrado(ultimoPago)
+        setCoincidencias(ultimasCoincidencias)
+      }
+
+      if (errores.length === 0) {
+        toast({
+          title: "Pago registrado",
+          description: `${numExitosos} línea(s) por ${formatCOP(montoTotalLineas)} registradas correctamente`,
+        })
+        setLineasPago([{ id: crypto.randomUUID(), medioPago: "Efectivo", referencia: "", monto: "" }])
+        setFormData({ observaciones: "", fechaPago: new Date().toISOString().split("T")[0], numeroFactura: "" })
+        limpiarDestino()
+        setTabDestino("fiado")
+      } else {
+        toast({
+          title: numExitosos > 0 ? "Registrado parcialmente" : "Error",
+          description: numExitosos > 0
+            ? `${numExitosos} línea(s) sí se guardaron. Fallaron: ${errores.join(" · ")}`
+            : errores.join(" · "),
+          variant: "destructive",
+        })
+        // Deja solo las líneas que fallaron, listas para corregir — las que sí
+        // se guardaron no deben reenviarse.
+        setLineasPago(prev => {
+          const restantes = prev.filter(l => !idsExitosos.has(l.id))
+          return restantes.length > 0 ? restantes : [{ id: crypto.randomUUID(), medioPago: "Efectivo", referencia: "", monto: "" }]
+        })
+      }
       loadPagos()
-    } catch (error) {
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Error al registrar el pago", variant: "destructive" })
     } finally {
       setSubmitting(false)
     }
@@ -493,40 +547,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
         {/* Formulario de registro */}
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Registrar pago</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <Label>Medio de pago</Label>
-              <Select value={formData.medioPago} onValueChange={(v) => setFormData({ ...formData, medioPago: v })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {MEDIOS_PAGO.map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>
-                Referencia {formData.medioPago !== "Efectivo" && <span className="text-red-500">*</span>}
-                {formData.medioPago === "Efectivo" && <span className="text-gray-400 text-xs"> (opcional)</span>}
-              </Label>
-              <Input
-                className="mt-1"
-                placeholder="Número de comprobante"
-                value={formData.referencia}
-                onChange={(e) => setFormData({ ...formData, referencia: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Monto</Label>
-              <Input
-                className="mt-1"
-                type="number"
-                placeholder="0"
-                value={formData.monto}
-                onChange={(e) => setFormData({ ...formData, monto: e.target.value })}
-              />
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <Label>Fecha del pago</Label>
               <Input
@@ -545,6 +566,76 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                 onChange={(e) => setFormData({ ...formData, numeroFactura: e.target.value })}
               />
             </div>
+          </div>
+
+          {/* Líneas de pago: normalmente una sola, pero un mismo cliente puede
+              pagar el mismo saldo en varias partes (dos transferencias con
+              referencias distintas, o una transferencia + un efectivo). */}
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="mb-0">
+                Líneas de pago
+                {montoTotalLineas > 0 && (
+                  <span className="text-gray-400 font-normal ml-2">Total: {formatCOP(montoTotalLineas)}</span>
+                )}
+              </Label>
+              <Button variant="outline" size="sm" onClick={agregarLineaPago} className="h-7 text-xs">
+                <Plus className="h-3 w-3 mr-1" />
+                Agregar otro medio
+              </Button>
+            </div>
+            {lineasPago.map((linea, idx) => (
+              <div key={linea.id} className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-600">Línea {idx + 1}</span>
+                  {lineasPago.length > 1 && (
+                    <Button variant="ghost" size="sm" className="h-6 text-red-500 hover:text-red-700 p-0"
+                      onClick={() => eliminarLineaPago(linea.id)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-xs">Medio de pago</Label>
+                    <Select value={linea.medioPago} onValueChange={(v) => actualizarLineaPago(linea.id, "medioPago", v)}>
+                      <SelectTrigger className="h-8 text-sm mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {MEDIOS_PAGO.map((m) => (
+                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">
+                      Referencia {linea.medioPago !== "Efectivo" && <span className="text-red-500">*</span>}
+                      {linea.medioPago === "Efectivo" && <span className="text-gray-400"> (opcional)</span>}
+                    </Label>
+                    <Input
+                      className="h-8 text-sm mt-1"
+                      placeholder="Número de comprobante"
+                      value={linea.referencia}
+                      onChange={(e) => actualizarLineaPago(linea.id, "referencia", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Monto</Label>
+                    <Input
+                      className="h-8 text-sm mt-1"
+                      type="number"
+                      placeholder="0"
+                      value={linea.monto}
+                      onChange={(e) => actualizarLineaPago(linea.id, "monto", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <p className="text-xs text-gray-400">
+              Usa "Agregar otro medio" cuando el cliente pagó el mismo saldo en varias partes — por ejemplo dos
+              transferencias distintas, o una transferencia y el resto en efectivo.
+            </p>
           </div>
 
           {/* Destino del pago: fiado o pedido de asesor (opcional) */}

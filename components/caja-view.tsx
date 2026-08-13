@@ -1696,7 +1696,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // La parte en efectivo NO se suma aparte porque ya queda contada dentro de "Efectivo"
   // (billetes+monedas) — el entregador la trae físicamente mezclada con la plata de la ruta.
   const getCobroMontoElectronico = (cobro: any) => {
-    if (cobro.esPagoAnticipado) return 0
+    if (cobro.esPagoAnticipado) return cobro.medioPago === "Efectivo" ? 0 : (Number(cobro.monto) || 0)
     if (cobro.yaRegistrado) return Number(cobro.montoNequi) || 0
     return Number(cobro.montoElectronico) || 0
   }
@@ -2039,10 +2039,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       erroresFacturacion: erroresFacturacionFinal,
       cobrosVinculados:   cobrosVinculados.map(c => {
         if (c.esPagoAnticipado) {
+          const esEfectivo = c.medioPago === "Efectivo"
           return {
             id:                    c.id,
-            montoEfectivo:         Number(c.monto) || 0,
-            montoNequi:            0,
+            montoEfectivo:         esEfectivo ? Number(c.monto) || 0 : 0,
+            montoNequi:            esEfectivo ? 0 : Number(c.monto) || 0,
             referencia:            buildReferenciaCobro(c),
             esPagoAnticipado:      true,
             pagoAnticipadoId:      c.pagoAnticipadoId,
