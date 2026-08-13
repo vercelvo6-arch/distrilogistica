@@ -96,6 +96,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     observaciones: "",
     descuento: "",
     motivoDescuento: "",
+    varios: "",
+    motivoVarios: "",
     devolucionesParciales: "",
     devolucionesCompletas: "",
     repasos: "",
@@ -103,7 +105,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     agotados: "",
     erroresFacturacion: "",
   })
-  const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string; cliente: string; numero_factura: string}>>([])
+  const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string; cliente: string; numero_factura: string; origenConsignacionId?: number}>>([])
   const [consignacionesDuplicadasBD, setConsignacionesDuplicadasBD] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
@@ -1431,6 +1433,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       observaciones: "",
       descuento: "",
       motivoDescuento: "",
+      varios: "",
+      motivoVarios: "",
       devolucionesParciales: totals.devoluciones.toString(),
       devolucionesCompletas: "0",
       repasos: totals.repasos.toString(),
@@ -1561,6 +1565,36 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
+  // Consignaciones que el entregador ya registró en ruta (botón "Transferencia") y
+  // que ningún cuadre ha usado todavía — se agregan a la lista de consignaciones tal
+  // como si caja las hubiera escrito a mano, evitando duplicados si se reabre el modal.
+  const loadConsignacionesEntregador = async (entregador: string) => {
+    try {
+      const hoy = new Date().toISOString().split("T")[0]
+      const res = await fetch(`/api/planillas/consignaciones-entregador?entregador=${encodeURIComponent(entregador)}&fecha=${hoy}`)
+      if (!res.ok) return
+      const data = await res.json()
+      const nuevas = (data.consignaciones || []).map((c: any) => ({
+        id: crypto.randomUUID(),
+        banco: c.banco,
+        numero: c.numero,
+        monto: String(c.monto),
+        fecha: c.fecha ? String(c.fecha).split("T")[0] : hoy,
+        cliente: c.cliente || "",
+        numero_factura: "",
+        origenConsignacionId: c.id,
+      }))
+      if (nuevas.length > 0) {
+        setConsignaciones(prev => [
+          ...prev,
+          ...nuevas.filter((n: any) => !prev.some(p => p.origenConsignacionId === n.origenConsignacionId)),
+        ])
+      }
+    } catch (error) {
+      console.error("[CAJA] Error cargando consignaciones del entregador:", error)
+    }
+  }
+
   // incluirPagosAnticipados: solo el flujo de cuadre AGRUPADO sabe mostrar los
   // cobros de tipo "pago anticipado" (campos medioPago/monto/numeroFactura). El
   // modal de cuadre individual sigue usando el formato viejo (montoEfectivo/montoNequi)
@@ -1641,7 +1675,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     // Los pagos anticipados llegan con medioPago/monto/numeroFactura ya definidos desde su registro — no se resetean.
     setCobrosVinculados(prev => [...prev, cobro.esPagoAnticipado
       ? { ...cobro }
-      : { ...cobro, numeroFactura: "", medioPago: "Efectivo", monto: "", fecha: new Date().toISOString().split("T")[0], numeroReferencia: "" }
+      : { ...cobro, numeroFactura: "", medioPago: "Nequi", montoEfectivo: "", montoElectronico: "", fecha: new Date().toISOString().split("T")[0], numeroReferencia: "" }
     ])
   }
 
@@ -1650,12 +1684,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   // Monto total que aporta un cobro CxC al esperado, sin importar el medio de pago.
-  // Los cobros ya registrados por el entregador conservan su desglose efectivo/nequi original;
-  // los cobros agregados en caja usan el campo unificado "monto".
-  const getCobroMontoTotal = (cobro: any) =>
-    cobro.yaRegistrado
-      ? (Number(cobro.montoEfectivo) || 0) + (Number(cobro.montoNequi) || 0)
-      : Number(cobro.monto) || 0
+  // Los cobros ya registrados por el entregador y los agregados en caja (nuevos)
+  // ya vienen divididos en efectivo/electrónico; los de pago anticipado usan "monto" único.
+  const getCobroMontoTotal = (cobro: any) => {
+    if (cobro.esPagoAnticipado) return Number(cobro.monto) || 0
+    if (cobro.yaRegistrado) return (Number(cobro.montoEfectivo) || 0) + (Number(cobro.montoNequi) || 0)
+    return (Number(cobro.montoEfectivo) || 0) + (Number(cobro.montoElectronico) || 0)
+  }
 
   // Solo la parte del cobro pagada por un medio electrónico (Nequi, Bancolombia, etc.).
   // La parte en efectivo NO se suma aparte porque ya queda contada dentro de "Efectivo"
@@ -1663,7 +1698,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const getCobroMontoElectronico = (cobro: any) => {
     if (cobro.esPagoAnticipado) return 0
     if (cobro.yaRegistrado) return Number(cobro.montoNequi) || 0
-    return (cobro.medioPago || "Efectivo") === "Efectivo" ? 0 : Number(cobro.monto) || 0
+    return Number(cobro.montoElectronico) || 0
   }
 
   const buildReferenciaCobro = (cobro: any) => {
@@ -1688,6 +1723,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       observaciones: "",
       descuento: "",
       motivoDescuento: "",
+      varios: "",
+      motivoVarios: "",
       devolucionesParciales: "",
       devolucionesCompletas: "",
       repasos: "",
@@ -1891,6 +1928,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       observaciones: borrador?.observaciones || "",
     }))
     loadCobrosDisponibles(rutasSeleccionadas[0].entregador, true)
+    loadConsignacionesEntregador(rutasSeleccionadas[0].entregador || "")
     setShowAgrupadoModal(true)
   }
 
@@ -1969,12 +2007,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const devolucionesFinal      = Number(formData.devolucionesParciales) || 0
     const agotadosFinal          = Number(formData.agotados) || 0
     const descuentoFinal         = Number(formData.descuento) || 0
+    const variosFinal            = Number(formData.varios) || 0
     const erroresFacturacionFinal = Number(formData.erroresFacturacion) || 0
     const totalEsperado = (agrupadoData.totales.cargue || 0)
       - fiadoFinal
       - devolucionesFinal
       - agotadosFinal
       - descuentoFinal
+      - variosFinal
       - repasosFinal
       - erroresFacturacionFinal
       + totalCobrosCxC
@@ -1986,10 +2026,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       efectivoRecibido,
       billetes:           totalBilletes,
       monedas:            totalMonedas,
-      consignaciones:     consignaciones.map(c => ({ banco: c.banco, numero: c.numero, monto: Number(c.monto), fecha: c.fecha, cliente: c.cliente || "", numero_factura: c.numero_factura || "" })),
+      consignaciones:     consignaciones.map(c => ({ banco: c.banco, numero: c.numero, monto: Number(c.monto), fecha: c.fecha, cliente: c.cliente || "", numero_factura: c.numero_factura || "", origenConsignacionId: c.origenConsignacionId || null })),
       tieneConsignacion:  consignaciones.length > 0,
       observaciones:      formData.observaciones || null,
       descuento:          descuentoFinal,
+      varios:             variosFinal,
+      motivoVarios:       formData.motivoVarios || null,
       agotados:           agotadosFinal,
       fiado:              fiadoFinal,
       devoluciones:       devolucionesFinal,
@@ -2016,14 +2058,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             referencia:    c.referencia?.trim() || null,
           }
         }
-        const montoCobro = Number(c.monto) || 0
-        const esEfectivo = (c.medioPago || "Efectivo") === "Efectivo"
         return {
           id:               c.id,
-          montoEfectivo:    esEfectivo ? montoCobro : 0,
-          montoNequi:       esEfectivo ? 0 : montoCobro,
+          montoEfectivo:    Number(c.montoEfectivo) || 0,
+          montoNequi:       Number(c.montoElectronico) || 0,
           referencia:       c.numeroReferencia?.trim() || null,
-          medioPagoDetalle: c.medioPago || null,
+          medioPagoDetalle: (Number(c.montoElectronico) || 0) > 0 ? (c.medioPago || null) : null,
           numeroFactura:    c.numeroFactura?.trim() || null,
           fecha:            c.fecha || null,
         }
@@ -3720,6 +3760,28 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               </p>
             </div>
 
+            {/* ── VARIOS (gastos del entregador, resta del esperado) ─── */}
+            <div className="border rounded-lg p-4 bg-slate-50">
+              <h3 className="font-semibold text-sm mb-3">💵 Varios</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Monto</Label>
+                  <Input type="number" min={0} placeholder="0" className="bg-white"
+                    value={formData.varios}
+                    onChange={(e) => setFormData({ ...formData, varios: e.target.value })} />
+                </div>
+                <div>
+                  <Label className="text-xs">Nota <span className="text-gray-400">(opcional)</span></Label>
+                  <Input placeholder="Ej: Combustible, parqueadero..." className="bg-white"
+                    value={formData.motivoVarios}
+                    onChange={(e) => setFormData({ ...formData, motivoVarios: e.target.value })} />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Gastos del entregador (combustible, etc.) — se resta del esperado, igual que un descuento.
+              </p>
+            </div>
+
             {/* ── 2. COBROS CxC (suman al esperado) ─────────────────── */}
             <div className="border rounded-lg p-4 bg-purple-50">
               <h3 className="font-semibold text-sm text-purple-800 mb-3">💳 Cobros CxC</h3>
@@ -3803,14 +3865,25 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                               onChange={(e) => handleActualizarResultadoCobro(cobro.id, "numeroFactura", e.target.value)} />
                           </div>
                           <div>
-                            <Label className="text-xs">Medio de pago</Label>
+                            <Label className="text-xs">Monto Efectivo</Label>
+                            <Input type="number" min={0} placeholder="0" className="h-8 text-sm"
+                              value={cobro.montoEfectivo || ""}
+                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoEfectivo", e.target.value)} />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Fecha</Label>
+                            <Input type="date" className="h-8 text-sm"
+                              value={cobro.fecha || ""}
+                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "fecha", e.target.value)} />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Medio electrónico</Label>
                             <Select
-                              value={cobro.medioPago || "Efectivo"}
+                              value={cobro.medioPago || "Nequi"}
                               onValueChange={(v) => handleActualizarResultadoCobro(cobro.id, "medioPago", v)}
                             >
                               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="Efectivo">Efectivo</SelectItem>
                                 <SelectItem value="Nequi">Nequi</SelectItem>
                                 <SelectItem value="Bancolombia">Bancolombia</SelectItem>
                                 <SelectItem value="Daviplata">Daviplata</SelectItem>
@@ -3822,18 +3895,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             </Select>
                           </div>
                           <div>
-                            <Label className="text-xs">Monto</Label>
+                            <Label className="text-xs">Monto Electrónico</Label>
                             <Input type="number" min={0} placeholder="0" className="h-8 text-sm"
-                              value={cobro.monto || ""}
-                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "monto", e.target.value)} />
+                              value={cobro.montoElectronico || ""}
+                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoElectronico", e.target.value)} />
                           </div>
                           <div>
-                            <Label className="text-xs">Fecha</Label>
-                            <Input type="date" className="h-8 text-sm"
-                              value={cobro.fecha || ""}
-                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "fecha", e.target.value)} />
-                          </div>
-                          <div className="col-span-2">
                             <Label className="text-xs">N° Referencia</Label>
                             <Input placeholder="Referencia" className="h-8 text-sm"
                               value={cobro.numeroReferencia || ""}
@@ -3842,11 +3909,14 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         </div>
                       )}
 
-                      {!cobro.yaRegistrado && Number(cobro.monto) > 0 && Number(cobro.monto) < Number(cobro.saldo_pendiente) && (
-                        <div className="text-xs text-right text-amber-600">
-                          Saldo queda: {formatCOP(Number(cobro.saldo_pendiente) - Number(cobro.monto))}
-                        </div>
-                      )}
+                      {!cobro.yaRegistrado && (() => {
+                        const totalFila = (Number(cobro.montoEfectivo) || 0) + (Number(cobro.montoElectronico) || 0)
+                        return totalFila > 0 && totalFila < Number(cobro.saldo_pendiente) ? (
+                          <div className="text-xs text-right text-amber-600">
+                            Saldo queda: {formatCOP(Number(cobro.saldo_pendiente) - totalFila)}
+                          </div>
+                        ) : null
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -3992,6 +4062,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                        + (Number(formData.devolucionesParciales)||0)
                                        + (Number(formData.agotados)||0)
                                        + (Number(formData.descuento)||0)
+                                       + (Number(formData.varios)||0)
                                        + (Number(formData.erroresFacturacion)||0)
               const cargue             = agrupadoData?.totales.cargue || 0
               const esperado           = cargue + totalCobrosCxC - totalNovedades

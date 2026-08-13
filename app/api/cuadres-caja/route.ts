@@ -32,6 +32,8 @@ export async function POST(request: Request) {
       observaciones,
       descuento,
       motivoDescuento,
+      varios,
+      motivoVarios,
       cobrosVinculados,
       totalEsperado: totalEsperadoFrontend,
       fiado: fiadoFrontend,
@@ -113,6 +115,7 @@ export async function POST(request: Request) {
       : planillas.reduce((s: number, p: any) => s + Number(p.total_agotados || 0), 0)
 
     const totalDescuentos = Number(descuento) || 0
+    const totalVarios     = Number(varios) || 0
 
     const totalEntregado = totalCargue - totalFiadosNuevos - totalDevoluciones - totalRepasos - totalAgotados
 
@@ -123,7 +126,7 @@ export async function POST(request: Request) {
     const totalCobros    = cobrosEfectivo + cobrosNequi
 
     // ─── 5. FÓRMULA DE CUADRE ─────────────────────────────────────────────────
-    const efectivoEsperado = Math.round((totalEntregado - totalDescuentos + cobrosEfectivo) * 100) / 100
+    const efectivoEsperado = Math.round((totalEntregado - totalDescuentos - totalVarios + cobrosEfectivo) * 100) / 100
     const nequiEsperado    = cobrosNequi
 
     const billetesVal         = Number(billetes) || 0
@@ -139,7 +142,7 @@ export async function POST(request: Request) {
 
     const totalEsperado = totalEsperadoFrontend !== undefined
       ? Number(totalEsperadoFrontend)
-      : totalCargue - (Number(fiadoFrontend)||0) - (Number(devolucionesFrontend)||0) - (Number(agotadosFrontend)||0) - (Number(repasosFrontend)||0) - (Number(erroresFrontend)||0) - (Number(descuento)||0) + cobrosEfectivo + cobrosNequi
+      : totalCargue - (Number(fiadoFrontend)||0) - (Number(devolucionesFrontend)||0) - (Number(agotadosFrontend)||0) - (Number(repasosFrontend)||0) - (Number(erroresFrontend)||0) - (Number(descuento)||0) - totalVarios + cobrosEfectivo + cobrosNequi
 
     const totalRecibido = totalFisicoRecibido
     const diferencia    = Math.round((totalRecibido - totalEsperado) * 100) / 100
@@ -190,6 +193,11 @@ export async function POST(request: Request) {
       }
 
       // 6b. Registrar abonos de cobros CxC
+      // ids de abonos creados aquí mismo (no yaRegistrado) — se marcan con
+      // planilla_cobro_id = cuadreId más abajo, apenas exista, para que no
+      // vuelvan a aparecer como "ya registrado" en un cuadre futuro del mismo
+      // entregador el mismo día (mismo riesgo que 6c.3 evita para consignaciones).
+      const abonosFrescoIds: number[] = []
       for (const cobro of cobros) {
         const efectivo = Number(cobro.montoEfectivo) || 0
         const nequi    = Number(cobro.montoNequi) || 0
@@ -303,7 +311,7 @@ export async function POST(request: Request) {
           // if (refAbono) { ... }
           const refAbono = cobro.referencia?.trim() || null
 
-          await sql`
+          const [abonoFresco] = await sql`
             INSERT INTO abonos_fiados (
               pedido_id, monto_abono, monto_nequi, metodo_pago,
               referencia_pago, fecha_abono, observaciones,
@@ -323,7 +331,9 @@ export async function POST(request: Request) {
               ${cobro.medioPagoDetalle || null},
               ${cobro.numeroFactura || null}
             )
+            RETURNING id
           `
+          abonosFrescoIds.push(abonoFresco.id)
         } else {
           const pedidoId = String(cobro.id)
 
@@ -352,7 +362,7 @@ export async function POST(request: Request) {
           // VALIDACIÓN TEMPORALMENTE DESACTIVADA
           const refAbonoPedido = cobro.referencia?.trim() || null
 
-          await sql`
+          const [abonoFrescoPedido] = await sql`
             INSERT INTO abonos_fiados (
               pedido_id, monto_abono, monto_nequi, metodo_pago,
               referencia_pago, fecha_abono, observaciones,
@@ -372,7 +382,9 @@ export async function POST(request: Request) {
               ${cobro.medioPagoDetalle || null},
               ${cobro.numeroFactura || null}
             )
+            RETURNING id
           `
+          abonosFrescoIds.push(abonoFrescoPedido.id)
         }
       }
 
@@ -387,6 +399,7 @@ export async function POST(request: Request) {
           tiene_consignacion, numero_consignacion, banco,
           consignaciones,
           descuento, motivo_descuento,
+          varios, motivo_varios,
           agotados, fiado, devoluciones, repasos, errores_facturacion,
           cobros_efectivo, cobros_nequi, total_cobros,
           cuadrado_por
@@ -415,6 +428,8 @@ export async function POST(request: Request) {
           ${JSON.stringify(consignacionesArray || [])},
           ${totalDescuentos},
           ${motivoDescuento || null},
+          ${totalVarios},
+          ${motivoVarios || null},
           ${totalAgotados},
           ${totalFiadosNuevos},
           ${totalDevoluciones},
@@ -429,6 +444,18 @@ export async function POST(request: Request) {
       `
 
       const cuadreId = cuadreResult.id
+
+      // 6c.1b Marcar con este cuadre los abonos creados recién arriba en 6b
+      // (cobros nuevos, no yaRegistrado) — sin esto quedarían con
+      // planilla_cobro_id NULL y podrían reaparecer como "ya registrado" en
+      // un cuadre futuro del mismo entregador el mismo día.
+      if (abonosFrescoIds.length > 0) {
+        await sql`
+          UPDATE abonos_fiados SET
+            planilla_cobro_id = ${cuadreId}
+          WHERE id = ANY(${abonosFrescoIds}::int[])
+        `
+      }
 
       // 6c.2 Vincular al cuadre los abonos ya registrados (entregador en ruta O Admin)
       // ✅ FIX: vincular por abonoId exacto en vez de adivinar por fecha.
@@ -459,6 +486,21 @@ export async function POST(request: Request) {
             `
           }
         }
+      }
+
+      // 6c.3 Marcar como usadas las consignaciones que el entregador registró en ruta
+      // (botón "Transferencia") y que quedaron incluidas en este cuadre — evita que
+      // vuelvan a precargarse en un cuadre futuro.
+      const origenesConsignacion = (consignacionesArray || [])
+        .map((c: any) => c.origenConsignacionId)
+        .filter((id: any) => id)
+      if (origenesConsignacion.length > 0) {
+        await sql`
+          UPDATE consignaciones_pedido SET
+            cuadre_caja_id = ${cuadreId}
+          WHERE id = ANY(${origenesConsignacion}::int[])
+            AND cuadre_caja_id IS NULL
+        `
       }
 
       // 6d. Marcar planillas como cuadradas

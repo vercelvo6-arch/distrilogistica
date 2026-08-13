@@ -55,8 +55,20 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [montoNovedad, setMontoNovedad] = useState("")
   const [submittingNovedad, setSubmittingNovedad] = useState(false)
 
+  // Modal de transferencia/consignación al momento de la entrega
+  const [showTransferenciaModal, setShowTransferenciaModal] = useState(false)
+  const [ordenTransferencia, setOrdenTransferencia] = useState<any | null>(null)
+  const [bancoTransferencia, setBancoTransferencia] = useState("")
+  const [numeroTransferencia, setNumeroTransferencia] = useState("")
+  const [montoTransferencia, setMontoTransferencia] = useState("")
+  const [submittingTransferencia, setSubmittingTransferencia] = useState(false)
+
   // Cobros CxC asignados al entregador
   const [cobrosAsignados, setCobrosAsignados] = useState<any[]>([])
+  // Búsqueda libre — cualquier fiado pendiente, sin importar a quién esté asignado
+  const [busquedaCobroLibre, setBusquedaCobroLibre] = useState("")
+  const [resultadosCobroLibre, setResultadosCobroLibre] = useState<any[]>([])
+  const [buscandoCobroLibre, setBuscandoCobroLibre] = useState(false)
   const [showCobroModal, setShowCobroModal] = useState(false)
   const [selectedCobro, setSelectedCobro] = useState<any | null>(null)
   const [resultadoCobro, setResultadoCobro] = useState<"total" | "abono" | "nopago" | null>(null)
@@ -638,6 +650,74 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     }
   }
 
+  const handleAbrirTransferencia = (order: any) => {
+    setOrdenTransferencia(order)
+    setBancoTransferencia("")
+    setNumeroTransferencia("")
+    setMontoTransferencia(String(order.total || ""))
+    setShowTransferenciaModal(true)
+  }
+
+  const [marcandoTodoEntregado, setMarcandoTodoEntregado] = useState<string | null>(null)
+
+  const handleMarcarTodoEntregado = async (route: any) => {
+    const pendientes = (route.orders || []).filter((o: any) => o && o.estado === "pendiente")
+    if (pendientes.length === 0) return
+    if (!confirm(`¿Marcar los ${pendientes.length} pedidos pendientes de la ruta ${route.ruta} como Entregado?`)) return
+
+    setMarcandoTodoEntregado(route.id)
+    try {
+      for (const order of pendientes) {
+        await updatePedidoEstado(order.id, "entregado")
+      }
+      setRouteSheets((prev) =>
+        prev.map((s) =>
+          s.id === route.id
+            ? { ...s, orders: s.orders.map((o) => (o ? { ...o, estado: "entregado" as const } : o)) }
+            : s,
+        ),
+      )
+      toast({ title: "Ruta marcada como entregada", description: `${pendientes.length} pedido(s) actualizados` })
+    } catch {
+      toast({ title: "Error", description: "No se pudo actualizar toda la ruta", variant: "destructive" })
+    } finally {
+      setMarcandoTodoEntregado(null)
+    }
+  }
+
+  const handleSubmitTransferencia = async () => {
+    if (!ordenTransferencia) return
+    if (!bancoTransferencia.trim() || !numeroTransferencia.trim() || !montoTransferencia || Number(montoTransferencia) <= 0) {
+      toast({ title: "Error", description: "Banco, número y monto son obligatorios", variant: "destructive" })
+      return
+    }
+    try {
+      setSubmittingTransferencia(true)
+      const res = await fetch("/api/pedidos/registrar-consignacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pedidoId: ordenTransferencia.id,
+          planillaId: ordenTransferencia.planillaId,
+          entregador,
+          cliente: ordenTransferencia.cliente,
+          banco: bancoTransferencia.trim(),
+          numero: numeroTransferencia.trim(),
+          monto: Number(montoTransferencia),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error al registrar la transferencia")
+
+      toast({ title: "Transferencia registrada", description: `${ordenTransferencia.cliente} — ${formatCOP(Number(montoTransferencia))}` })
+      setShowTransferenciaModal(false)
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Error al registrar la transferencia", variant: "destructive" })
+    } finally {
+      setSubmittingTransferencia(false)
+    }
+  }
+
   const handleSubmitNovedad = async () => {
     if (!selectedOrder || !tipoNovedad) return
 
@@ -734,6 +814,27 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
       setSubmittingNovedad(false)
     }
   }
+
+  useEffect(() => {
+    if (!busquedaCobroLibre.trim()) {
+      setResultadosCobroLibre([])
+      return
+    }
+    const timer = setTimeout(async () => {
+      setBuscandoCobroLibre(true)
+      try {
+        const res = await fetch(`/api/fiados/buscar-pendientes?q=${encodeURIComponent(busquedaCobroLibre.trim())}`)
+        const data = await res.json()
+        setResultadosCobroLibre(data.cobros || [])
+      } catch (error) {
+        console.error("[ENTREGADOR] Error buscando cobro:", error)
+        setResultadosCobroLibre([])
+      } finally {
+        setBuscandoCobroLibre(false)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [busquedaCobroLibre])
 
   const handleAbrirCobro = (cobro: any) => {
     setSelectedCobro(cobro)
@@ -980,12 +1081,12 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
               </Card>
 
               {/* COBROS CxC */}
-              {cobrosAsignados.length > 0 && (
-                <Card className="p-4 border-purple-200 bg-purple-50 mb-4">
-                  <h2 className="text-sm font-semibold text-purple-700 mb-3">
-                    Cobros CxC asignados ({cobrosAsignados.length})
-                  </h2>
-                  <div className="space-y-2">
+              <Card className="p-4 border-purple-200 bg-purple-50 mb-4">
+                <h2 className="text-sm font-semibold text-purple-700 mb-3">Cobros CxC</h2>
+
+                {cobrosAsignados.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    <p className="text-xs font-medium text-purple-600">Asignados a ti ({cobrosAsignados.length})</p>
                     {cobrosAsignados.map((cobro) => (
                       <div
                         key={cobro.id}
@@ -1007,8 +1108,46 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                       </div>
                     ))}
                   </div>
-                </Card>
-              )}
+                )}
+
+                <p className="text-xs font-medium text-purple-600 mb-1">Buscar cualquier cliente con deuda pendiente</p>
+                <Input
+                  placeholder="Nombre del cliente o ruta..."
+                  value={busquedaCobroLibre}
+                  onChange={(e) => setBusquedaCobroLibre(e.target.value)}
+                  className="bg-white mb-2"
+                />
+                {buscandoCobroLibre ? (
+                  <p className="text-xs text-purple-500">Buscando...</p>
+                ) : (
+                  <div className="space-y-2">
+                    {resultadosCobroLibre.map((cobro) => (
+                      <div
+                        key={cobro.id}
+                        className="flex items-center justify-between p-3 bg-white rounded-lg border border-purple-200"
+                      >
+                        <div>
+                          <p className="font-medium text-sm text-purple-900">{cobro.cliente}</p>
+                          <p className="text-xs text-purple-600">
+                            {cobro.ruta} — Saldo: {formatCOP(cobro.saldo_pendiente)}
+                            {cobro.entregador_origen && ` — Entregador: ${cobro.entregador_origen}`}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleAbrirCobro(cobro)}
+                          className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-xs"
+                        >
+                          Registrar
+                        </Button>
+                      </div>
+                    ))}
+                    {busquedaCobroLibre.trim() && resultadosCobroLibre.length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-2">Sin coincidencias</p>
+                    )}
+                  </div>
+                )}
+              </Card>
 
               {/* VISTA POR RUTAS — principal */}
               <div className="space-y-4">
@@ -1054,6 +1193,24 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                             )}
                           </div>
                         </div>
+
+                        {/* Marcar toda la ruta como entregada de una vez */}
+                        {(route.orders || []).some((o: any) => o && o.estado === "pendiente") && (
+                          <div className="px-4 pb-2 border-t pt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full h-8 text-xs border-green-300 text-green-700"
+                              disabled={marcandoTodoEntregado === route.id}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleMarcarTodoEntregado(route)
+                              }}
+                            >
+                              {marcandoTodoEntregado === route.id ? "Marcando..." : "Marcar todo el recorrido como Entregado"}
+                            </Button>
+                          </div>
+                        )}
 
                         {/* Totales de la ruta */}
                         <div className="grid grid-cols-4 gap-0 border-t">
@@ -1171,6 +1328,14 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                           >
                                             Descuento
                                           </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-xs px-2 border-blue-300 text-blue-700"
+                                            onClick={() => handleAbrirTransferencia(order)}
+                                          >
+                                            Transferencia
+                                          </Button>
                                         </div>
                                       ) : (
                                         <span className="text-green-500 text-sm shrink-0">✓</span>
@@ -1248,6 +1413,46 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             </Button>
             <Button onClick={handleSubmitNovedad} disabled={submittingNovedad}>
               {submittingNovedad ? "Registrando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de transferencia/consignación al momento de la entrega */}
+      <Dialog open={showTransferenciaModal} onOpenChange={setShowTransferenciaModal}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Registrar Transferencia</DialogTitle>
+            <DialogDescription>
+              {ordenTransferencia?.cliente} — {formatCOP(Number(ordenTransferencia?.total) || 0)}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <Label>Banco</Label>
+              <Input value={bancoTransferencia} onChange={(e) => setBancoTransferencia(e.target.value)}
+                placeholder="Bancolombia, Nequi..." autoFocus />
+            </div>
+            <div>
+              <Label>Número</Label>
+              <Input value={numeroTransferencia} onChange={(e) => setNumeroTransferencia(e.target.value)}
+                placeholder="Referencia de la transferencia" />
+            </div>
+            <div>
+              <Label>Monto</Label>
+              <Input type="number" inputMode="numeric" min={0}
+                value={montoTransferencia} onChange={(e) => setMontoTransferencia(e.target.value)}
+                placeholder="0" className="text-lg h-12" />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTransferenciaModal(false)} disabled={submittingTransferencia}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmitTransferencia} disabled={submittingTransferencia}>
+              {submittingTransferencia ? "Registrando..." : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>
