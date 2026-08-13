@@ -132,7 +132,10 @@ export async function POST(request: Request) {
       ? consignacionesArray.reduce((s: number, c: any) => s + Number(c.monto || 0), 0)
       : Number(montoConsignacion) || 0
     const nequiReal           = Number(nequiRecibido) || 0
-    const totalFisicoRecibido = billetesVal + monedasVal + consignadoVal + nequiReal || Number(efectivoRecibido) || 0
+    // Solo se suma cobrosNequi (la parte electrónica de los cobros CxC) — la parte en
+    // efectivo (cobrosEfectivo) ya queda contada dentro de billetesVal/monedasVal, porque
+    // el entregador la trae físicamente mezclada con la plata de la ruta.
+    const totalFisicoRecibido = billetesVal + monedasVal + consignadoVal + nequiReal + cobrosNequi || Number(efectivoRecibido) || 0
 
     const totalEsperado = totalEsperadoFrontend !== undefined
       ? Number(totalEsperadoFrontend)

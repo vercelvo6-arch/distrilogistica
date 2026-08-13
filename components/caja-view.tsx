@@ -1657,6 +1657,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       ? (Number(cobro.montoEfectivo) || 0) + (Number(cobro.montoNequi) || 0)
       : Number(cobro.monto) || 0
 
+  // Solo la parte del cobro pagada por un medio electrónico (Nequi, Bancolombia, etc.).
+  // La parte en efectivo NO se suma aparte porque ya queda contada dentro de "Efectivo"
+  // (billetes+monedas) — el entregador la trae físicamente mezclada con la plata de la ruta.
+  const getCobroMontoElectronico = (cobro: any) => {
+    if (cobro.esPagoAnticipado) return 0
+    if (cobro.yaRegistrado) return Number(cobro.montoNequi) || 0
+    return (cobro.medioPago || "Efectivo") === "Efectivo" ? 0 : Number(cobro.monto) || 0
+  }
+
   const buildReferenciaCobro = (cobro: any) => {
     if (cobro.yaRegistrado) return cobro.referencia?.trim() || null
     const partes = [cobro.medioPago, cobro.numeroFactura?.trim() ? `Fact. ${cobro.numeroFactura.trim()}` : null].filter(Boolean)
@@ -1950,10 +1959,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
     // 2. Calcular totales
     const totalCobrosCxC         = cobrosVinculados.reduce((s, c) => s + getCobroMontoTotal(c), 0)
+    const totalCobrosElectronico = cobrosVinculados.reduce((s, c) => s + getCobroMontoElectronico(c), 0)
     const totalBilletes          = Number(formData.billetes || 0)
     const totalMonedas           = Number(formData.monedas || 0)
     const totalConsignaciones    = consignaciones.reduce((s, c) => s + (Number(c.monto) || 0), 0)
-    const efectivoRecibido       = totalBilletes + totalMonedas + totalConsignaciones
+    const efectivoRecibido       = totalBilletes + totalMonedas + totalConsignaciones + totalCobrosElectronico
     const fiadoFinal             = Number(formData.fiados) || 0
     const repasosFinal           = Number(formData.repasos) || 0
     const devolucionesFinal      = Number(formData.devolucionesParciales) || 0
@@ -3972,6 +3982,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
             {/* ── 4. RESULTADO (tiempo real) ─────────────────────────── */}
             {(() => {
               const totalCobrosCxC     = cobrosVinculados.reduce((s, c) => s + getCobroMontoTotal(c), 0)
+              const totalCobrosElectronico = cobrosVinculados.reduce((s, c) => s + getCobroMontoElectronico(c), 0)
               const totalBilletes      = Number(formData.billetes || 0)
               const totalMonedas       = Number(formData.monedas || 0)
               const totalEfectivo      = totalBilletes + totalMonedas
@@ -3984,7 +3995,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                        + (Number(formData.erroresFacturacion)||0)
               const cargue             = agrupadoData?.totales.cargue || 0
               const esperado           = cargue + totalCobrosCxC - totalNovedades
-              const totalRecibido      = totalEfectivo + totalConsignaciones
+              const totalRecibido      = totalEfectivo + totalConsignaciones + totalCobrosElectronico
               const diferencia         = totalRecibido - esperado
               return (
                 <div className="border-t pt-4 space-y-3">
@@ -4016,6 +4027,9 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                     <div className="p-2 bg-gray-50 rounded text-center">
                       <span className="text-xs text-gray-500">Cobros CxC</span>
                       <p className="font-semibold">{formatCOP(totalCobrosCxC)}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {formatCOP(totalCobrosCxC - totalCobrosElectronico)} efectivo (ya en Efectivo) + {formatCOP(totalCobrosElectronico)} electrónico
+                      </p>
                     </div>
                   </div>
 
