@@ -132,7 +132,7 @@ export async function POST(request: Request) {
       ? consignacionesArray.reduce((s: number, c: any) => s + Number(c.monto || 0), 0)
       : Number(montoConsignacion) || 0
     const nequiReal           = Number(nequiRecibido) || 0
-    const totalFisicoRecibido = billetesVal + monedasVal + consignadoVal + nequiReal + cobrosEfectivo + cobrosNequi || Number(efectivoRecibido) || 0
+    const totalFisicoRecibido = billetesVal + monedasVal + consignadoVal + nequiReal || Number(efectivoRecibido) || 0
 
     const totalEsperado = totalEsperadoFrontend !== undefined
       ? Number(totalEsperadoFrontend)
