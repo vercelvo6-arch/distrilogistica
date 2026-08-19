@@ -1123,6 +1123,14 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                         month: "short",
                       })
 
+                      const nombresRutas = Array.from(new Set(sheets.map((s) => s.ruta).filter(Boolean))).map(
+                        (r) => `Ruta ${r}`,
+                      )
+                      const rutasTexto =
+                        nombresRutas.length <= 1
+                          ? nombresRutas.join("")
+                          : `${nombresRutas.slice(0, -1).join(", ")} y ${nombresRutas[nombresRutas.length - 1]}`
+
                       return (
                         <Card key={key} className="overflow-hidden border-2">
                           <div className="p-4 md:p-5 bg-gradient-to-r from-blue-50 to-green-50">
@@ -1137,7 +1145,8 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                       {entregador} - {fechaMostrar}
                                     </h2>
                                     <p className="text-xs md:text-sm text-muted-foreground">
-                                      {totalRoutes} ruta{totalRoutes > 1 ? "s" : ""} · {totalOrders} pedidos ·{" "}
+                                      {totalRoutes} ruta{totalRoutes > 1 ? "s" : ""}
+                                      {rutasTexto ? ` (${rutasTexto})` : ""} · {totalOrders} pedidos ·{" "}
                                       {formatCOP(totalAmount)}
                                     </p>
                                   </div>
