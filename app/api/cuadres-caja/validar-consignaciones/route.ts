@@ -21,13 +21,13 @@ export async function POST(request: NextRequest) {
 
     // Buscar en cuadres_caja si alguno de estos números ya existe en consignaciones guardadas
     // La columna consignaciones es jsonb — buscamos dentro del array
-    const resultado = await sql`
+    const resultadoConsignaciones = await sql`
       SELECT DISTINCT elem->>'numero' as numero
       FROM cuadres_caja,
       jsonb_array_elements(
-        CASE 
-          WHEN jsonb_typeof(consignaciones) = 'array' THEN consignaciones 
-          ELSE '[]'::jsonb 
+        CASE
+          WHEN jsonb_typeof(consignaciones) = 'array' THEN consignaciones
+          ELSE '[]'::jsonb
         END
       ) AS elem
       WHERE LOWER(elem->>'numero') = ANY(
@@ -37,7 +37,21 @@ export async function POST(request: NextRequest) {
       AND elem->>'numero' != ''
     `
 
-    const duplicados = resultado.map((r: any) => r.numero)
+    // Buscar también en abonos_fiados (referencias de cobros CxC ya registrados)
+    const resultadoCobrosCxC = await sql`
+      SELECT DISTINCT referencia_pago as numero
+      FROM abonos_fiados
+      WHERE LOWER(referencia_pago) = ANY(
+        SELECT LOWER(n) FROM unnest(${numeros}::text[]) n
+      )
+      AND referencia_pago IS NOT NULL
+      AND referencia_pago != ''
+    `
+
+    const duplicados = Array.from(new Set([
+      ...resultadoConsignaciones.map((r: any) => r.numero),
+      ...resultadoCobrosCxC.map((r: any) => r.numero),
+    ]))
 
     return NextResponse.json({ duplicados })
 

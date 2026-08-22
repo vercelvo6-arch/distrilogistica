@@ -107,6 +107,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   })
   const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string; cliente: string; numero_factura: string; origenConsignacionId?: number}>>([])
   const [consignacionesDuplicadasBD, setConsignacionesDuplicadasBD] = useState<Set<string>>(new Set())
+  const [cobrosCxCDuplicadosBD, setCobrosCxCDuplicadosBD] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
   const [selectedRoutes, setSelectedRoutes] = useState<number[]>([])
@@ -1491,6 +1492,31 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     return () => clearTimeout(timer)
   }, [consignaciones])
 
+  // ✅ Validar duplicados en BD con debounce cuando cambian las referencias de cobros CxC
+  useEffect(() => {
+    const numeros = cobrosVinculados.map(c => (c.numeroReferencia || "").trim()).filter(n => n.length > 4)
+    if (numeros.length === 0) {
+      setCobrosCxCDuplicadosBD(new Set())
+      return
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/cuadres-caja/validar-consignaciones", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ numeros }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setCobrosCxCDuplicadosBD(new Set((data.duplicados || []).map((d: string) => d.toLowerCase())))
+        }
+      } catch (e) {
+        // Si falla, no bloquear
+      }
+    }, 600) // 600ms de debounce — no consulta en cada tecla
+    return () => clearTimeout(timer)
+  }, [cobrosVinculados])
+
   const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setNovedadCajaOrder(order)
     setNovedadCajaTipo(tipo)
@@ -1914,6 +1940,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setCobrosVinculados(borrador?.cobrosVinculados || [])
     setConsignaciones(borradorConsignaciones)
     setConsignacionesDuplicadasBD(new Set())
+    setCobrosCxCDuplicadosBD(new Set())
     setBusquedaCobro("")
     setFormData(prev => ({
       ...prev,
@@ -3903,9 +3930,24 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           </div>
                           <div>
                             <Label className="text-xs">N° Referencia</Label>
-                            <Input placeholder="Referencia" className="h-8 text-sm"
+                            <Input
+                              className={`h-8 text-sm ${
+                                (cobro.numeroReferencia?.trim() && cobrosVinculados.some(
+                                  c => c.id !== cobro.id && (c.numeroReferencia || "").trim().toLowerCase() === cobro.numeroReferencia.trim().toLowerCase()
+                                )) || cobrosCxCDuplicadosBD.has((cobro.numeroReferencia || "").trim().toLowerCase())
+                                  ? "border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500 ring-1 ring-red-500" : ""
+                              }`}
+                              placeholder="Referencia"
                               value={cobro.numeroReferencia || ""}
                               onChange={(e) => handleActualizarResultadoCobro(cobro.id, "numeroReferencia", e.target.value)} />
+                            {cobro.numeroReferencia?.trim() && cobrosVinculados.some(
+                              c => c.id !== cobro.id && (c.numeroReferencia || "").trim().toLowerCase() === cobro.numeroReferencia.trim().toLowerCase()
+                            ) && (
+                              <p className="text-xs text-red-600 mt-0.5">⚠ Referencia ya registrada</p>
+                            )}
+                            {cobrosCxCDuplicadosBD.has((cobro.numeroReferencia || "").trim().toLowerCase()) && (
+                              <p className="text-xs text-red-600 mt-0.5">⚠ Referencia ya registrada</p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -4119,14 +4161,21 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           <DialogFooter>
             {(consignacionesDuplicadasBD.size > 0 || consignaciones.some(c =>
               c.numero.trim() !== "" && consignaciones.filter(x => x.numero.trim().toLowerCase() === c.numero.trim().toLowerCase()).length > 1
+            ) || cobrosCxCDuplicadosBD.size > 0 || cobrosVinculados.some(c =>
+              (c.numeroReferencia || "").trim() !== "" && cobrosVinculados.filter(x => (x.numeroReferencia || "").trim().toLowerCase() === (c.numeroReferencia || "").trim().toLowerCase()).length > 1
             )) && (
               <div className="w-full bg-red-100 border border-red-400 rounded-lg p-3 mb-2">
                 <p className="text-red-700 font-bold text-sm text-center">
-                  🚫 HAY CONSIGNACIONES DUPLICADAS — Corrija antes de confirmar el cuadre
+                  🚫 HAY REFERENCIAS DUPLICADAS — Corrija antes de confirmar el cuadre
                 </p>
                 {Array.from(consignacionesDuplicadasBD).map(num => (
                   <p key={num} className="text-red-600 text-xs text-center mt-1">
-                    Referencia <strong>{num}</strong> ya fue registrada en un cuadre anterior
+                    Referencia <strong>{num}</strong> (consignación) ya fue registrada en un cuadre anterior
+                  </p>
+                ))}
+                {Array.from(cobrosCxCDuplicadosBD).map(num => (
+                  <p key={num} className="text-red-600 text-xs text-center mt-1">
+                    Referencia <strong>{num}</strong> (cobro CxC) ya fue registrada en un cuadre anterior
                   </p>
                 ))}
               </div>
@@ -4145,6 +4194,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               consignacionesDuplicadasBD.size > 0 ||
               consignaciones.some(c =>
                 c.numero.trim() !== "" && consignaciones.filter(x => x.numero.trim().toLowerCase() === c.numero.trim().toLowerCase()).length > 1
+              ) ||
+              cobrosCxCDuplicadosBD.size > 0 ||
+              cobrosVinculados.some(c =>
+                (c.numeroReferencia || "").trim() !== "" && cobrosVinculados.filter(x => (x.numeroReferencia || "").trim().toLowerCase() === (c.numeroReferencia || "").trim().toLowerCase()).length > 1
               )}>
               {submitting ? "Guardando..." : "Confirmar Cuadre"}
             </Button>
