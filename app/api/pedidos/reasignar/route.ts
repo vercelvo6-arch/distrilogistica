@@ -107,6 +107,27 @@ export async function POST(request: NextRequest) {
 
     console.log('[API Reasignar Pedido] ✓ Pedido actualizado')
 
+    // ✅ Marcar la mercancía como ya alistada — este pedido se reasigna desde
+    // el cuadre de caja, es decir, la mercancía ya salió cargada físicamente
+    // hoy con el entregador. Si no se marca así, la lista de "Productos
+    // Consolidados" del alistador vuelve a pedirla como pendiente en la
+    // planilla destino y el alistador no la encuentra en bodega (no existe
+    // ahí — ya está con el entregador).
+    const productosMarcados = await sql`
+      UPDATE pedido_productos
+      SET
+        estado_alistamiento = 'completo',
+        cantidad_disponible = cantidad,
+        cantidad_faltante = 0,
+        observaciones_faltante = COALESCE(observaciones_faltante || ' | ', '') ||
+          'Ya cargado — reasignado desde ' || ${pedido.ruta_actual} || ' en cuadre de caja',
+        updated_at = NOW()
+      WHERE pedido_id = ${pedidoId}
+      RETURNING id
+    `
+
+    console.log(`[API Reasignar Pedido] ✓ Productos marcados como ya alistados: ${productosMarcados.length}`)
+
     // ✅ Actualizar faltantes del pedido a la nueva planilla y entregador
     const faltantesActualizados = await sql`
       UPDATE faltantes
