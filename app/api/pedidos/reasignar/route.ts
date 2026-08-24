@@ -84,6 +84,16 @@ export async function POST(request: NextRequest) {
       a: `${planilla.tipo_ruta} - ${planilla.entregador}`
     })
 
+    // ✅ Todo lo que sigue muta datos (pedido, pedido_productos, faltantes,
+    // totales de 2 planillas). Sin transacción, un error a mitad de camino
+    // (como el de faltantes_planilla_codigo_unique que vimos) deja el
+    // pedido ya movido pero los totales de ambas planillas sin recalcular
+    // — el cargue le queda "pegado" a la planilla origen. BEGIN/COMMIT
+    // asegura que o se aplica todo, o no se aplica nada.
+    await sql`BEGIN`
+
+    try {
+
     // 5️⃣ Obtener la última secuencia de la planilla destino
     const ultimaSecuencia = await sql`
       SELECT COALESCE(MAX(secuencia), 0) as max_secuencia
@@ -128,13 +138,27 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API Reasignar Pedido] ✓ Productos marcados como ya alistados: ${productosMarcados.length}`)
 
-    // ✅ Actualizar faltantes del pedido a la nueva planilla y entregador
+    // ✅ Resolver (no re-asignar) los faltantes pendientes de la planilla
+    // ORIGEN para los códigos de este pedido.
+    //
+    // Antes este bloque intentaba mover la fila (UPDATE planilla_id) a la
+    // planilla destino, pero eso choca con faltantes_planilla_codigo_unique
+    // (planilla_id, codigo) cuando la planilla destino ya tiene su propio
+    // faltante pendiente para el mismo código — causaba un 500.
+    //
+    // Además ya no tiene sentido arrastrarlo: arriba marcamos los
+    // pedido_productos de este pedido como 'completo' (mercancía ya
+    // cargada), así que el faltante de origen queda resuelto, no movido.
     const faltantesActualizados = await sql`
       UPDATE faltantes
-      SET 
-        planilla_id = ${nuevaPlanillaId},
-        entregador = ${planilla.entregador},
-        ruta = ${planilla.tipo_ruta}
+      SET
+        estado = 'resuelto',
+        tipo_resolucion = 'completo',
+        cantidad_resuelta = cantidad_faltante,
+        cantidad_disponible = cantidad_solicitada,
+        resuelto_por = ${session.user.id},
+        fecha_resolucion = NOW(),
+        observaciones_resolucion = 'Pedido reasignado a ' || ${planilla.tipo_ruta} || ' en cuadre de caja — mercancía ya cargada'
       WHERE planilla_id = ${pedido.planilla_actual}
         AND codigo IN (
           SELECT codigo FROM pedido_productos WHERE pedido_id = ${pedidoId}
@@ -143,7 +167,7 @@ export async function POST(request: NextRequest) {
       RETURNING id
     `
 
-    console.log(`[API Reasignar Pedido] ✓ Faltantes actualizados: ${faltantesActualizados.length}`)
+    console.log(`[API Reasignar Pedido] ✓ Faltantes de origen resueltos: ${faltantesActualizados.length}`)
 
     // 7️⃣ Recalcular totales planilla ORIGEN
     const totalesOrigen = await sql`
@@ -197,6 +221,8 @@ export async function POST(request: NextRequest) {
 
     console.log('[API Reasignar Pedido] ✓ Totales recalculados para planilla destino')
 
+    await sql`COMMIT`
+
     return NextResponse.json({
       success: true,
       mensaje: `Pedido movido exitosamente de ${pedido.ruta_actual} a ${planilla.tipo_ruta}`,
@@ -211,6 +237,11 @@ export async function POST(request: NextRequest) {
         rutaNueva: planilla.tipo_ruta
       }
     })
+
+    } catch (txError) {
+      await sql`ROLLBACK`
+      throw txError
+    }
 
   } catch (error) {
     console.error('[API Reasignar Pedido] ERROR:', error)
