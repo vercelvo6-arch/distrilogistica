@@ -1,17 +1,17 @@
 -- Repara los totales (total_cargue, total_entregado, total_fiado,
 -- total_repaso, total_devolucion) de las planillas que quedaron
 -- desincronizadas por el bug de /api/pedidos/reasignar: cuando el paso de
--- "Actualizar faltantes" chocaba con la restricción única
--- faltantes_planilla_codigo_unique, el pedido ya se había movido de
--- planilla pero el recálculo de totales (que iba después) nunca se
--- ejecutaba — dejando el cargue "pegado" a la planilla de origen y sin
+-- "Actualizar faltantes" chocaba con la restriccion unica
+-- faltantes_planilla_codigo_unique, el pedido ya se habia movido de
+-- planilla pero el recalculo de totales (que iba despues) nunca se
+-- ejecutaba, dejando el cargue pegado a la planilla de origen y sin
 -- sumar en la planilla destino.
 --
 -- Es seguro re-ejecutar: solo resincroniza los totales desde la fuente de
 -- verdad (pedidos). Se limita a cuadrado_en_caja = false porque una
 -- planilla ya cuadrada tiene sus pedidos congelados (reasignar bloquea
--- mover hacia/desde una planilla cuadrada), así que no hay nada que
--- resincronizar ahí y no se toca el historial ya cerrado.
+-- mover hacia/desde una planilla cuadrada), asi que no hay nada que
+-- resincronizar ahi y no se toca el historial ya cerrado.
 
 UPDATE planillas p
 SET
@@ -35,7 +35,7 @@ FROM (
 WHERE p.id = t.planilla_id
   AND p.cuadrado_en_caja = false
   AND (
-    p.total_cargue     IS DISTINCT FROM t.total_cargue
+    p.total_cargue        IS DISTINCT FROM t.total_cargue
     OR p.total_entregado  IS DISTINCT FROM t.total_entregado
     OR p.total_fiado      IS DISTINCT FROM t.total_fiado
     OR p.total_repaso     IS DISTINCT FROM t.total_repaso
