@@ -1,10 +1,3 @@
--- SOLO LECTURA - no modifica nada. Corre esto y pega el resultado completo.
---
--- Compara, para cada planilla NO cuadrada, el total_cargue guardado en la
--- tabla planillas contra el total real calculado en vivo desde pedidos.
--- Si alguna fila muestra diferencia != 0, esa es la planilla que sigue
--- desincronizada, y ahi vemos si esta marcada cuadrado_en_caja o no.
-
 SELECT
   p.id AS planilla_id,
   p.entregador,
@@ -23,8 +16,6 @@ LEFT JOIN (
 WHERE p.entregador IN ('Miguel', 'Carlos')
 ORDER BY p.fecha DESC, p.entregador;
 
--- Tambien: dime en cual planilla esta AHORA MISMO el pedido que se
--- reasigno (codigo de producto 1209), y si el pedido esta ahi.
 SELECT
   pp.pedido_id,
   p.cliente,
