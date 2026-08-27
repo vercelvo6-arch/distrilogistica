@@ -27,12 +27,16 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB()
 
+    // ✅ Se compara por registrado_en (TIMESTAMPTZ) convertido a hora Colombia, no por
+    // la columna fecha (que en filas viejas quedó grabada con CURRENT_DATE en UTC).
+    // Bogotá es UTC-5, así que el día calendario en UTC cambia a las 7pm hora Colombia
+    // — justo cuando suele hacerse el cuadre — y eso dejaba consignaciones huérfanas.
     const consignaciones = fecha
       ? await sql`
           SELECT id, pedido_id, planilla_id, cliente, banco, numero, monto, fecha
           FROM consignaciones_pedido
           WHERE entregador = ${entregador}
-            AND fecha = ${fecha}::date
+            AND DATE(registrado_en AT TIME ZONE 'America/Bogota') = ${fecha}::date
             AND cuadre_caja_id IS NULL
           ORDER BY registrado_en DESC
         `

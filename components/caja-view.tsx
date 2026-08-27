@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2, Edit2 } from "lucide-react"
 import type { RouteSheet, User, RecepcionCaja, Order } from "@/lib/types"
-import { formatCOP } from "@/lib/format-utils"
+import { formatCOP, getFechaHoyBogota } from "@/lib/format-utils"
 import {
   updatePedidoEstado,
   updateProductoDevuelto,
@@ -1596,7 +1596,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // como si caja las hubiera escrito a mano, evitando duplicados si se reabre el modal.
   const loadConsignacionesEntregador = async (entregador: string) => {
     try {
-      const hoy = new Date().toISOString().split("T")[0]
+      const hoy = getFechaHoyBogota()
       const res = await fetch(`/api/planillas/consignaciones-entregador?entregador=${encodeURIComponent(entregador)}&fecha=${hoy}`)
       if (!res.ok) return
       const data = await res.json()
@@ -1663,7 +1663,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       setCobrosDisponibles([...cobrosFiados, ...cobrosPagosAnticipados])
 
       // ✅ Precargar automáticamente los cobros que el entregador ya registró en ruta hoy
-      const hoy = new Date().toISOString().split("T")[0]
+      const hoy = getFechaHoyBogota()
       const resAbonos = await fetch(`/api/fiados/abonos-entregador?entregador=${encodeURIComponent(entregador)}&fecha=${hoy}`)
       if (resAbonos.ok) {
         const dataAbonos = await resAbonos.json()

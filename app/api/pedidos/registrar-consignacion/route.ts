@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         pedido_id, planilla_id, entregador, cliente, banco, numero, monto, fecha
       ) VALUES (
         ${String(pedidoId)}, ${planillaId ? String(planillaId) : null}, ${String(entregador || session.user.nombre)},
-        ${cliente || null}, ${bancoLimpio}, ${numeroLimpio}, ${montoNum}, CURRENT_DATE
+        ${cliente || null}, ${bancoLimpio}, ${numeroLimpio}, ${montoNum}, (NOW() AT TIME ZONE 'America/Bogota')::date
       )
       RETURNING *
     `
