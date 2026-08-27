@@ -1594,10 +1594,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // Consignaciones que el entregador ya registró en ruta (botón "Transferencia") y
   // que ningún cuadre ha usado todavía — se agregan a la lista de consignaciones tal
   // como si caja las hubiera escrito a mano, evitando duplicados si se reabre el modal.
+  // Sin filtro de fecha: deben permanecer visibles sin importar cuántos días hayan
+  // pasado desde que el entregador las registró en ruta.
   const loadConsignacionesEntregador = async (entregador: string) => {
     try {
       const hoy = getFechaHoyBogota()
-      const res = await fetch(`/api/planillas/consignaciones-entregador?entregador=${encodeURIComponent(entregador)}&fecha=${hoy}`)
+      const res = await fetch(`/api/planillas/consignaciones-entregador?entregador=${encodeURIComponent(entregador)}`)
       if (!res.ok) return
       const data = await res.json()
       const nuevas = (data.consignaciones || []).map((c: any) => ({
@@ -1662,13 +1664,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
       setCobrosDisponibles([...cobrosFiados, ...cobrosPagosAnticipados])
 
-      // ✅ Precargar automáticamente los cobros que el entregador ya registró en ruta hoy
-      const hoy = getFechaHoyBogota()
-      const resAbonos = await fetch(`/api/fiados/abonos-entregador?entregador=${encodeURIComponent(entregador)}&fecha=${hoy}`)
+      // ✅ Precargar automáticamente los cobros que el entregador ya registró en ruta,
+      // sin importar cuántos días hayan pasado — el entregador puede estar varios días
+      // en zona antes de que caja haga el cuadre.
+      const resAbonos = await fetch(`/api/fiados/abonos-entregador?entregador=${encodeURIComponent(entregador)}`)
       if (resAbonos.ok) {
         const dataAbonos = await resAbonos.json()
         const cobrosYaRegistrados = (dataAbonos.abonos || []).map((a: any) => ({
           id:              a.fiado_id,
+          abonoId:         a.id, // vínculo exacto al marcar el cuadre — evita adivinar por fecha
           cliente:         a.cliente,
           ruta:            a.ruta,
           saldo_pendiente: a.saldo_pendiente,

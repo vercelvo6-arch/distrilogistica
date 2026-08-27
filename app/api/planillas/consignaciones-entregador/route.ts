@@ -4,11 +4,16 @@ import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/planillas/consignaciones-entregador?entregador=X&fecha=YYYY-MM-DD
+// GET /api/planillas/consignaciones-entregador?entregador=X
 // Consignaciones que el entregador registró en ruta (registrar-consignacion) y
 // que todavía no se han usado en ningún cuadre — para precargarlas en el modal
 // de cuadre agrupado de caja. Mismo rol que /api/fiados/abonos-entregador
 // cumple para los cobros CxC.
+//
+// ✅ Sin filtro de fecha a propósito: un entregador puede estar varios días en
+// ruta antes de que caja haga el cuadre, así que cualquier consignación sin
+// usar (cuadre_caja_id IS NULL) debe seguir apareciendo sin importar cuántos
+// días hayan pasado desde que se registró.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +24,6 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const entregador = searchParams.get('entregador')
-    const fecha = searchParams.get('fecha')
 
     if (!entregador) {
       return NextResponse.json({ error: 'entregador es requerido' }, { status: 400 })
@@ -27,26 +31,13 @@ export async function GET(request: NextRequest) {
 
     const sql = getDB()
 
-    // ✅ Se compara por registrado_en (TIMESTAMPTZ) convertido a hora Colombia, no por
-    // la columna fecha (que en filas viejas quedó grabada con CURRENT_DATE en UTC).
-    // Bogotá es UTC-5, así que el día calendario en UTC cambia a las 7pm hora Colombia
-    // — justo cuando suele hacerse el cuadre — y eso dejaba consignaciones huérfanas.
-    const consignaciones = fecha
-      ? await sql`
-          SELECT id, pedido_id, planilla_id, cliente, banco, numero, monto, fecha
-          FROM consignaciones_pedido
-          WHERE entregador = ${entregador}
-            AND DATE(registrado_en AT TIME ZONE 'America/Bogota') = ${fecha}::date
-            AND cuadre_caja_id IS NULL
-          ORDER BY registrado_en DESC
-        `
-      : await sql`
-          SELECT id, pedido_id, planilla_id, cliente, banco, numero, monto, fecha
-          FROM consignaciones_pedido
-          WHERE entregador = ${entregador}
-            AND cuadre_caja_id IS NULL
-          ORDER BY registrado_en DESC
-        `
+    const consignaciones = await sql`
+      SELECT id, pedido_id, planilla_id, cliente, banco, numero, monto, fecha
+      FROM consignaciones_pedido
+      WHERE entregador = ${entregador}
+        AND cuadre_caja_id IS NULL
+      ORDER BY registrado_en DESC
+    `
 
     return NextResponse.json({ success: true, consignaciones })
   } catch (error) {

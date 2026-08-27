@@ -3,9 +3,14 @@ import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
 
-// GET /api/fiados/abonos-entregador?entregador=X&fecha=YYYY-MM-DD
-// Devuelve los abonos que el entregador registró en ruta en una fecha dada
-// Usado por caja para precargar los cobrosVinculados automáticamente
+// GET /api/fiados/abonos-entregador?entregador=X
+// Devuelve los abonos que el entregador registró en ruta y que ningún cuadre
+// ha usado todavía. Usado por caja para precargar los cobrosVinculados automáticamente.
+//
+// ✅ Sin filtro de fecha a propósito: un entregador puede estar varios días en
+// ruta antes de que caja haga el cuadre, así que cualquier abono sin usar
+// (planilla_cobro_id IS NULL) debe seguir apareciendo sin importar cuántos
+// días hayan pasado desde que se registró.
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession()
@@ -15,7 +20,6 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const entregador = searchParams.get('entregador')
-    const fecha      = searchParams.get('fecha') || new Date().toISOString().split('T')[0]
 
     if (!entregador) {
       return NextResponse.json({ error: 'entregador requerido' }, { status: 400 })
@@ -41,8 +45,7 @@ export async function GET(request: NextRequest) {
       FROM abonos_fiados af
       JOIN fiados f ON f.id = af.pedido_id::integer
       WHERE af.entregador_cobro = ${entregador}
-        AND DATE(af.fecha_abono AT TIME ZONE 'America/Bogota') = ${fecha}::date
-        AND af.planilla_cobro_id IS NULL  -- solo los registrados en ruta (no en cuadre)
+        AND af.planilla_cobro_id IS NULL
       ORDER BY af.fecha_abono DESC
     `
 
