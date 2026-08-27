@@ -7,10 +7,17 @@ import { handleDBError } from '@/lib/db-helpers'
 // Devuelve los abonos que el entregador registró en ruta y que ningún cuadre
 // ha usado todavía. Usado por caja para precargar los cobrosVinculados automáticamente.
 //
-// ✅ Sin filtro de fecha a propósito: un entregador puede estar varios días en
-// ruta antes de que caja haga el cuadre, así que cualquier abono sin usar
-// (planilla_cobro_id IS NULL) debe seguir apareciendo sin importar cuántos
-// días hayan pasado desde que se registró.
+// ✅ Un entregador puede estar varios días en ruta antes de que caja haga el
+// cuadre, así que cualquier abono sin usar (planilla_cobro_id IS NULL) debe
+// seguir apareciendo sin importar cuántos días hayan pasado desde que se
+// registró — PERO solo a partir de CUTOFF. Antes de esa fecha hay abonos
+// huérfanos por un bug ya corregido (el vínculo exacto "abonoId" nunca se
+// enviaba desde el frontend, así que el cuadre se cerraba bien pero la fila
+// del abono nunca quedaba marcada como usada). Ese dinero ya fue entregado y
+// contado en cuadres pasados; mostrarlo de nuevo aquí lo haría contarse dos
+// veces.
+const CUTOFF = '2026-08-27T00:00:00-05:00'
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession()
@@ -46,6 +53,7 @@ export async function GET(request: NextRequest) {
       JOIN fiados f ON f.id = af.pedido_id::integer
       WHERE af.entregador_cobro = ${entregador}
         AND af.planilla_cobro_id IS NULL
+        AND af.fecha_abono >= ${CUTOFF}::timestamptz
       ORDER BY af.fecha_abono DESC
     `
 

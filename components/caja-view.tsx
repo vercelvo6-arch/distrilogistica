@@ -1686,8 +1686,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           monto:           String((Number(a.monto_efectivo) || 0) + (Number(a.monto_nequi) || 0)),
           yaRegistrado:    true, // flag para que caja sepa que viene del entregador
         }))
+        // ✅ Fusionar con lo que ya había (borrador restaurado o cobros que caja
+        // acaba de vincular a mano) en vez de reemplazar — antes esto borraba
+        // cualquier cobro recién agregado cada vez que se reabría el modal.
         if (cobrosYaRegistrados.length > 0) {
-          setCobrosVinculados(cobrosYaRegistrados)
+          setCobrosVinculados(prev => [
+            ...prev,
+            ...cobrosYaRegistrados.filter((n: any) => !prev.some(p => p.abonoId ? p.abonoId === n.abonoId : p.id === n.id)),
+          ])
         }
       }
 
