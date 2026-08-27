@@ -117,6 +117,15 @@ export async function PATCH(
     const diferencia     = Math.round((totalRecibido - totalEsperado) * 100) / 100
     const estado         = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
+    // ✅ El formulario de edición junta billetes+monedas en un solo campo
+    // (efectivoRecibido) — se guarda todo en billetes y monedas en 0, para que el
+    // desglose del historial ("Billetes/Monedas/Cobros CxC") quede coherente con el
+    // total editado en vez de mostrar el desglose viejo de antes de la edición.
+    // Lo mismo con total_cobros: es la suma que lee el historial, y antes se quedaba
+    // con el valor de antes de editar porque solo se actualizaban cobros_efectivo y
+    // cobros_nequi por separado.
+    const totalCobros = cobrosEfectivoNum + cobrosNequiNum
+
     await sql`
       UPDATE cuadres_caja SET
         total_esperado      = ${totalEsperado},
@@ -137,6 +146,9 @@ export async function PATCH(
         errores_facturacion = ${erroresNum},
         cobros_efectivo     = ${cobrosEfectivoNum},
         cobros_nequi        = ${cobrosNequiNum},
+        total_cobros        = ${totalCobros},
+        billetes            = ${totalEfectivo},
+        monedas             = 0,
         consignaciones      = ${JSON.stringify(body.consignacionesDetalle || [])},
         updated_at          = NOW()
       WHERE id = ${cuadreId}
