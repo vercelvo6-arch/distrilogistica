@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
+import { buscarReferenciasUsadas } from '@/lib/validar-referencia'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/pedidos/registrar-consignacion
@@ -33,6 +34,17 @@ export async function POST(request: NextRequest) {
     }
     if (!montoNum || montoNum <= 0) {
       return NextResponse.json({ error: 'monto debe ser mayor a 0' }, { status: 400 })
+    }
+
+    // ✅ Antifraude: la misma referencia no puede reutilizarse para cobrar dos veces,
+    // sin importar si la primera vez fue una consignación, un cobro CxC o un pago
+    // anticipado.
+    const yaUsada = await buscarReferenciasUsadas([numeroLimpio])
+    if (yaUsada.length > 0) {
+      return NextResponse.json(
+        { error: `La referencia ${numeroLimpio} ya fue registrada antes. Verifique el comprobante.` },
+        { status: 409 }
+      )
     }
 
     const sql = getDB()

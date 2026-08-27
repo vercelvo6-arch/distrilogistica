@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
+import { buscarReferenciasUsadas } from '@/lib/validar-referencia'
 
 const ROLES_PERMITIDOS = ['caja', 'administrador']
 
@@ -41,42 +42,14 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
-    // Validar duplicado/fraude contra las 3 fuentes donde puede haber quedado ya
-    // esta misma referencia: pagos_anticipados, abonos_fiados y consignaciones de
-    // cuadres ya cerrados (mismo criterio que usa el modal de cuadre agrupado).
+    // ✅ Antifraude: la misma referencia no puede reutilizarse para cobrar dos veces,
+    // sin importar si la primera vez fue una consignación (cuadre cerrado o todavía
+    // pendiente en ruta), un abono de fiado o otro pago anticipado.
     if (referenciaLimpia) {
-      const [dupPago] = await sql`
-        SELECT id FROM pagos_anticipados WHERE LOWER(referencia) = LOWER(${referenciaLimpia}) LIMIT 1
-      `
-      if (dupPago) {
+      const yaUsada = await buscarReferenciasUsadas([referenciaLimpia])
+      if (yaUsada.length > 0) {
         return NextResponse.json(
-          { error: `La referencia ${referenciaLimpia} ya fue registrada en el cuadre administrativo` },
-          { status: 409 }
-        )
-      }
-
-      const [dupAbono] = await sql`
-        SELECT id FROM abonos_fiados WHERE LOWER(referencia_pago) = LOWER(${referenciaLimpia}) LIMIT 1
-      `
-      if (dupAbono) {
-        return NextResponse.json(
-          { error: `La referencia ${referenciaLimpia} ya fue registrada en un abono de fiado` },
-          { status: 409 }
-        )
-      }
-
-      const [dupConsignacion] = await sql`
-        SELECT cc.id
-        FROM cuadres_caja cc,
-        jsonb_array_elements(
-          CASE WHEN jsonb_typeof(cc.consignaciones) = 'array' THEN cc.consignaciones ELSE '[]'::jsonb END
-        ) AS elem
-        WHERE LOWER(elem->>'numero') = LOWER(${referenciaLimpia})
-        LIMIT 1
-      `
-      if (dupConsignacion) {
-        return NextResponse.json(
-          { error: `La referencia ${referenciaLimpia} ya fue registrada como consignación en un cuadre de caja anterior` },
+          { error: `La referencia ${referenciaLimpia} ya fue registrada antes. Verifique el comprobante.` },
           { status: 409 }
         )
       }

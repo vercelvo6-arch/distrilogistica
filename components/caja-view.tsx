@@ -106,8 +106,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     erroresFacturacion: "",
   })
   const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string; cliente: string; numero_factura: string; origenConsignacionId?: number}>>([])
-  const [consignacionesDuplicadasBD, setConsignacionesDuplicadasBD] = useState<Set<string>>(new Set())
-  const [cobrosCxCDuplicadosBD, setCobrosCxCDuplicadosBD] = useState<Set<string>>(new Set())
+  // Referencias (consignaciones + cobros CxC) que ya existen en la BD — un solo set,
+  // porque el endpoint de validación ya las busca juntas en una sola consulta.
+  const [duplicadosBD, setDuplicadosBD] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
   const [selectedRoutes, setSelectedRoutes] = useState<number[]>([])
@@ -1467,36 +1468,32 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setConsignaciones(prev => prev.map(c => c.id === id ? { ...c, [campo]: valor } : c))
   }
 
-  // ✅ Validar duplicados en BD con debounce cuando cambian los números de consignación
-  useEffect(() => {
-    const numeros = consignaciones.map(c => c.numero.trim()).filter(n => n.length > 4)
-    if (numeros.length === 0) {
-      setConsignacionesDuplicadasBD(new Set())
-      return
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch("/api/cuadres-caja/validar-consignaciones", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ numeros }),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setConsignacionesDuplicadasBD(new Set((data.duplicados || []).map((d: string) => d.toLowerCase())))
-        }
-      } catch (e) {
-        // Si falla, no bloquear
-      }
-    }, 600) // 600ms de debounce — no consulta en cada tecla
-    return () => clearTimeout(timer)
-  }, [consignaciones])
+  // ✅ Referencias repetidas DENTRO del cuadre que se está armando — cruza consignaciones
+  // contra cobros CxC (antes cada lista solo se comparaba consigo misma, así que usar la
+  // misma referencia en una consignación y en un cobro no se detectaba).
+  const referenciasRepetidasEnForm = useMemo(() => {
+    const contador = new Map<string, number>()
+    consignaciones.forEach(c => {
+      const n = c.numero.trim().toLowerCase()
+      if (n) contador.set(n, (contador.get(n) || 0) + 1)
+    })
+    cobrosVinculados.forEach(c => {
+      const n = (c.numeroReferencia || "").trim().toLowerCase()
+      if (n) contador.set(n, (contador.get(n) || 0) + 1)
+    })
+    return new Set(Array.from(contador.entries()).filter(([, count]) => count > 1).map(([n]) => n))
+  }, [consignaciones, cobrosVinculados])
 
-  // ✅ Validar duplicados en BD con debounce cuando cambian las referencias de cobros CxC
+  // ✅ Validar duplicados en BD con un solo debounce/consulta para consignaciones y
+  // cobros CxC juntos — el endpoint ya las busca combinadas, así que separarlas en dos
+  // efectos solo duplicaba la llamada de red sin aportar nada.
   useEffect(() => {
-    const numeros = cobrosVinculados.map(c => (c.numeroReferencia || "").trim()).filter(n => n.length > 4)
+    const numeros = Array.from(new Set([
+      ...consignaciones.map(c => c.numero.trim()),
+      ...cobrosVinculados.map(c => (c.numeroReferencia || "").trim()),
+    ].filter(n => n.length > 4)))
     if (numeros.length === 0) {
-      setCobrosCxCDuplicadosBD(new Set())
+      setDuplicadosBD(new Set())
       return
     }
     const timer = setTimeout(async () => {
@@ -1508,14 +1505,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         })
         if (res.ok) {
           const data = await res.json()
-          setCobrosCxCDuplicadosBD(new Set((data.duplicados || []).map((d: string) => d.toLowerCase())))
+          setDuplicadosBD(new Set((data.duplicados || []).map((d: string) => d.toLowerCase())))
         }
       } catch (e) {
         // Si falla, no bloquear
       }
     }, 600) // 600ms de debounce — no consulta en cada tecla
     return () => clearTimeout(timer)
-  }, [cobrosVinculados])
+  }, [consignaciones, cobrosVinculados])
 
   const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setNovedadCajaOrder(order)
@@ -1949,8 +1946,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setAgrupadoData(agrupado)
     setCobrosVinculados(borrador?.cobrosVinculados || [])
     setConsignaciones(borradorConsignaciones)
-    setConsignacionesDuplicadasBD(new Set())
-    setCobrosCxCDuplicadosBD(new Set())
+    setDuplicadosBD(new Set())
     setBusquedaCobro("")
     setFormData(prev => ({
       ...prev,
@@ -2091,6 +2087,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         if (c.yaRegistrado) {
           return {
             id:            c.id,
+            abonoId:       c.abonoId || null,
             montoEfectivo: Number(c.montoEfectivo) || 0,
             montoNequi:    Number(c.montoNequi) || 0,
             referencia:    c.referencia?.trim() || null,
@@ -2389,6 +2386,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           agotados:          totals.agotados || 0,
           cobrosVinculados:  cobrosVinculados.map(c => ({
             id:            c.id,
+            abonoId:       c.abonoId || null,
             montoEfectivo: Number(c.montoEfectivo) || 0,
             montoNequi:    Number(c.montoNequi) || 0,
             referencia:    c.referencia?.trim() || null,
@@ -3611,7 +3609,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         className={`h-8 text-sm ${
                           (cons.numero.trim() !== "" && consignaciones.some(
                             c => c.id !== cons.id && c.numero.trim().toLowerCase() === cons.numero.trim().toLowerCase()
-                          )) || consignacionesDuplicadasBD.has(cons.numero.trim().toLowerCase())
+                          )) || duplicadosBD.has(cons.numero.trim().toLowerCase())
                             ? "border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500 ring-1 ring-red-500" : ""
                         }`}
                         placeholder="Referencia"
@@ -3623,7 +3621,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       ) && (
                         <p className="text-xs text-red-600 mt-1 font-medium">⚠ Duplicada en este cuadre</p>
                       )}
-                      {consignacionesDuplicadasBD.has(cons.numero.trim().toLowerCase()) && (
+                      {duplicadosBD.has(cons.numero.trim().toLowerCase()) && (
                         <p className="text-xs text-red-600 mt-1 font-medium">⚠ Ya registrada en cuadre anterior — NO puede usarse</p>
                       )}
                     </div>
@@ -3942,20 +3940,17 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             <Label className="text-xs">N° Referencia</Label>
                             <Input
                               className={`h-8 text-sm ${
-                                (cobro.numeroReferencia?.trim() && cobrosVinculados.some(
-                                  c => c.id !== cobro.id && (c.numeroReferencia || "").trim().toLowerCase() === cobro.numeroReferencia.trim().toLowerCase()
-                                )) || cobrosCxCDuplicadosBD.has((cobro.numeroReferencia || "").trim().toLowerCase())
+                                referenciasRepetidasEnForm.has((cobro.numeroReferencia || "").trim().toLowerCase()) ||
+                                duplicadosBD.has((cobro.numeroReferencia || "").trim().toLowerCase())
                                   ? "border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500 ring-1 ring-red-500" : ""
                               }`}
                               placeholder="Referencia"
                               value={cobro.numeroReferencia || ""}
                               onChange={(e) => handleActualizarResultadoCobro(cobro.id, "numeroReferencia", e.target.value)} />
-                            {cobro.numeroReferencia?.trim() && cobrosVinculados.some(
-                              c => c.id !== cobro.id && (c.numeroReferencia || "").trim().toLowerCase() === cobro.numeroReferencia.trim().toLowerCase()
-                            ) && (
-                              <p className="text-xs text-red-600 mt-0.5">⚠ Referencia ya registrada</p>
+                            {referenciasRepetidasEnForm.has((cobro.numeroReferencia || "").trim().toLowerCase()) && (
+                              <p className="text-xs text-red-600 mt-0.5">⚠ Referencia duplicada en este cuadre (consignación o cobro)</p>
                             )}
-                            {cobrosCxCDuplicadosBD.has((cobro.numeroReferencia || "").trim().toLowerCase()) && (
+                            {duplicadosBD.has((cobro.numeroReferencia || "").trim().toLowerCase()) && (
                               <p className="text-xs text-red-600 mt-0.5">⚠ Referencia ya registrada</p>
                             )}
                           </div>
@@ -4025,12 +4020,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <Label className="text-xs">Número de referencia</Label>
                         <Input className="h-8 text-sm" placeholder="Referencia"
                           value={cons.numero} onChange={(e) => actualizarConsignacion(cons.id, "numero", e.target.value)} />
-                        {cons.numero.trim() !== "" && consignaciones.some(
-                          x => x.id !== cons.id && x.numero.trim().toLowerCase() === cons.numero.trim().toLowerCase()
-                        ) && (
-                          <p className="text-xs text-red-600 mt-0.5">Duplicada en este cuadre</p>
+                        {referenciasRepetidasEnForm.has(cons.numero.trim().toLowerCase()) && (
+                          <p className="text-xs text-red-600 mt-0.5">Duplicada en este cuadre (consignación o cobro)</p>
                         )}
-                        {consignacionesDuplicadasBD.has(cons.numero.trim().toLowerCase()) && (
+                        {duplicadosBD.has(cons.numero.trim().toLowerCase()) && (
                           <p className="text-xs text-red-600 mt-0.5">Ya registrada en la BD</p>
                         )}
                       </div>
@@ -4169,23 +4162,19 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           </div>
 
           <DialogFooter>
-            {(consignacionesDuplicadasBD.size > 0 || consignaciones.some(c =>
-              c.numero.trim() !== "" && consignaciones.filter(x => x.numero.trim().toLowerCase() === c.numero.trim().toLowerCase()).length > 1
-            ) || cobrosCxCDuplicadosBD.size > 0 || cobrosVinculados.some(c =>
-              (c.numeroReferencia || "").trim() !== "" && cobrosVinculados.filter(x => (x.numeroReferencia || "").trim().toLowerCase() === (c.numeroReferencia || "").trim().toLowerCase()).length > 1
-            )) && (
+            {(duplicadosBD.size > 0 || referenciasRepetidasEnForm.size > 0) && (
               <div className="w-full bg-red-100 border border-red-400 rounded-lg p-3 mb-2">
                 <p className="text-red-700 font-bold text-sm text-center">
                   🚫 HAY REFERENCIAS DUPLICADAS — Corrija antes de confirmar el cuadre
                 </p>
-                {Array.from(consignacionesDuplicadasBD).map(num => (
+                {Array.from(referenciasRepetidasEnForm).map(num => (
                   <p key={num} className="text-red-600 text-xs text-center mt-1">
-                    Referencia <strong>{num}</strong> (consignación) ya fue registrada en un cuadre anterior
+                    Referencia <strong>{num}</strong> está repetida entre consignaciones y/o cobros de este cuadre
                   </p>
                 ))}
-                {Array.from(cobrosCxCDuplicadosBD).map(num => (
+                {Array.from(duplicadosBD).map(num => (
                   <p key={num} className="text-red-600 text-xs text-center mt-1">
-                    Referencia <strong>{num}</strong> (cobro CxC) ya fue registrada en un cuadre anterior
+                    Referencia <strong>{num}</strong> ya fue registrada en un cuadre anterior
                   </p>
                 ))}
               </div>
@@ -4201,14 +4190,8 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
               Cancelar
             </Button>
             <Button onClick={handleSubmitAgrupado} disabled={submitting ||
-              consignacionesDuplicadasBD.size > 0 ||
-              consignaciones.some(c =>
-                c.numero.trim() !== "" && consignaciones.filter(x => x.numero.trim().toLowerCase() === c.numero.trim().toLowerCase()).length > 1
-              ) ||
-              cobrosCxCDuplicadosBD.size > 0 ||
-              cobrosVinculados.some(c =>
-                (c.numeroReferencia || "").trim() !== "" && cobrosVinculados.filter(x => (x.numeroReferencia || "").trim().toLowerCase() === (c.numeroReferencia || "").trim().toLowerCase()).length > 1
-              )}>
+              duplicadosBD.size > 0 ||
+              referenciasRepetidasEnForm.size > 0}>
               {submitting ? "Guardando..." : "Confirmar Cuadre"}
             </Button>
           </DialogFooter>

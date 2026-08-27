@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { buscarReferenciasUsadas } from '@/lib/validar-referencia'
 
 export async function POST(request: NextRequest) {
   try {
@@ -81,6 +82,37 @@ export async function POST(request: NextRequest) {
     const diferencia          = Math.round((totalFisicoRecibido - esperadoAjust) * 100) / 100
     const estado              = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
 
+    // ── 3b. ANTIFRAUDE: ninguna referencia puede repetirse, ni contra otra fuente del
+    // sistema ni entre sí dentro de este mismo cuadre.
+    const numerosDelCuadre = [
+      ...(consignacionesArray || []).map((c: any) => String(c.numero || '').trim()),
+      ...cobros.map((c: any) => String(c.referencia || '').trim()),
+    ].filter((n: string) => n.length > 0)
+
+    const vistosEnEsteCuadre = new Set<string>()
+    const repetidosEnEsteCuadre = new Set<string>()
+    for (const n of numerosDelCuadre) {
+      const nl = n.toLowerCase()
+      if (vistosEnEsteCuadre.has(nl)) repetidosEnEsteCuadre.add(nl)
+      vistosEnEsteCuadre.add(nl)
+    }
+
+    const idsAbonoPropio = cobros
+      .map((c: any) => c.abonoId)
+      .filter((id: any) => id)
+
+    const yaUsadasEnBD = await buscarReferenciasUsadas(numerosDelCuadre, {
+      excluirAbonoFiadoIds: idsAbonoPropio,
+    })
+
+    if (repetidosEnEsteCuadre.size > 0 || yaUsadasEnBD.length > 0) {
+      const todas = Array.from(new Set([...repetidosEnEsteCuadre, ...yaUsadasEnBD]))
+      return NextResponse.json(
+        { error: `Referencia(s) duplicada(s) o ya registrada(s): ${todas.join(', ')}. Corrija antes de confirmar el cuadre.` },
+        { status: 409 }
+      )
+    }
+
     // ── 4. TRANSACCIÓN ────────────────────────────────────────────────────────
     await sql`BEGIN`
 
@@ -114,46 +146,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 4b. Procesar cobros CxC vinculados
-      for (const cobro of cobros) {
-        const efectivo = Number(cobro.montoEfectivo) || 0
-        const nequi    = Number(cobro.montoNequi) || 0
-        if (!cobro.id || efectivo + nequi <= 0) continue
-        const fiadoId = Number(cobro.id)
-        const [fiado] = await sql`
-          SELECT id, monto_pagado, saldo_pendiente
-          FROM fiados
-          WHERE id = ${fiadoId}
-            AND (eliminado IS NULL OR eliminado = false)
-            AND estado IN ('pendiente', 'abono_parcial')
-        `
-        if (!fiado) continue
-        const totalAbono       = efectivo + nequi
-        const nuevoMontoPagado = Number(fiado.monto_pagado) + totalAbono
-        const nuevoSaldo       = Math.max(0, Number(fiado.saldo_pendiente) - totalAbono)
-        await sql`
-          UPDATE fiados SET
-            monto_pagado        = ${nuevoMontoPagado},
-            saldo_pendiente     = ${nuevoSaldo},
-            estado              = ${nuevoSaldo <= 0 ? 'pagado_completo' : 'abono_parcial'},
-            entregador_asignado = ${planilla.entregador},
-            updated_at          = NOW()
-          WHERE id = ${fiadoId}
-        `
-        await sql`
-          INSERT INTO abonos_fiados (
-            pedido_id, monto_abono, monto_nequi, metodo_pago,
-            referencia_pago, fecha_abono, entregador_cobro, origen_tabla, created_at
-          ) VALUES (
-            ${String(fiadoId)}, ${efectivo}, ${nequi},
-            ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
-            ${cobro.referencia?.trim() || null},
-            NOW(), ${planilla.entregador}, 'fiados', NOW()
-          )
-        `
-      }
-
-      // 4c. Guardar cuadre
+      // 4c. Guardar cuadre (primero, para tener cuadre.id disponible al vincular cobros)
       const [cuadre] = await sql`
         INSERT INTO cuadres_caja (
           entregador, fecha_cuadre, fecha_desde, fecha_hasta,
@@ -194,6 +187,60 @@ export async function POST(request: NextRequest) {
         )
         RETURNING id
       `
+
+      // 4b. Procesar cobros CxC vinculados — los que ya traían abonoId (registrados
+      // antes por el entregador en ruta) solo se VINCULAN a este cuadre, nunca se
+      // vuelven a aplicar contra el saldo del fiado ni se duplican en abonos_fiados
+      // (eso ya lo hizo /api/fiados/registrar-abono). Solo los cobros nuevos, escritos
+      // por caja en este mismo modal, generan una fila nueva.
+      for (const cobro of cobros) {
+        const efectivo = Number(cobro.montoEfectivo) || 0
+        const nequi    = Number(cobro.montoNequi) || 0
+        if (!cobro.id || efectivo + nequi <= 0) continue
+
+        if (cobro.abonoId) {
+          await sql`
+            UPDATE abonos_fiados SET
+              planilla_cobro_id = ${cuadre.id}
+            WHERE id = ${Number(cobro.abonoId)}
+              AND planilla_cobro_id IS NULL
+          `
+          continue
+        }
+
+        const fiadoId = Number(cobro.id)
+        const [fiado] = await sql`
+          SELECT id, monto_pagado, saldo_pendiente
+          FROM fiados
+          WHERE id = ${fiadoId}
+            AND (eliminado IS NULL OR eliminado = false)
+            AND estado IN ('pendiente', 'abono_parcial')
+        `
+        if (!fiado) continue
+        const totalAbono       = efectivo + nequi
+        const nuevoMontoPagado = Number(fiado.monto_pagado) + totalAbono
+        const nuevoSaldo       = Math.max(0, Number(fiado.saldo_pendiente) - totalAbono)
+        await sql`
+          UPDATE fiados SET
+            monto_pagado        = ${nuevoMontoPagado},
+            saldo_pendiente     = ${nuevoSaldo},
+            estado              = ${nuevoSaldo <= 0 ? 'pagado_completo' : 'abono_parcial'},
+            entregador_asignado = ${planilla.entregador},
+            updated_at          = NOW()
+          WHERE id = ${fiadoId}
+        `
+        await sql`
+          INSERT INTO abonos_fiados (
+            pedido_id, monto_abono, monto_nequi, metodo_pago,
+            referencia_pago, fecha_abono, entregador_cobro, planilla_cobro_id, origen_tabla, created_at
+          ) VALUES (
+            ${String(fiadoId)}, ${efectivo}, ${nequi},
+            ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
+            ${cobro.referencia?.trim() || null},
+            NOW(), ${planilla.entregador}, ${cuadre.id}, 'fiados', NOW()
+          )
+        `
+      }
 
       // 4d. Marcar planilla como cuadrada
       await sql`

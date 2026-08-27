@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { getDB } from '@/lib/db'
 import { handleDBError } from '@/lib/db-helpers'
+import { buscarReferenciasUsadas } from '@/lib/validar-referencia'
 
 export async function POST(request: Request) {
   const sql = getDB()
@@ -148,6 +149,48 @@ export async function POST(request: Request) {
     const diferencia    = Math.round((totalRecibido - totalEsperado) * 100) / 100
     const estado        = diferencia === 0 ? 'cuadrado' : 'con_diferencia'
     const tipoCuadre    = planillaIds.length === 1 ? 'individual' : 'agrupado'
+
+    // ─── 5b. ANTIFRAUDE: ninguna referencia (consignación o cobro CxC) puede repetirse,
+    // ni contra otra fuente del sistema ni entre sí dentro de este mismo cuadre. Esta es
+    // la validación real y bloqueante — la que corre en el navegador mientras caja escribe
+    // es solo un aviso, no protege nada si alguien la evade.
+    const numerosDelCuadre = [
+      ...(consignacionesArray || []).map((c: any) => String(c.numero || '').trim()),
+      ...cobros.map((c: any) => String(c.referencia || '').trim()),
+    ].filter((n: string) => n.length > 0)
+
+    const vistosEnEsteCuadre = new Set<string>()
+    const repetidosEnEsteCuadre = new Set<string>()
+    for (const n of numerosDelCuadre) {
+      const nl = n.toLowerCase()
+      if (vistosEnEsteCuadre.has(nl)) repetidosEnEsteCuadre.add(nl)
+      vistosEnEsteCuadre.add(nl)
+    }
+
+    const idsConsignacionPropia = (consignacionesArray || [])
+      .map((c: any) => c.origenConsignacionId)
+      .filter((id: any) => id)
+    const idsAbonoPropio = cobros
+      .map((c: any) => c.abonoId)
+      .filter((id: any) => id)
+    const idsPagoAnticipadoPropio = cobros
+      .filter((c: any) => c.esPagoAnticipado)
+      .map((c: any) => c.pagoAnticipadoId)
+      .filter((id: any) => id)
+
+    const yaUsadasEnBD = await buscarReferenciasUsadas(numerosDelCuadre, {
+      excluirConsignacionPedidoIds: idsConsignacionPropia,
+      excluirAbonoFiadoIds: idsAbonoPropio,
+      excluirPagoAnticipadoIds: idsPagoAnticipadoPropio,
+    })
+
+    if (repetidosEnEsteCuadre.size > 0 || yaUsadasEnBD.length > 0) {
+      const todas = Array.from(new Set([...repetidosEnEsteCuadre, ...yaUsadasEnBD]))
+      return NextResponse.json(
+        { error: `Referencia(s) duplicada(s) o ya registrada(s): ${todas.join(', ')}. Corrija antes de confirmar el cuadre.` },
+        { status: 409 }
+      )
+    }
 
     // ─── 6. TRANSACCIÓN: TODO O NADA ─────────────────────────────────────────
     await sql`BEGIN`
@@ -306,9 +349,8 @@ export async function POST(request: Request) {
             WHERE id = ${fiadoId}
           `
 
-          // VALIDACIÓN TEMPORALMENTE DESACTIVADA — reactivar después de analizar el caso
-          // const refAbono = cobro.referencia?.trim() || null
-          // if (refAbono) { ... }
+          // La referencia ya se validó contra fraude/duplicados en el paso 5b, para
+          // todo el lote, antes de abrir esta transacción.
           const refAbono = cobro.referencia?.trim() || null
 
           const [abonoFresco] = await sql`
@@ -359,7 +401,7 @@ export async function POST(request: Request) {
             WHERE id = ${pedidoId}
           `
 
-          // VALIDACIÓN TEMPORALMENTE DESACTIVADA
+          // La referencia ya se validó contra fraude/duplicados en el paso 5b.
           const refAbonoPedido = cobro.referencia?.trim() || null
 
           const [abonoFrescoPedido] = await sql`

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
+import { buscarReferenciasUsadas } from '@/lib/validar-referencia'
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,12 +64,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (referenciaPago) {
-      const [refExiste] = await sql`
-        SELECT id FROM abonos_fiados
-        WHERE referencia_pago = ${referenciaPago}
-        LIMIT 1
-      `
-      if (refExiste) {
+      // ✅ Antifraude: busca la referencia en TODAS las fuentes (consignaciones,
+      // cuadres cerrados, otros abonos, pagos anticipados) — no solo abonos_fiados.
+      const yaUsada = await buscarReferenciasUsadas([referenciaPago])
+      if (yaUsada.length > 0) {
         return NextResponse.json(
           { error: `La referencia ${referenciaPago} ya fue registrada. Verifique el comprobante.` },
           { status: 409 }
