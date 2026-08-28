@@ -807,20 +807,19 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                       {isExpanded && (
                         <div className="p-3 md:p-5">
                           {(() => {
-                            const comentarios = sheets
+                            const pedidosConNota = sheets
                               .flatMap(s => s.orders)
-                              .map(o => o.comentarios)
-                              .filter(c => c && c.trim() !== '')
-                            
-                            if (comentarios.length > 0) {
+                              .filter(o => o.comentarios && o.comentarios.trim() !== '')
+
+                            if (pedidosConNota.length > 0) {
                               return (
                                 <div className="mb-4 bg-amber-50 border-l-4 border-amber-500 rounded p-3">
                                   <h4 className="font-bold text-sm text-amber-900 mb-2">📝 Notas de Alistamiento</h4>
                                   <ul className="space-y-1.5">
-                                    {comentarios.map((c, i) => (
-                                      <li key={i} className="text-sm text-gray-700 flex gap-2">
+                                    {pedidosConNota.map((o) => (
+                                      <li key={o.id} className="text-sm text-gray-700 flex gap-2">
                                         <span className="text-amber-600">•</span>
-                                        <span>{c}</span>
+                                        <span><strong>{o.cliente}:</strong> {o.comentarios}</span>
                                       </li>
                                     ))}
                                   </ul>

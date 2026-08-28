@@ -150,6 +150,16 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
       }
     })
 
+    // ✅ El comentario del asesor puede quedar en CUALQUIER línea de producto de la
+    // factura, no siempre en la primera — tomar solo facturaSales[0] los perdía en
+    // silencio. Se juntan todos los comentarios distintos no vacíos de las líneas.
+    const comentariosUnicos = Array.from(new Set(
+      facturaSales
+        .map(s => (s.comentarios || "").trim())
+        .filter(c => c.length > 0)
+    ))
+    const comentarios = comentariosUnicos.join(" | ") || undefined
+
     // ✅ CLAVE: usar totalFactura (columna 15) como el total real del pedido
     // Este valor ya incluye descuentos aplicados por el sistema de facturación
     // Si no está disponible, caer al total sumado de ítems
@@ -182,7 +192,7 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
       items,
       total,                    // ✅ Total real con descuentos incluidos
       estado: "pendiente",
-      comentarios: facturaSales[0].comentarios,
+      comentarios,
       montoPagado: 0,
       saldoPendiente: total,
     })

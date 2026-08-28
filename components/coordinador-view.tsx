@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronUp,
   Package,
+  StickyNote,
 } from "lucide-react"
 import { parseNurturingCSV, parsePlanillaCSV, generateOrdersFromSales, generateRouteSheets } from "@/lib/csv-parser"
 import type { RouteSheet, User as UserType } from "@/lib/types"
@@ -972,11 +973,21 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                 </Alert>
 
                 <div className="space-y-3">
-                  {unassignedSheets.map((sheet) => (
+                  {unassignedSheets.map((sheet) => {
+                    const pedidosConNota = sheet.orders.filter(o => o.comentarios && o.comentarios.trim() !== "")
+                    return (
                     <div key={sheet.id} className="flex flex-col gap-3 p-3 md:p-4 border rounded-lg bg-muted/50">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div className="flex-1">
-                          <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium text-sm md:text-base">Ruta {sheet.ruta}</p>
+                            {pedidosConNota.length > 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                                <StickyNote className="h-3 w-3" />
+                                {pedidosConNota.length} con nota
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs md:text-sm text-muted-foreground">
                             {sheet.totalOrders} pedidos · {formatCOP(sheet.totalAmount)}
                           </p>
@@ -988,6 +999,19 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                           Asignar Entregador
                         </Button>
                       </div>
+
+                      {pedidosConNota.length > 0 && (
+                        <div className="bg-amber-50 border-l-4 border-amber-500 rounded p-2.5">
+                          <ul className="space-y-1">
+                            {pedidosConNota.map((o) => (
+                              <li key={o.id} className="text-xs text-gray-700 flex gap-1.5">
+                                <span className="text-amber-600 shrink-0">•</span>
+                                <span><strong>{o.cliente}:</strong> {o.comentarios}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
 
                       <div className="flex gap-2 justify-end border-t pt-3">
                         <Button
@@ -1010,7 +1034,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </Card>
             )}
