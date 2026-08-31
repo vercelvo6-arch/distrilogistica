@@ -257,7 +257,11 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     const productMap = new Map<string, ConsolidatedProduct>()
 
     sheets.forEach((sheet) => {
-      sheet.orders.forEach((order) => {
+      // Los pedidos reasignados desde cuadre de caja llegan con estado ya
+      // resuelto (entregado/fiado/devolucion): la mercancía ya salió con
+      // otro entregador otro día, solo se movieron para efectos de cuentas.
+      // Solo los pedidos 'pendiente' representan mercancía real por alistar.
+      sheet.orders.filter((order) => order.estado === 'pendiente').forEach((order) => {
         order.items.forEach((item) => {
           const existing = productMap.get(item.codigo)
           if (existing) {
