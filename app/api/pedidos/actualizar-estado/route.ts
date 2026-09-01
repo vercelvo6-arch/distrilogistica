@@ -36,11 +36,16 @@ export async function POST(request: NextRequest) {
     const sql = getDB()
 
     // 1. Actualizar estado del pedido
+    // ✅ FIX: COALESCE en observaciones — los llamadores de este endpoint
+    // (caja: "marcar cobro como devolución", "revertir a pendiente") nunca
+    // envían observaciones, así que `observaciones || null` borraba en
+    // silencio el comentario original de la factura cada vez que cambiaba
+    // el estado. Ahora solo se sobreescribe si el llamador manda un valor.
     await sql`
       UPDATE pedidos
-      SET 
+      SET
         estado = ${estado},
-        observaciones = ${observaciones || null},
+        observaciones = COALESCE(${observaciones ?? null}, observaciones),
         entregado_en = NOW(),
         updated_at = NOW()
       WHERE id = ${pedidoId}
