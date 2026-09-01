@@ -1252,6 +1252,28 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
 
                           {expanded && (
                             <div className="p-3 md:p-5">
+                              {(() => {
+                                const pedidosConNota = sheets
+                                  .flatMap((s) => s.orders)
+                                  .filter((o) => o.comentarios && o.comentarios.trim() !== "")
+
+                                if (pedidosConNota.length === 0) return null
+
+                                return (
+                                  <div className="mb-4 bg-amber-50 border-l-4 border-amber-500 rounded p-3">
+                                    <h4 className="font-bold text-sm text-amber-900 mb-2">📝 Notas de Alistamiento</h4>
+                                    <ul className="space-y-1.5">
+                                      {pedidosConNota.map((o) => (
+                                        <li key={o.id} className="text-sm text-gray-700 flex gap-2">
+                                          <span className="text-amber-600">•</span>
+                                          <span><strong>{o.cliente}:</strong> {o.comentarios}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )
+                              })()}
+
                               <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
                                 <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
                                   <Package className="h-4 w-4 md:h-5 md:w-5" />

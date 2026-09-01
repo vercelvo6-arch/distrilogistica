@@ -3190,6 +3190,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                                   </Badge>
                                                 )}
                                               </div>
+                                              {order.comentarios && order.comentarios.trim() !== "" && (
+                                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 mt-1 flex items-start gap-1">
+                                                  <span className="shrink-0">📝</span>
+                                                  <span>{order.comentarios}</span>
+                                                </p>
+                                              )}
                                               {/* Dropdown para reasignar pedido */}
                                               {!route.cuadradoEnCaja && (
                                                 <div className="flex items-center gap-2 mt-1">
