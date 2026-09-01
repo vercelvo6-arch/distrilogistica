@@ -104,10 +104,19 @@ export async function POST(request: NextRequest) {
     const nuevaSecuencia = Number(ultimaSecuencia[0].max_secuencia) + 1
     const nuevoEstado = pedido.estado === 'repaso' ? 'pendiente' : pedido.estado
 
+    // ✅ Solo si el pedido YA estaba resuelto (entregado/fiado/devolucion) la
+    // mercancía salió físicamente con un entregador otro día. Si seguía
+    // 'pendiente' (o era 'repaso', que vuelve a 'pendiente' arriba), nunca
+    // se entregó nada — es un traslado administrativo antes de despachar, y
+    // el alistador SÍ debe alistarlo de verdad. Marcarlo "completo" con la
+    // nota de "ya cargado" en ese caso era el bug: el producto no viajaba,
+    // pero quedaba marcado como si ya se hubiera alistado sin haberlo hecho.
+    const mercanciaYaEntregada = ['entregado', 'fiado', 'devolucion'].includes(pedido.estado)
+
     // 6️⃣ Actualizar el pedido
     await sql`
       UPDATE pedidos
-      SET 
+      SET
         planilla_id = ${nuevaPlanillaId},
         secuencia = ${nuevaSecuencia},
         estado = ${nuevoEstado},
@@ -117,55 +126,62 @@ export async function POST(request: NextRequest) {
 
     console.log('[API Reasignar Pedido] ✓ Pedido actualizado')
 
-    // ✅ Marcar la mercancía como ya alistada — este pedido se reasigna desde
-    // el cuadre de caja, es decir, la mercancía ya salió cargada físicamente
-    // hoy con el entregador. Si no se marca así, la lista de "Productos
-    // Consolidados" del alistador vuelve a pedirla como pendiente en la
-    // planilla destino y el alistador no la encuentra en bodega (no existe
-    // ahí — ya está con el entregador).
-    const productosMarcados = await sql`
-      UPDATE pedido_productos
-      SET
-        estado_alistamiento = 'completo',
-        cantidad_disponible = cantidad,
-        cantidad_faltante = 0,
-        observaciones_faltante = COALESCE(observaciones_faltante || ' | ', '') ||
-          'Ya cargado — reasignado desde ' || ${pedido.ruta_actual} || ' en cuadre de caja',
-        updated_at = NOW()
-      WHERE pedido_id = ${pedidoId}
-      RETURNING id
-    `
+    let productosMarcados: any = []
+    let faltantesActualizados: any = []
 
-    console.log(`[API Reasignar Pedido] ✓ Productos marcados como ya alistados: ${productosMarcados.length}`)
+    if (mercanciaYaEntregada) {
+      // ✅ Marcar la mercancía como ya alistada — este pedido se reasigna desde
+      // el cuadre de caja, es decir, la mercancía ya salió cargada físicamente
+      // hoy con el entregador. Si no se marca así, la lista de "Productos
+      // Consolidados" del alistador vuelve a pedirla como pendiente en la
+      // planilla destino y el alistador no la encuentra en bodega (no existe
+      // ahí — ya está con el entregador).
+      productosMarcados = await sql`
+        UPDATE pedido_productos
+        SET
+          estado_alistamiento = 'completo',
+          cantidad_disponible = cantidad,
+          cantidad_faltante = 0,
+          observaciones_faltante = COALESCE(observaciones_faltante || ' | ', '') ||
+            'Ya cargado — reasignado desde ' || ${pedido.ruta_actual} || ' en cuadre de caja',
+          updated_at = NOW()
+        WHERE pedido_id = ${pedidoId}
+        RETURNING id
+      `
 
-    // ✅ Resolver (no re-asignar) los faltantes pendientes de la planilla
-    // ORIGEN para los códigos de este pedido.
-    //
-    // Antes este bloque intentaba mover la fila (UPDATE planilla_id) a la
-    // planilla destino, pero eso choca con faltantes_planilla_codigo_unique
-    // (planilla_id, codigo) cuando la planilla destino ya tiene su propio
-    // faltante pendiente para el mismo código — causaba un 500.
-    //
-    // Además ya no tiene sentido arrastrarlo: arriba marcamos los
-    // pedido_productos de este pedido como 'completo' (mercancía ya
-    // cargada), así que el faltante de origen queda resuelto, no movido.
-    const faltantesActualizados = await sql`
-      UPDATE faltantes
-      SET
-        estado = 'resuelto',
-        tipo_resolucion = 'completo',
-        cantidad_resuelta = cantidad_faltante,
-        cantidad_disponible = cantidad_solicitada,
-        resuelto_por = ${session.user.id},
-        fecha_resolucion = NOW(),
-        observaciones_resolucion = 'Pedido reasignado a ' || ${planilla.tipo_ruta} || ' en cuadre de caja — mercancía ya cargada'
-      WHERE planilla_id = ${pedido.planilla_actual}
-        AND codigo IN (
-          SELECT codigo FROM pedido_productos WHERE pedido_id = ${pedidoId}
-        )
-        AND estado = 'pendiente'
-      RETURNING id
-    `
+      console.log(`[API Reasignar Pedido] ✓ Productos marcados como ya alistados: ${productosMarcados.length}`)
+
+      // ✅ Resolver (no re-asignar) los faltantes pendientes de la planilla
+      // ORIGEN para los códigos de este pedido.
+      //
+      // Antes este bloque intentaba mover la fila (UPDATE planilla_id) a la
+      // planilla destino, pero eso choca con faltantes_planilla_codigo_unique
+      // (planilla_id, codigo) cuando la planilla destino ya tiene su propio
+      // faltante pendiente para el mismo código — causaba un 500.
+      //
+      // Además ya no tiene sentido arrastrarlo: arriba marcamos los
+      // pedido_productos de este pedido como 'completo' (mercancía ya
+      // cargada), así que el faltante de origen queda resuelto, no movido.
+      faltantesActualizados = await sql`
+        UPDATE faltantes
+        SET
+          estado = 'resuelto',
+          tipo_resolucion = 'completo',
+          cantidad_resuelta = cantidad_faltante,
+          cantidad_disponible = cantidad_solicitada,
+          resuelto_por = ${session.user.id},
+          fecha_resolucion = NOW(),
+          observaciones_resolucion = 'Pedido reasignado a ' || ${planilla.tipo_ruta} || ' en cuadre de caja — mercancía ya cargada'
+        WHERE planilla_id = ${pedido.planilla_actual}
+          AND codigo IN (
+            SELECT codigo FROM pedido_productos WHERE pedido_id = ${pedidoId}
+          )
+          AND estado = 'pendiente'
+        RETURNING id
+      `
+    } else {
+      console.log('[API Reasignar Pedido] Pedido seguía pendiente — se deja para alistamiento real, sin marcar como ya cargado')
+    }
 
     console.log(`[API Reasignar Pedido] ✓ Faltantes de origen resueltos: ${faltantesActualizados.length}`)
 
