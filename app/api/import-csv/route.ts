@@ -116,7 +116,8 @@ export async function POST(request: NextRequest) {
                 categoria,
                 cantidad,
                 precio_unitario,
-                total
+                total,
+                comentario
               ) VALUES (
                 ${pedidoId},
                 ${item.codigo},
@@ -124,7 +125,8 @@ export async function POST(request: NextRequest) {
                 ${item.categoria || null},
                 ${item.cantidad},
                 ${item.valorUnidad},
-                ${item.subtotal}
+                ${item.subtotal},
+                ${item.comentario || null}
               )
             `
           }

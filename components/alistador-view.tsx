@@ -32,6 +32,7 @@ interface ConsolidatedProduct {
   unidadIncompleta: boolean
   observacionesFaltante: string | null
   estadoAlistamiento: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado'
+  comentarios: { cliente: string; texto: string }[]
 }
 
 export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
@@ -179,6 +180,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           unidadIncompleta: prod.unidad_incompleta || false,
           observacionesFaltante: prod.observaciones_faltante,
           estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
+          comentario: prod.comentario,
         })),
       })),
       cuentasPorCobrar: [],
@@ -220,6 +222,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           unidadIncompleta: false,
           observacionesFaltante: null,
           estadoAlistamiento: 'pendiente',
+          comentario: prod.comentario,
         })),
       })),
       cuentasPorCobrar: [],
@@ -263,6 +266,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       // Solo los pedidos 'pendiente' representan mercancía real por alistar.
       sheet.orders.filter((order) => order.estado === 'pendiente').forEach((order) => {
         order.items.forEach((item) => {
+          const comentarioItem = (item.comentario || "").trim()
           const existing = productMap.get(item.codigo)
           if (existing) {
             existing.cantidadTotal += item.cantidad
@@ -274,6 +278,9 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
             }
             if (item.estadoAlistamiento && item.estadoAlistamiento !== 'pendiente') {
               existing.estadoAlistamiento = item.estadoAlistamiento
+            }
+            if (comentarioItem) {
+              existing.comentarios.push({ cliente: order.cliente, texto: comentarioItem })
             }
           } else {
             productMap.set(item.codigo, {
@@ -287,6 +294,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
               unidadIncompleta: item.unidadIncompleta || false,
               observacionesFaltante: item.observacionesFaltante,
               estadoAlistamiento: item.estadoAlistamiento || 'pendiente',
+              comentarios: comentarioItem ? [{ cliente: order.cliente, texto: comentarioItem }] : [],
             })
           }
         })
@@ -864,6 +872,15 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                                         <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">{product.codigo}</td>
                                         <td className="py-2 md:py-3 px-2 md:px-4">
                                           {product.descripcion}
+                                          {product.comentarios.length > 0 && (
+                                            <div className="mt-1 space-y-0.5">
+                                              {product.comentarios.map((c, idx) => (
+                                                <p key={idx} className="text-xs text-amber-700">
+                                                  💬 <strong>{c.cliente}:</strong> {c.texto}
+                                                </p>
+                                              ))}
+                                            </div>
+                                          )}
                                           {product.observacionesFaltante && (
                                             <p className="text-xs text-orange-600 mt-1">📝 {product.observacionesFaltante}</p>
                                           )}

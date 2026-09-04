@@ -137,7 +137,8 @@ export async function POST(request: NextRequest) {
                     cantidad_disponible,
                     cantidad_faltante,
                     unidad_incompleta,
-                    observaciones_faltante
+                    observaciones_faltante,
+                    comentario
                   ) VALUES (
                     ${pedidoId},
                     ${item.codigo || ""},
@@ -151,7 +152,8 @@ export async function POST(request: NextRequest) {
                     null,
                     0,
                     false,
-                    null
+                    null,
+                    ${item.comentario || null}
                   )
                 `;
               }
@@ -255,7 +257,8 @@ export async function GET() {
         pp.cantidad_disponible,
         pp.cantidad_faltante,
         pp.unidad_incompleta,
-        pp.observaciones_faltante
+        pp.observaciones_faltante,
+        pp.comentario
       FROM planillas p
       LEFT JOIN pedidos pe ON pe.planilla_id = p.id
       LEFT JOIN pedido_productos pp ON pp.pedido_id = pe.id
@@ -341,7 +344,8 @@ export async function GET() {
             cantidad_disponible: row.cantidad_disponible,
             cantidad_faltante: row.cantidad_faltante,
             unidad_incompleta: row.unidad_incompleta,
-            observaciones_faltante: row.observaciones_faltante
+            observaciones_faltante: row.observaciones_faltante,
+            comentario: row.comentario
           });
         }
       }

@@ -9,6 +9,7 @@ export interface OrderItem {
   valorUnidad: number
   subtotal: number
   devuelto?: boolean
+  comentario?: string | null
   // Campos para faltantes
   cantidadDisponible?: number | null
   cantidadFaltante?: number
@@ -64,6 +65,7 @@ export interface SalesRecord {
   nombreProducto: string
   cantidadComprada: number
   totalesUnidad: number
+  totalFactura?: number
   ruta: string
   vendidoPor: string
   vendidoA: string
