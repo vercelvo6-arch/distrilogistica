@@ -41,8 +41,8 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
     // Columna 6: Totales del ítem (valor bruto por producto)
     const precio = parsearMonto(values[6] || "0")
 
-    // ✅ Columna 15: Totales de la FACTURA COMPLETA (ya incluye descuentos del sistema)
-    const totalFactura = parsearMonto(values[15] || "0")
+    // ✅ Columna 14: Totales de la FACTURA COMPLETA (ya incluye descuentos del sistema)
+    const totalFactura = parsearMonto(values[14] || "0")
 
     // Columna 10: Ruta
     const rutaRaw = values[10] || ""
@@ -58,7 +58,9 @@ export function parseNurturingCSV(csvText: string): SalesRecord[] {
       vendidoPor: values[12] || "",
       vendidoA: values[13] || "",
       fecha: values[9] || new Date().toISOString().split("T")[0],
-      comentarios: values[16] || "",
+      // ✅ Columna 15: Comentarios (antes leía la columna 16, que no existe en
+      // este formato de 16 columnas — el comentario nunca llegaba)
+      comentarios: values[15] || "",
       idVenta: values[7] || "",
     }
 
@@ -137,6 +139,7 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
     
     const items: OrderItem[] = facturaSales.map((sale) => {
       const product = productMap.get(sale.numeroArticulo)
+      const comentarioItem = (sale.comentarios || "").trim()
 
       return {
         codigo: sale.numeroArticulo,
@@ -147,6 +150,10 @@ export function generateOrdersFromSales(sales: SalesRecord[], productCatalog: Pr
           ? sale.totalesUnidad / sale.cantidadComprada
           : 0,
         subtotal: sale.totalesUnidad,
+        // ✅ El comentario del asesor queda en la línea del producto exacto
+        // de la factura — se conserva ahí para poder mostrarlo debajo de
+        // ese producto (no solo como nota general del pedido).
+        comentario: comentarioItem.length > 0 ? comentarioItem : undefined,
       }
     })
 
