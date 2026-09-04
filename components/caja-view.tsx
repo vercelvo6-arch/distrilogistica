@@ -1478,8 +1478,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       if (n) contador.set(n, (contador.get(n) || 0) + 1)
     })
     cobrosVinculados.forEach(c => {
-      const n = (c.numeroReferencia || "").trim().toLowerCase()
-      if (n) contador.set(n, (contador.get(n) || 0) + 1)
+      const n1 = (c.numeroReferencia || "").trim().toLowerCase()
+      if (n1) contador.set(n1, (contador.get(n1) || 0) + 1)
+      // Referencia del cobro Nequi en el modal individual "Cuadre de Caja" —
+      // mismo campo compartido de cobrosVinculados, distinto nombre porque lo
+      // llena un flujo distinto (individual vs agrupado).
+      const n2 = (c.referencia || "").trim().toLowerCase()
+      if (n2) contador.set(n2, (contador.get(n2) || 0) + 1)
     })
     return new Set(Array.from(contador.entries()).filter(([, count]) => count > 1).map(([n]) => n))
   }, [consignaciones, cobrosVinculados])
@@ -1491,6 +1496,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const numeros = Array.from(new Set([
       ...consignaciones.map(c => c.numero.trim()),
       ...cobrosVinculados.map(c => (c.numeroReferencia || "").trim()),
+      ...cobrosVinculados.map(c => (c.referencia || "").trim()),
     ].filter(n => n.length > 4)))
     if (numeros.length === 0) {
       setDuplicadosBD(new Set())
@@ -3536,9 +3542,20 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         </div>
                         <div>
                           <Label className="text-xs">Referencia {Number(cobro.montoNequi) > 0 && <span className="text-red-500">*</span>}</Label>
-                          <Input placeholder="Ref. Nequi" className="h-7 text-sm"
+                          <Input placeholder="Ref. Nequi"
+                            className={`h-7 text-sm ${
+                              referenciasRepetidasEnForm.has((cobro.referencia || "").trim().toLowerCase()) ||
+                              duplicadosBD.has((cobro.referencia || "").trim().toLowerCase())
+                                ? "border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500 ring-1 ring-red-500" : ""
+                            }`}
                             value={cobro.referencia}
                             onChange={(e) => handleActualizarResultadoCobro(cobro.id, "referencia", e.target.value)} />
+                          {referenciasRepetidasEnForm.has((cobro.referencia || "").trim().toLowerCase()) && (
+                            <p className="text-xs text-red-600 mt-0.5">⚠ Referencia duplicada en este cuadre (consignación o cobro)</p>
+                          )}
+                          {duplicadosBD.has((cobro.referencia || "").trim().toLowerCase()) && (
+                            <p className="text-xs text-red-600 mt-0.5">⚠ Referencia ya registrada</p>
+                          )}
                         </div>
                       </div>
                       {(Number(cobro.montoEfectivo) > 0 || Number(cobro.montoNequi) > 0) && (
@@ -3747,7 +3764,26 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           </div>
 
           <DialogFooter>
-            <Button onClick={handleSubmit} disabled={submitting}>
+            {(duplicadosBD.size > 0 || referenciasRepetidasEnForm.size > 0) && (
+              <div className="w-full bg-red-100 border border-red-400 rounded-lg p-3 mb-2">
+                <p className="text-red-700 font-bold text-sm text-center">
+                  🚫 HAY REFERENCIAS DUPLICADAS — Corrija antes de confirmar el cuadre
+                </p>
+                {Array.from(referenciasRepetidasEnForm).map(num => (
+                  <p key={num} className="text-red-600 text-xs text-center mt-1">
+                    Referencia <strong>{num}</strong> está repetida entre consignaciones y/o cobros de este cuadre
+                  </p>
+                ))}
+                {Array.from(duplicadosBD).map(num => (
+                  <p key={num} className="text-red-600 text-xs text-center mt-1">
+                    Referencia <strong>{num}</strong> ya fue registrada en un cuadre anterior
+                  </p>
+                ))}
+              </div>
+            )}
+            <Button onClick={handleSubmit} disabled={submitting ||
+              duplicadosBD.size > 0 ||
+              referenciasRepetidasEnForm.size > 0}>
               {submitting ? "Guardando..." : "Confirmar Cuadre"}
             </Button>
           </DialogFooter>
