@@ -103,6 +103,11 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   const [selectedFiadoParaEliminar, setSelectedFiadoParaEliminar] = useState<Fiado | null>(null)
   const [eliminando, setEliminando] = useState(false)
 
+  // Estados para eliminar un abono puntual (error humano al registrar cobro)
+  const [showEliminarAbonoModal, setShowEliminarAbonoModal] = useState(false)
+  const [selectedAbonoParaEliminar, setSelectedAbonoParaEliminar] = useState<any>(null)
+  const [eliminandoAbono, setEliminandoAbono] = useState(false)
+
   // Estados para importar
   const [importando, setImportando] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -501,6 +506,62 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     }
   }
 
+  // ✅ NUEVO: Abrir modal de eliminar abono (corrección de error humano)
+  const openEliminarAbonoModal = (abono: any) => {
+    setSelectedAbonoParaEliminar(abono)
+    setShowEliminarAbonoModal(true)
+  }
+
+  // ✅ NUEVO: Eliminar abono y restablecer el saldo del fiado
+  const handleEliminarAbono = async () => {
+    if (!selectedAbonoParaEliminar) return
+
+    try {
+      setEliminandoAbono(true)
+
+      const response = await fetch('/api/fiados/eliminar-abono', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ abonoId: selectedAbonoParaEliminar.id })
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Error al eliminar abono')
+
+      toast({
+        title: "Abono eliminado",
+        description: data.mensaje || "El abono fue eliminado y el saldo se restableció",
+      })
+
+      setShowEliminarAbonoModal(false)
+      setSelectedAbonoParaEliminar(null)
+
+      // Recargar historial abierto y la lista de fiados (cambió el saldo)
+      const fiadoIdActual = fiadoHistorialId
+      setFiadoHistorialId(null)
+      setHistorialData(null)
+      await loadFiados()
+      if (fiadoIdActual) {
+        try {
+          const res = await fetch(`/api/fiados/historial/${fiadoIdActual}`)
+          if (res.ok) {
+            const histData = await res.json()
+            setHistorialData(histData)
+            setFiadoHistorialId(fiadoIdActual)
+          }
+        } catch {}
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al eliminar abono",
+        variant: "destructive",
+      })
+    } finally {
+      setEliminandoAbono(false)
+    }
+  }
+
   // ── Formatea timestamp o date de Neon a fecha legible Colombia ──
   const formatFechaColombia = (raw?: string | null): string => {
     if (!raw) return "—"
@@ -809,7 +870,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                                 const totalAbono = (Number(abono.monto_abono) || 0) + (Number(abono.monto_nequi) || 0)
                                 const medio = abono.metodo_pago === "nequi" ? "Nequi" : abono.metodo_pago === "mixto" ? "Mixto" : "Efectivo"
                                 return (
-                                  <div key={abono.id} className="bg-white rounded border border-gray-200 p-2 text-xs flex flex-wrap gap-x-4 gap-y-1">
+                                  <div key={abono.id} className="bg-white rounded border border-gray-200 p-2 text-xs flex flex-wrap items-center gap-x-4 gap-y-1">
                                     <span className="font-semibold text-gray-700">#{idx + 1} — {formatFechaColombia(abono.fecha_abono_iso || abono.fecha_abono)}</span>
                                     <span><span className="text-gray-400">Llevó: </span>{abono.entregador_planilla || "—"}{abono.ruta_cobro ? <span className="text-gray-400"> (Ruta {abono.ruta_cobro})</span> : null}</span>
                                     <span><span className="text-gray-400">Cobró: </span>{abono.entregador_cobro || "—"}</span>
@@ -817,6 +878,17 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                                     {Number(abono.monto_nequi) > 0 && <span><span className="text-gray-400">Nequi: </span><span className="text-purple-600 font-medium">{formatCOP(Number(abono.monto_nequi))}</span></span>}
                                     {abono.referencia_pago && <span><span className="text-gray-400">Ref: </span><span className="font-mono">{abono.referencia_pago}</span></span>}
                                     <span className={medio === "Nequi" ? "text-purple-600 font-medium" : medio === "Mixto" ? "text-blue-600 font-medium" : "text-green-700 font-medium"}>{formatCOP(totalAbono)} — {medio}</span>
+                                    {userRole === "administrador" && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-1.5 ml-auto text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        onClick={() => openEliminarAbonoModal(abono)}
+                                        title="Eliminar este abono (error humano)"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    )}
                                   </div>
                                 )
                               })}
@@ -1084,6 +1156,51 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
             </Button>
             <Button variant="destructive" onClick={handleEliminarFiado} disabled={eliminando}>
               {eliminando ? "Eliminando..." : "Eliminar Fiado"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ✅ NUEVO: MODAL PARA ELIMINAR UN ABONO PUNTUAL (error humano) */}
+      <Dialog open={showEliminarAbonoModal} onOpenChange={setShowEliminarAbonoModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar Abono</DialogTitle>
+            <DialogDescription>
+              Esta acción elimina el abono y restablece el saldo pendiente del fiado. Úsala cuando el abono se registró por error en el fiado equivocado.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAbonoParaEliminar && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-red-50 border border-red-200 rounded space-y-1">
+                <p className="text-sm text-red-700">
+                  Fecha: {formatFechaColombia(selectedAbonoParaEliminar.fecha_abono_iso || selectedAbonoParaEliminar.fecha_abono)}
+                </p>
+                <p className="font-medium text-red-800">
+                  Monto: {formatCOP((Number(selectedAbonoParaEliminar.monto_abono) || 0) + (Number(selectedAbonoParaEliminar.monto_nequi) || 0))}
+                </p>
+                {selectedAbonoParaEliminar.referencia_pago && (
+                  <p className="text-sm text-red-700">Referencia: {selectedAbonoParaEliminar.referencia_pago}</p>
+                )}
+              </div>
+              <p className="text-sm text-gray-600">
+                El saldo pendiente del cliente aumentará en el mismo monto de este abono. Esta acción no se puede deshacer.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEliminarAbonoModal(false)
+                setSelectedAbonoParaEliminar(null)
+              }}
+              disabled={eliminandoAbono}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleEliminarAbono} disabled={eliminandoAbono}>
+              {eliminandoAbono ? "Eliminando..." : "Eliminar Abono"}
             </Button>
           </DialogFooter>
         </DialogContent>
