@@ -93,6 +93,67 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [fechaAnticipadaCaja, setFechaAnticipadaCaja] = useState(() => new Date().toISOString().split("T")[0])
   const [submittingAnticipadaCaja, setSubmittingAnticipadaCaja] = useState(false)
 
+  // Corrección en línea de un cobro que el entregador ya registró en ruta (medio
+  // de pago mal marcado, referencia de un pago que en realidad era efectivo, etc.)
+  // — caja lo arregla aquí mismo, sin eliminar el registro ni depender de un
+  // administrador, mientras sigue pendiente de cuadrar.
+  const [corrigiendoCobroId, setCorrigiendoCobroId] = useState<string | null>(null)
+  const [medioCorreccion, setMedioCorreccion] = useState<"efectivo" | "nequi">("efectivo")
+  const [montoCorreccion, setMontoCorreccion] = useState("")
+  const [referenciaCorreccion, setReferenciaCorreccion] = useState("")
+  const [guardandoCorreccion, setGuardandoCorreccion] = useState(false)
+
+  const handleAbrirCorreccion = (cobro: any) => {
+    setCorrigiendoCobroId(cobro.id)
+    setMedioCorreccion(Number(cobro.montoNequi) > 0 ? "nequi" : "efectivo")
+    setMontoCorreccion(String(Number(cobro.montoEfectivo) + Number(cobro.montoNequi)))
+    setReferenciaCorreccion(cobro.referencia || "")
+  }
+
+  const handleCancelarCorreccion = () => setCorrigiendoCobroId(null)
+
+  const handleGuardarCorreccion = async (cobro: any) => {
+    const monto = Number(montoCorreccion) || 0
+    if (monto <= 0) {
+      toast({ title: "Error", description: "El monto debe ser mayor a 0", variant: "destructive" })
+      return
+    }
+    if (medioCorreccion === "nequi" && !referenciaCorreccion.trim()) {
+      toast({ title: "Error", description: "Todo pago electrónico necesita número de referencia", variant: "destructive" })
+      return
+    }
+    try {
+      setGuardandoCorreccion(true)
+      const res = await fetch(`/api/fiados/abonos-entregador/${cobro.abonoId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          montoEfectivo: medioCorreccion === "efectivo" ? monto : 0,
+          montoNequi: medioCorreccion === "nequi" ? monto : 0,
+          referenciaPago: medioCorreccion === "nequi" ? referenciaCorreccion.trim() : "",
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error al corregir el cobro")
+
+      const actualizar = (c: any) => c.id !== cobro.id ? c : {
+        ...c,
+        montoEfectivo: String(medioCorreccion === "efectivo" ? monto : 0),
+        montoNequi: String(medioCorreccion === "nequi" ? monto : 0),
+        monto: String(monto),
+        referencia: medioCorreccion === "nequi" ? referenciaCorreccion.trim() : "",
+        medioPago: medioCorreccion === "nequi" ? "Nequi" : "Efectivo",
+      }
+      setCobrosVinculados(prev => prev.map(actualizar))
+      toast({ title: "Cobro corregido", description: `${cobro.cliente} — ${formatCOP(monto)} (${medioCorreccion === "nequi" ? "Nequi" : "Efectivo"})` })
+      setCorrigiendoCobroId(null)
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Error al corregir el cobro", variant: "destructive" })
+    } finally {
+      setGuardandoCorreccion(false)
+    }
+  }
+
   // ✅ NUEVO: Estado para novedades por planilla
   const [novedadesPorPlanilla, setNovedadesPorPlanilla] = useState<Record<number, NovedadPedido[]>>({})
 
@@ -2141,8 +2202,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     return
   }
 
-  // ✅ Validar duplicados de consignaciones — si falla el endpoint, no bloquear el cierre
-  const numerosConsignacion = consignaciones.map(c => c.numero.trim()).filter(n => n !== "")
+  // ✅ Validar duplicados de consignaciones — si falla el endpoint, no bloquear el cierre.
+  // Igual que en el chequeo en vivo: las consignaciones ya precargadas (origenConsignacionId)
+  // son el propio registro pendiente del entregador -- se comparan a sí mismas si se incluyen
+  // aquí, dando el mismo falso "duplicado" que ya se corrigió arriba.
+  const numerosConsignacion = consignaciones.filter(c => !c.origenConsignacionId).map(c => c.numero.trim()).filter(n => n !== "")
   if (numerosConsignacion.length > 0) {
     try {
       const resValidacion = await fetch("/api/cuadres-caja/validar-consignaciones", {
@@ -4100,7 +4164,42 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         </Button>
                       </div>
 
-                      {cobro.yaRegistrado || cobro.esPagoAnticipado ? (
+                      {cobro.yaRegistrado && corrigiendoCobroId === cobro.id ? (
+                        <div className="bg-amber-50 border border-amber-200 rounded p-2 space-y-2">
+                          <div className="flex gap-2">
+                            <Button size="sm" variant={medioCorreccion === "efectivo" ? "default" : "outline"}
+                              className="h-7 text-xs flex-1" onClick={() => setMedioCorreccion("efectivo")}>
+                              Efectivo
+                            </Button>
+                            <Button size="sm" variant={medioCorreccion === "nequi" ? "default" : "outline"}
+                              className="h-7 text-xs flex-1" onClick={() => setMedioCorreccion("nequi")}>
+                              Nequi / electrónico
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-xs">Monto</Label>
+                              <Input type="number" min={0} className="h-7 text-sm" value={montoCorreccion}
+                                onChange={(e) => setMontoCorreccion(e.target.value)} />
+                            </div>
+                            {medioCorreccion === "nequi" && (
+                              <div>
+                                <Label className="text-xs">Referencia</Label>
+                                <Input className="h-7 text-sm" value={referenciaCorreccion}
+                                  onChange={(e) => setReferenciaCorreccion(e.target.value)} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleCancelarCorreccion} disabled={guardandoCorreccion}>
+                              Cancelar
+                            </Button>
+                            <Button size="sm" className="h-7 text-xs" onClick={() => handleGuardarCorreccion(cobro)} disabled={guardandoCorreccion}>
+                              {guardandoCorreccion ? "Guardando..." : "Guardar corrección"}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : cobro.yaRegistrado || cobro.esPagoAnticipado ? (
                         <div className="text-xs text-gray-600 flex items-center gap-4 flex-wrap">
                           <span>Medio: <strong>{cobro.medioPago}</strong></span>
                           <span>Monto: <strong>{formatCOP(getCobroMontoTotal(cobro))}</strong></span>
@@ -4114,6 +4213,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             <span className="text-gray-400">
                               Registrado: {new Date(cobro.fechaAbono).toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" })}
                             </span>
+                          )}
+                          {cobro.yaRegistrado && (
+                            <Button size="sm" variant="link" className="h-auto p-0 text-xs text-blue-600"
+                              onClick={() => handleAbrirCorreccion(cobro)}>
+                              Corregir
+                            </Button>
                           )}
                         </div>
                       ) : (
