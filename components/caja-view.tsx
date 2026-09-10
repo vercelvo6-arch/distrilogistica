@@ -106,9 +106,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     erroresFacturacion: "",
   })
   const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string; cliente: string; numero_factura: string; origenConsignacionId?: number}>>([])
-  // Referencias (consignaciones + cobros CxC) que ya existen en la BD — un solo set,
-  // porque el endpoint de validación ya las busca juntas en una sola consulta.
-  const [duplicadosBD, setDuplicadosBD] = useState<Set<string>>(new Set())
+  // Referencias (consignaciones + cobros CxC) que ya existen en la BD — un solo mapa,
+  // porque el endpoint de validación ya las busca juntas en una sola consulta. El valor
+  // trae cliente/fecha/entregador para mostrar dónde se usó cada referencia repetida.
+  const [duplicadosBD, setDuplicadosBD] = useState<Map<string, { cliente: string | null; fecha: string | null; entregador: string | null; origen: string }>>(new Map())
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
   const [selectedRoutes, setSelectedRoutes] = useState<number[]>([])
@@ -1499,7 +1500,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       ...cobrosVinculados.map(c => (c.referencia || "").trim()),
     ].filter(n => n.length > 4)))
     if (numeros.length === 0) {
-      setDuplicadosBD(new Set())
+      setDuplicadosBD(new Map())
       return
     }
     const timer = setTimeout(async () => {
@@ -1511,7 +1512,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         })
         if (res.ok) {
           const data = await res.json()
-          setDuplicadosBD(new Set((data.duplicados || []).map((d: string) => d.toLowerCase())))
+          setDuplicadosBD(new Map((data.duplicados || []).map((d: any) => [
+            String(d.numero).toLowerCase(),
+            { cliente: d.cliente || null, fecha: d.fecha || null, entregador: d.entregador || null, origen: d.origen },
+          ])))
         }
       } catch (e) {
         // Si falla, no bloquear
@@ -1519,6 +1523,20 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }, 600) // 600ms de debounce — no consulta en cada tecla
     return () => clearTimeout(timer)
   }, [consignaciones, cobrosVinculados])
+
+  // Arma el detalle "cuándo y con qué cliente" de una referencia ya usada, para
+  // mostrarlo junto a la alerta de duplicado en vez de solo marcar el campo en rojo.
+  const describirDuplicado = (info?: { cliente: string | null; fecha: string | null; entregador: string | null }) => {
+    if (!info) return null
+    const partes: string[] = []
+    if (info.fecha) {
+      const f = new Date(`${String(info.fecha).slice(0, 10)}T12:00:00`)
+      partes.push(!isNaN(f.getTime()) ? f.toLocaleDateString("es-CO") : String(info.fecha).slice(0, 10))
+    }
+    if (info.cliente) partes.push(`cliente ${info.cliente}`)
+    if (info.entregador) partes.push(`entregador ${info.entregador}`)
+    return partes.length > 0 ? partes.join(" · ") : null
+  }
 
   const handleAbrirNovedadCaja = (order: any, tipo: "fiado" | "devolucion" | "agotado" | "descuento") => {
     setNovedadCajaOrder(order)
@@ -1952,7 +1970,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setAgrupadoData(agrupado)
     setCobrosVinculados(borrador?.cobrosVinculados || [])
     setConsignaciones(borradorConsignaciones)
-    setDuplicadosBD(new Set())
+    setDuplicadosBD(new Map())
     setBusquedaCobro("")
     setFormData(prev => ({
       ...prev,
@@ -3554,7 +3572,13 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             <p className="text-xs text-red-600 mt-0.5">⚠ Referencia duplicada en este cuadre (consignación o cobro)</p>
                           )}
                           {duplicadosBD.has((cobro.referencia || "").trim().toLowerCase()) && (
-                            <p className="text-xs text-red-600 mt-0.5">⚠ Referencia ya registrada</p>
+                            <p className="text-xs text-red-600 mt-0.5">
+                              ⚠ Referencia ya registrada
+                              {(() => {
+                                const detalle = describirDuplicado(duplicadosBD.get((cobro.referencia || "").trim().toLowerCase()))
+                                return detalle ? ` — ${detalle}` : ""
+                              })()}
+                            </p>
                           )}
                         </div>
                       </div>
@@ -3645,7 +3669,13 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         <p className="text-xs text-red-600 mt-1 font-medium">⚠ Duplicada en este cuadre</p>
                       )}
                       {duplicadosBD.has(cons.numero.trim().toLowerCase()) && (
-                        <p className="text-xs text-red-600 mt-1 font-medium">⚠ Ya registrada en cuadre anterior — NO puede usarse</p>
+                        <p className="text-xs text-red-600 mt-1 font-medium">
+                          ⚠ Ya registrada en cuadre anterior — NO puede usarse
+                          {(() => {
+                            const detalle = describirDuplicado(duplicadosBD.get(cons.numero.trim().toLowerCase()))
+                            return detalle ? ` (${detalle})` : ""
+                          })()}
+                        </p>
                       )}
                     </div>
                     <div>
@@ -3774,9 +3804,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                     Referencia <strong>{num}</strong> está repetida entre consignaciones y/o cobros de este cuadre
                   </p>
                 ))}
-                {Array.from(duplicadosBD).map(num => (
+                {Array.from(duplicadosBD.entries()).map(([num, info]) => (
                   <p key={num} className="text-red-600 text-xs text-center mt-1">
                     Referencia <strong>{num}</strong> ya fue registrada en un cuadre anterior
+                    {describirDuplicado(info) ? ` (${describirDuplicado(info)})` : ""}
                   </p>
                 ))}
               </div>
@@ -3993,7 +4024,13 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                               <p className="text-xs text-red-600 mt-0.5">⚠ Referencia duplicada en este cuadre (consignación o cobro)</p>
                             )}
                             {duplicadosBD.has((cobro.numeroReferencia || "").trim().toLowerCase()) && (
-                              <p className="text-xs text-red-600 mt-0.5">⚠ Referencia ya registrada</p>
+                              <p className="text-xs text-red-600 mt-0.5">
+                                ⚠ Referencia ya registrada
+                                {(() => {
+                                  const detalle = describirDuplicado(duplicadosBD.get((cobro.numeroReferencia || "").trim().toLowerCase()))
+                                  return detalle ? ` — ${detalle}` : ""
+                                })()}
+                              </p>
                             )}
                           </div>
                         </div>
@@ -4066,7 +4103,13 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           <p className="text-xs text-red-600 mt-0.5">Duplicada en este cuadre (consignación o cobro)</p>
                         )}
                         {duplicadosBD.has(cons.numero.trim().toLowerCase()) && (
-                          <p className="text-xs text-red-600 mt-0.5">Ya registrada en la BD</p>
+                          <p className="text-xs text-red-600 mt-0.5">
+                            Ya registrada en la BD
+                            {(() => {
+                              const detalle = describirDuplicado(duplicadosBD.get(cons.numero.trim().toLowerCase()))
+                              return detalle ? ` — ${detalle}` : ""
+                            })()}
+                          </p>
                         )}
                       </div>
                       <div>
@@ -4214,9 +4257,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                     Referencia <strong>{num}</strong> está repetida entre consignaciones y/o cobros de este cuadre
                   </p>
                 ))}
-                {Array.from(duplicadosBD).map(num => (
+                {Array.from(duplicadosBD.entries()).map(([num, info]) => (
                   <p key={num} className="text-red-600 text-xs text-center mt-1">
                     Referencia <strong>{num}</strong> ya fue registrada en un cuadre anterior
+                    {describirDuplicado(info) ? ` (${describirDuplicado(info)})` : ""}
                   </p>
                 ))}
               </div>
