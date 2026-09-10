@@ -2016,6 +2016,23 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     if (existe) return
   }
 
+  // ✅ Un pago electrónico (Nequi, Bancolombia, etc.) siempre genera un comprobante
+  // con número de referencia — si el monto es mayor a 0 y no hay referencia, no es
+  // efectivo válido, es un dato incompleto que además deja ese pago fuera de
+  // cualquier control antifraude (no se puede detectar reutilización de una
+  // referencia que nunca se guardó).
+  const cobroElectronicoSinReferencia = cobrosVinculados.find(
+    c => !c.yaRegistrado && Number(c.montoElectronico) > 0 && !(c.numeroReferencia || "").trim()
+  )
+  if (cobroElectronicoSinReferencia) {
+    toast({
+      title: "Falta la referencia del pago",
+      description: `El cobro de ${cobroElectronicoSinReferencia.cliente} tiene un monto electrónico sin número de referencia. Todo pago Nequi/transferencia debe tener su comprobante.`,
+      variant: "destructive",
+    })
+    return
+  }
+
   // ✅ Validar duplicados de consignaciones — si falla el endpoint, no bloquear el cierre
   const numerosConsignacion = consignaciones.map(c => c.numero.trim()).filter(n => n !== "")
   if (numerosConsignacion.length > 0) {
@@ -2377,8 +2394,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
       if (existe) return
     }
 
-    // Validar cobros vinculados
+    // Validar cobros vinculados — solo los nuevos de este cuadre (los yaRegistrado
+    // vienen de lo que el entregador ya cobró en ruta; si ya quedaron sin referencia
+    // no se puede corregir retroactivamente desde aquí, y bloquearía conciliar
+    // dinero real que ya está cobrado).
     for (const cobro of cobrosVinculados) {
+      if (cobro.yaRegistrado) continue
       const nequi = Number(cobro.montoNequi) || 0
       if (nequi > 0 && !cobro.referencia?.trim()) {
         toast({ title: "Error", description: `Ingresa la referencia Nequi para el cobro de ${cobro.cliente}`, variant: "destructive" })
@@ -4036,7 +4057,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                               onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoElectronico", e.target.value)} />
                           </div>
                           <div>
-                            <Label className="text-xs">N° Referencia</Label>
+                            <Label className="text-xs">N° Referencia {Number(cobro.montoElectronico) > 0 && <span className="text-red-500">*</span>}</Label>
                             <Input
                               className={`h-8 text-sm ${
                                 referenciasRepetidasEnForm.has((cobro.numeroReferencia || "").trim().toLowerCase()) ||
