@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    const { cobroId, montoAbono, metodoPago } = await request.json();
+    const { cobroId, montoAbono, metodoPago, referenciaPago } = await request.json();
     
     if (!cobroId) {
       return NextResponse.json({ error: "ID de cobro requerido" }, { status: 400 });
@@ -20,10 +20,14 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB();
 
-    // 1️⃣ Obtener el pedido de cobro
+    // 1️⃣ Obtener el pedido de cobro (con el entregador de su planilla, para poder
+    // marcar el abono como suyo — sin esto el abono queda sin entregador_cobro y
+    // nunca vuelve a aparecer en ningún cuadre de caja, dinero que se pierde del
+    // flujo de conciliación).
     const [pedidoCobro] = await sql`
-      SELECT p.id, p.cliente, p.total, p.es_cobro, p.planilla_id
+      SELECT p.id, p.cliente, p.total, p.es_cobro, p.planilla_id, pl.entregador
       FROM pedidos p
+      LEFT JOIN planillas pl ON pl.id = p.planilla_id
       WHERE p.id = ${cobroId}
       LIMIT 1
     `;
@@ -114,20 +118,26 @@ export async function POST(request: NextRequest) {
 
     console.log('[COBRO COMPLETADO] ✅ Fiado actualizado, estado:', nuevoEstado);
 
-    // 5️⃣ Registrar en historial de abonos
+    // 5️⃣ Registrar en historial de abonos — entregador_cobro y origen_tabla son
+    // obligatorios para que este abono pueda aparecer y conciliarse en un cuadre
+    // de caja futuro (ver /api/fiados/abonos-entregador).
     await sql`
       INSERT INTO abonos_fiados (
         pedido_id, monto_abono, fecha_abono, metodo_pago,
-        observaciones, registrado_por, created_at
+        referencia_pago, observaciones, registrado_por,
+        entregador_cobro, origen_tabla, created_at
       ) VALUES (
-        ${fiadoOriginal.id},
+        ${String(fiadoOriginal.id)},
         ${montoCobrado},
         NOW(),
         ${metodoPago || 'efectivo'},
-        ${pagoCompleto 
-          ? 'Pago completo registrado desde cobro en planilla' 
+        ${referenciaPago?.trim() || null},
+        ${pagoCompleto
+          ? 'Pago completo registrado desde cobro en planilla'
           : 'Abono parcial registrado desde cobro en planilla'},
         ${session.user?.id || 'Sistema'},
+        ${pedidoCobro.entregador || null},
+        'fiados',
         NOW()
       )
     `;

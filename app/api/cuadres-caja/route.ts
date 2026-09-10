@@ -249,7 +249,13 @@ export async function POST(request: Request) {
         if (cobro.yaRegistrado) continue
 
         const totalAbono = efectivo + nequi
-        const fechaAbono = cobro.fecha ? new Date(`${cobro.fecha}T12:00:00`) : new Date()
+        // El campo "Fecha" del cobro lo escribe caja a mano — sin este tope, un
+        // typo de año (ej. 2028 en vez de 2026) deja el abono con una fecha
+        // absurda que además lo saca del rango de búsqueda por CUTOFF/fecha.
+        const fechaAbonoDigitada = cobro.fecha ? new Date(`${cobro.fecha}T12:00:00`) : null
+        const fechaAbono = fechaAbonoDigitada && !isNaN(fechaAbonoDigitada.getTime()) && fechaAbonoDigitada.getTime() <= Date.now()
+          ? fechaAbonoDigitada
+          : new Date()
 
         // ── Pago anticipado ya identificado — se confirma aquí dentro del cuadre ──
         if (cobro.esPagoAnticipado) {
