@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
         elem->>'fecha' as fecha,
         cc.entregador as entregador,
         cc.fecha_cuadre as fecha_cuadre,
-        'consignacion' as origen
+        'consignacion' as origen,
+        true as cerrado
       FROM cuadres_caja cc,
       jsonb_array_elements(
         CASE
@@ -56,7 +57,8 @@ export async function POST(request: NextRequest) {
         COALESCE(cp.cliente, cp.entregador) as cliente,
         cp.fecha as fecha,
         cp.entregador as entregador,
-        'consignacion' as origen
+        'consignacion' as origen,
+        (cp.cuadre_caja_id IS NOT NULL) as cerrado
       FROM consignaciones_pedido cp
       WHERE LOWER(cp.numero) = ANY(
         SELECT LOWER(n) FROM unnest(${numeros}::text[]) n
@@ -72,7 +74,8 @@ export async function POST(request: NextRequest) {
         COALESCE(f.cliente, p.cliente) as cliente,
         af.fecha_abono as fecha,
         af.entregador_cobro as entregador,
-        'cobro' as origen
+        'cobro' as origen,
+        (af.planilla_cobro_id IS NOT NULL) as cerrado
       FROM abonos_fiados af
       LEFT JOIN fiados f ON af.origen_tabla = 'fiados' AND f.id::text = af.pedido_id
       LEFT JOIN pedidos p ON af.origen_tabla = 'pedidos' AND p.id = af.pedido_id
@@ -95,6 +98,11 @@ export async function POST(request: NextRequest) {
         fecha: r.fecha || r.fecha_cuadre || null,
         entregador: r.entregador || null,
         origen: r.origen,
+        // true = ya se usó en un cuadre CERRADO (reutilización real, la señal de fraude).
+        // false = existe pero sigue pendiente de cuadrar (puede ser su propio registro
+        // precargándose a sí mismo, o un choque contra otro pendiente) — nunca "un cuadre
+        // anterior" porque todavía no ha estado en ninguno.
+        cerrado: Boolean(r.cerrado),
       })
     }
 

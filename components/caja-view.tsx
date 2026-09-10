@@ -123,7 +123,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // Referencias (consignaciones + cobros CxC) que ya existen en la BD — un solo mapa,
   // porque el endpoint de validación ya las busca juntas en una sola consulta. El valor
   // trae cliente/fecha/entregador para mostrar dónde se usó cada referencia repetida.
-  const [duplicadosBD, setDuplicadosBD] = useState<Map<string, { cliente: string | null; fecha: string | null; entregador: string | null; origen: string }>>(new Map())
+  const [duplicadosBD, setDuplicadosBD] = useState<Map<string, { cliente: string | null; fecha: string | null; entregador: string | null; origen: string; cerrado: boolean }>>(new Map())
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
   const [selectedRoutes, setSelectedRoutes] = useState<number[]>([])
@@ -1540,7 +1540,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           const data = await res.json()
           setDuplicadosBD(new Map((data.duplicados || []).map((d: any) => [
             String(d.numero).toLowerCase(),
-            { cliente: d.cliente || null, fecha: d.fecha || null, entregador: d.entregador || null, origen: d.origen },
+            { cliente: d.cliente || null, fecha: d.fecha || null, entregador: d.entregador || null, origen: d.origen, cerrado: Boolean(d.cerrado) },
           ])))
         }
       } catch (e) {
@@ -1562,6 +1562,19 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     if (info.cliente) partes.push(`cliente ${info.cliente}`)
     if (info.entregador) partes.push(`entregador ${info.entregador}`)
     return partes.length > 0 ? partes.join(" · ") : null
+  }
+
+  // Frase completa del duplicado, honesta sobre si ya se usó en un cuadre CERRADO
+  // (reutilización real, la señal de fraude) o si solo existe pendiente de cuadrar
+  // (su propio registro, o un choque contra otro pendiente — nunca "un cuadre
+  // anterior", porque todavía no ha estado en ninguno).
+  const fraseDuplicado = (info?: { cliente: string | null; fecha: string | null; entregador: string | null; cerrado: boolean }) => {
+    if (!info) return null
+    const detalle = describirDuplicado(info)
+    const base = info.cerrado
+      ? "ya fue usada en un cuadre ya cerrado"
+      : "ya está registrada, pendiente de incluirse en un cuadre (no es un duplicado real, solo falta cuadrarla)"
+    return detalle ? `${base} (${detalle})` : base
   }
 
   const loadAnticipadasCajaPendientes = async (entregador: string) => {
@@ -2138,14 +2151,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         const dataValidacion = await resValidacion.json()
         if (dataValidacion.duplicados && dataValidacion.duplicados.length > 0) {
           const detalle = dataValidacion.duplicados
-            .map((d: any) => {
-              const info = describirDuplicado(d)
-              return info ? `${d.numero} (${info})` : d.numero
-            })
+            .map((d: any) => `${d.numero} — ${fraseDuplicado(d)}`)
             .join(" · ")
           toast({
             title: "Consignación duplicada",
-            description: `Los siguientes números ya fueron registrados: ${detalle}`,
+            description: detalle,
             variant: "destructive",
           })
           setSubmitting(false)
@@ -3709,11 +3719,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           )}
                           {duplicadosBD.has((cobro.referencia || "").trim().toLowerCase()) && (
                             <p className="text-xs text-red-600 mt-0.5">
-                              ⚠ Referencia ya registrada
-                              {(() => {
-                                const detalle = describirDuplicado(duplicadosBD.get((cobro.referencia || "").trim().toLowerCase()))
-                                return detalle ? ` — ${detalle}` : ""
-                              })()}
+                              ⚠ {fraseDuplicado(duplicadosBD.get((cobro.referencia || "").trim().toLowerCase()))}
                             </p>
                           )}
                         </div>
@@ -3806,11 +3812,8 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       )}
                       {duplicadosBD.has(cons.numero.trim().toLowerCase()) && (
                         <p className="text-xs text-red-600 mt-1 font-medium">
-                          ⚠ Ya registrada en cuadre anterior — NO puede usarse
-                          {(() => {
-                            const detalle = describirDuplicado(duplicadosBD.get(cons.numero.trim().toLowerCase()))
-                            return detalle ? ` (${detalle})` : ""
-                          })()}
+                          ⚠ {duplicadosBD.get(cons.numero.trim().toLowerCase())?.cerrado ? "NO puede usarse — " : ""}
+                          {fraseDuplicado(duplicadosBD.get(cons.numero.trim().toLowerCase()))}
                         </p>
                       )}
                     </div>
@@ -3942,8 +3945,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 ))}
                 {Array.from(duplicadosBD.entries()).map(([num, info]) => (
                   <p key={num} className="text-red-600 text-xs text-center mt-1">
-                    Referencia <strong>{num}</strong> ya fue registrada en un cuadre anterior
-                    {describirDuplicado(info) ? ` (${describirDuplicado(info)})` : ""}
+                    Referencia <strong>{num}</strong> {fraseDuplicado(info)}
                   </p>
                 ))}
               </div>
@@ -4171,11 +4173,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             )}
                             {duplicadosBD.has((cobro.numeroReferencia || "").trim().toLowerCase()) && (
                               <p className="text-xs text-red-600 mt-0.5">
-                                ⚠ Referencia ya registrada
-                                {(() => {
-                                  const detalle = describirDuplicado(duplicadosBD.get((cobro.numeroReferencia || "").trim().toLowerCase()))
-                                  return detalle ? ` — ${detalle}` : ""
-                                })()}
+                                ⚠ {fraseDuplicado(duplicadosBD.get((cobro.numeroReferencia || "").trim().toLowerCase()))}
                               </p>
                             )}
                           </div>
@@ -4250,11 +4248,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         )}
                         {duplicadosBD.has(cons.numero.trim().toLowerCase()) && (
                           <p className="text-xs text-red-600 mt-0.5">
-                            Ya registrada en la BD
-                            {(() => {
-                              const detalle = describirDuplicado(duplicadosBD.get(cons.numero.trim().toLowerCase()))
-                              return detalle ? ` — ${detalle}` : ""
-                            })()}
+                            {fraseDuplicado(duplicadosBD.get(cons.numero.trim().toLowerCase()))}
                           </p>
                         )}
                       </div>
@@ -4405,8 +4399,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 ))}
                 {Array.from(duplicadosBD.entries()).map(([num, info]) => (
                   <p key={num} className="text-red-600 text-xs text-center mt-1">
-                    Referencia <strong>{num}</strong> ya fue registrada en un cuadre anterior
-                    {describirDuplicado(info) ? ` (${describirDuplicado(info)})` : ""}
+                    Referencia <strong>{num}</strong> {fraseDuplicado(info)}
                   </p>
                 ))}
               </div>
