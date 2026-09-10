@@ -296,7 +296,14 @@ export async function POST(request: Request) {
               WHERE id = ${fiadoIdPA}
             `
 
-            await sql`
+            // ⚠️ A diferencia de un cobro CxC normal, este abono nace ya "confirmado
+            // dentro de un cuadre" — por eso captura el id (RETURNING) y lo suma a
+            // abonosFrescoIds igual que cualquier otro cobro nuevo. Sin esto quedaba
+            // con planilla_cobro_id NULL para siempre: aparecía como vinculado en
+            // pagos_anticipados pero nunca se marcaba como cuadrado, y reaparecía en
+            // cada cuadre futuro del mismo entregador (bug confirmado en 12 pagos
+            // anticipados de producción, todos con este mismo patrón).
+            const [abonoFrescoPA] = await sql`
               INSERT INTO abonos_fiados (
                 pedido_id, monto_abono, monto_nequi, metodo_pago,
                 referencia_pago, fecha_abono, observaciones,
@@ -313,7 +320,9 @@ export async function POST(request: Request) {
                 'fiados',
                 NOW()
               )
+              RETURNING id
             `
+            abonosFrescoIds.push(abonoFrescoPA.id)
           }
 
           await sql`
