@@ -1493,11 +1493,20 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // ✅ Validar duplicados en BD con un solo debounce/consulta para consignaciones y
   // cobros CxC juntos — el endpoint ya las busca combinadas, así que separarlas en dos
   // efectos solo duplicaba la llamada de red sin aportar nada.
+  //
+  // 🚨 FIX CRÍTICO: los cobros yaRegistrado (los que el entregador ya cobró en ruta,
+  // precargados automáticamente) traen su propia referencia ya guardada en abonos_fiados.
+  // Si se incluyen aquí, el endpoint SIEMPRE los encuentra a sí mismos en la BD y los
+  // marca como "duplicados" — una falsa alarma contra su propio registro, no un segundo
+  // uso real. Esa referencia ya pasó su propio control antifraude al crearse (ver
+  // registrar-abono). Solo tiene sentido re-validar lo que caja está por escribir AHORA:
+  // consignaciones nuevas y cobros CxC nuevos de este cuadre (no yaRegistrado).
   useEffect(() => {
+    const cobrosNuevos = cobrosVinculados.filter(c => !c.yaRegistrado)
     const numeros = Array.from(new Set([
       ...consignaciones.map(c => c.numero.trim()),
-      ...cobrosVinculados.map(c => (c.numeroReferencia || "").trim()),
-      ...cobrosVinculados.map(c => (c.referencia || "").trim()),
+      ...cobrosNuevos.map(c => (c.numeroReferencia || "").trim()),
+      ...cobrosNuevos.map(c => (c.referencia || "").trim()),
     ].filter(n => n.length > 4)))
     if (numeros.length === 0) {
       setDuplicadosBD(new Map())
