@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Truck, LogOut, Filter, Calendar, ChevronDown, ChevronUp } from "lucide-react"
+import { Truck, LogOut, Filter, Calendar, ChevronDown, ChevronUp, Banknote, Trash2, Plus } from "lucide-react"
 import type { RouteSheet, User, Order } from "@/lib/types"
 import { formatCOP } from "@/lib/format-utils"
 import {
@@ -62,6 +62,18 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
   const [numeroTransferencia, setNumeroTransferencia] = useState("")
   const [montoTransferencia, setMontoTransferencia] = useState("")
   const [submittingTransferencia, setSubmittingTransferencia] = useState(false)
+
+  // Consignaciones anticipadas — recaudo de ruta que se consigna a la cuenta de la
+  // empresa en varias transacciones, antes de llegar a la empresa a cuadrar caja
+  // (rutas viajeras con cupo de consignación limitado).
+  const [showAnticipadaModal, setShowAnticipadaModal] = useState(false)
+  const [anticipadasPendientes, setAnticipadasPendientes] = useState<any[]>([])
+  const [loadingAnticipadas, setLoadingAnticipadas] = useState(false)
+  const [bancoAnticipada, setBancoAnticipada] = useState("")
+  const [numeroAnticipada, setNumeroAnticipada] = useState("")
+  const [montoAnticipada, setMontoAnticipada] = useState("")
+  const [fechaAnticipada, setFechaAnticipada] = useState(() => new Date().toISOString().split("T")[0])
+  const [submittingAnticipada, setSubmittingAnticipada] = useState(false)
 
   // Cobros CxC asignados al entregador
   const [cobrosAsignados, setCobrosAsignados] = useState<any[]>([])
@@ -658,6 +670,75 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
     setShowTransferenciaModal(true)
   }
 
+  const loadAnticipadasPendientes = async () => {
+    setLoadingAnticipadas(true)
+    try {
+      const res = await fetch(`/api/planillas/consignaciones-entregador?entregador=${encodeURIComponent(entregador)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setAnticipadasPendientes(data.consignaciones || [])
+      }
+    } catch {
+      // silencioso — no bloquea el modal si falla la carga de la lista
+    } finally {
+      setLoadingAnticipadas(false)
+    }
+  }
+
+  const handleAbrirAnticipadaModal = () => {
+    setBancoAnticipada("")
+    setNumeroAnticipada("")
+    setMontoAnticipada("")
+    setFechaAnticipada(new Date().toISOString().split("T")[0])
+    setShowAnticipadaModal(true)
+    loadAnticipadasPendientes()
+  }
+
+  const handleSubmitAnticipada = async () => {
+    if (!bancoAnticipada.trim() || !numeroAnticipada.trim() || !montoAnticipada || Number(montoAnticipada) <= 0) {
+      toast({ title: "Error", description: "Banco, número y monto son obligatorios", variant: "destructive" })
+      return
+    }
+    try {
+      setSubmittingAnticipada(true)
+      const res = await fetch("/api/pedidos/registrar-consignacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entregador,
+          banco: bancoAnticipada.trim(),
+          numero: numeroAnticipada.trim(),
+          monto: Number(montoAnticipada),
+          fecha: fechaAnticipada,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error al registrar la consignación")
+
+      toast({ title: "Consignación registrada", description: `${bancoAnticipada} ${numeroAnticipada} — ${formatCOP(Number(montoAnticipada))}` })
+      setBancoAnticipada("")
+      setNumeroAnticipada("")
+      setMontoAnticipada("")
+      await loadAnticipadasPendientes()
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Error al registrar la consignación", variant: "destructive" })
+    } finally {
+      setSubmittingAnticipada(false)
+    }
+  }
+
+  const handleEliminarAnticipada = async (id: number) => {
+    if (!confirm("¿Eliminar esta consignación? Solo se puede si ningún cuadre la ha usado todavía.")) return
+    try {
+      const res = await fetch(`/api/pedidos/registrar-consignacion/${id}`, { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error al eliminar")
+      setAnticipadasPendientes(prev => prev.filter(c => c.id !== id))
+    } catch (error) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Error al eliminar", variant: "destructive" })
+    }
+  }
+
   const [marcandoTodoEntregado, setMarcandoTodoEntregado] = useState<string | null>(null)
 
   const handleMarcarTodoEntregado = async (route: any) => {
@@ -972,10 +1053,17 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                   <p className="text-sm text-gray-500">Mis Rutas de Entrega</p>
                 </div>
               </div>
-              <Button variant="outline" onClick={onLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Salir
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={handleAbrirAnticipadaModal}>
+                  <Banknote className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">Consignación Anticipada</span>
+                  <span className="sm:hidden">Consignar</span>
+                </Button>
+                <Button variant="outline" onClick={onLogout}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Salir
+                </Button>
+              </div>
             </div>
           </div>
         </header>
@@ -1459,6 +1547,90 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
             </Button>
             <Button onClick={handleSubmitTransferencia} disabled={submittingTransferencia}>
               {submittingTransferencia ? "Registrando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de consignaciones anticipadas — recaudo de ruta consignado en varias
+          transacciones antes de llegar a cuadrar caja */}
+      <Dialog open={showAnticipadaModal} onOpenChange={setShowAnticipadaModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Consignación Anticipada</DialogTitle>
+            <DialogDescription>
+              Registra cada consignación a medida que la hagas. Caja las va a encontrar ya cargadas cuando abras tu cuadre — solo tendrá que verificarlas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Banco / Medio</Label>
+                <Input value={bancoAnticipada} onChange={(e) => setBancoAnticipada(e.target.value)}
+                  placeholder="Bancolombia, Nequi..." autoFocus />
+              </div>
+              <div>
+                <Label className="text-xs">Fecha</Label>
+                <Input type="date" value={fechaAnticipada} max={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setFechaAnticipada(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Número de serial / referencia</Label>
+              <Input value={numeroAnticipada} onChange={(e) => setNumeroAnticipada(e.target.value)}
+                placeholder="Número del comprobante" />
+            </div>
+            <div>
+              <Label className="text-xs">Monto</Label>
+              <Input type="number" inputMode="numeric" min={0}
+                value={montoAnticipada} onChange={(e) => setMontoAnticipada(e.target.value)}
+                placeholder="0" className="text-lg h-12" />
+            </div>
+            <Button className="w-full" onClick={handleSubmitAnticipada} disabled={submittingAnticipada}>
+              <Plus className="h-4 w-4 mr-2" />
+              {submittingAnticipada ? "Registrando..." : "Agregar consignación"}
+            </Button>
+
+            <div className="border-t pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Pendientes de cuadre</p>
+                {anticipadasPendientes.length > 0 && (
+                  <p className="text-sm font-semibold text-gray-900">
+                    {formatCOP(anticipadasPendientes.reduce((s, c) => s + Number(c.monto), 0))}
+                  </p>
+                )}
+              </div>
+              {loadingAnticipadas ? (
+                <p className="text-xs text-gray-400 text-center py-2">Cargando...</p>
+              ) : anticipadasPendientes.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-2">Sin consignaciones registradas todavía</p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {anticipadasPendientes.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between text-sm bg-gray-50 rounded p-2">
+                      <div>
+                        <span className="font-medium">{c.banco}</span>
+                        <span className="text-gray-500 ml-2 font-mono text-xs">{c.numero}</span>
+                        <p className="text-xs text-gray-400">{c.fecha ? String(c.fecha).split("T")[0] : ""}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{formatCOP(Number(c.monto))}</span>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                          onClick={() => handleEliminarAnticipada(c.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAnticipadaModal(false)}>
+              Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>

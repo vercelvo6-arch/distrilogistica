@@ -6,11 +6,17 @@ import { buscarReferenciasUsadas } from '@/lib/validar-referencia'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/pedidos/registrar-consignacion
-// El entregador registra, al momento de la entrega, que el cliente pagó por
-// transferencia/consignación (banco + número + monto). No toca pedidos.estado
-// (igual que Fiado/Devolución/Agotado/Descuento) — solo queda disponible para
-// que caja la precargue en el modal de cuadre agrupado, igual que ya pasa hoy
-// con los cobros CxC registrados en ruta.
+// Dos usos:
+// 1. El entregador registra, al momento de la entrega, que el cliente pagó por
+//    transferencia/consignación (banco + número + monto) — requiere pedidoId.
+// 2. Consignación ANTICIPADA sin pedido asociado: el entregador (o caja, en su
+//    nombre) registra que consignó parte de su recaudo de ruta a la cuenta de
+//    la empresa, antes de llegar a cuadrar caja — común en rutas viajeras donde
+//    el cupo de consignación obliga a partir un monto grande en varias
+//    transacciones. Requiere entregador explícito en vez de pedidoId.
+// Ninguno toca pedidos.estado — ambos solo quedan disponibles para que caja
+// los precargue en el modal de cuadre agrupado, igual que ya pasa hoy con los
+// cobros CxC registrados en ruta.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
@@ -20,14 +26,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { pedidoId, planillaId, entregador, cliente, banco, numero, monto } = body
+    const { pedidoId, planillaId, entregador, cliente, banco, numero, monto, fecha } = body
 
     const bancoLimpio = String(banco || '').trim()
     const numeroLimpio = String(numero || '').trim()
     const montoNum = Number(monto)
+    const entregadorLimpio = String(entregador || '').trim()
 
-    if (!pedidoId) {
-      return NextResponse.json({ error: 'pedidoId es requerido' }, { status: 400 })
+    if (!pedidoId && !entregadorLimpio) {
+      return NextResponse.json({ error: 'pedidoId o entregador son requeridos' }, { status: 400 })
     }
     if (!bancoLimpio || !numeroLimpio) {
       return NextResponse.json({ error: 'Banco y número son requeridos' }, { status: 400 })
@@ -49,12 +56,18 @@ export async function POST(request: NextRequest) {
 
     const sql = getDB()
 
+    const fechaLimpia = fecha ? String(fecha) : new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+
     const [registro] = await sql`
       INSERT INTO consignaciones_pedido (
-        pedido_id, planilla_id, entregador, cliente, banco, numero, monto, fecha
+        pedido_id, planilla_id, entregador, cliente, banco, numero, monto, fecha,
+        origen, registrado_por
       ) VALUES (
-        ${String(pedidoId)}, ${planillaId ? String(planillaId) : null}, ${String(entregador || session.user.nombre)},
-        ${cliente || null}, ${bancoLimpio}, ${numeroLimpio}, ${montoNum}, (NOW() AT TIME ZONE 'America/Bogota')::date
+        ${pedidoId ? String(pedidoId) : null}, ${planillaId ? String(planillaId) : null},
+        ${String(entregadorLimpio || session.user.nombre)},
+        ${cliente || null}, ${bancoLimpio}, ${numeroLimpio}, ${montoNum},
+        ${fechaLimpia}::date,
+        ${pedidoId ? 'ruta' : 'anticipada'}, ${session.user.nombre}
       )
       RETURNING *
     `

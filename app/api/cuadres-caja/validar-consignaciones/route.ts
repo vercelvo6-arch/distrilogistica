@@ -46,6 +46,24 @@ export async function POST(request: NextRequest) {
       ORDER BY LOWER(elem->>'numero'), cc.fecha_cuadre DESC
     `
 
+    // Buscar también en consignaciones_pedido: las que el entregador ya registró en
+    // ruta (ligadas a un pedido) o de forma anticipada (sin pedido, recaudo de varios
+    // días antes de llegar a cuadrar) — mismo control, misma fuente que revisa
+    // buscarReferenciasUsadas en el submit final.
+    const resultadoConsignacionesEntregador = await sql`
+      SELECT DISTINCT ON (LOWER(cp.numero))
+        cp.numero as numero,
+        COALESCE(cp.cliente, cp.entregador) as cliente,
+        cp.fecha as fecha,
+        cp.entregador as entregador,
+        'consignacion' as origen
+      FROM consignaciones_pedido cp
+      WHERE LOWER(cp.numero) = ANY(
+        SELECT LOWER(n) FROM unnest(${numeros}::text[]) n
+      )
+      ORDER BY LOWER(cp.numero), cp.registrado_en DESC
+    `
+
     // Buscar también en abonos_fiados (referencias de cobros CxC ya registrados),
     // con el cliente resuelto desde fiados o pedidos según de dónde vino el abono.
     const resultadoCobrosCxC = await sql`
@@ -70,7 +88,7 @@ export async function POST(request: NextRequest) {
     // por número, dando prioridad a la consignación (trae la fecha del abono real,
     // no la del cuadre) cuando exista en las dos.
     const porNumero = new Map<string, any>()
-    for (const r of [...resultadoCobrosCxC, ...resultadoConsignaciones]) {
+    for (const r of [...resultadoCobrosCxC, ...resultadoConsignacionesEntregador, ...resultadoConsignaciones]) {
       porNumero.set(String(r.numero).toLowerCase(), {
         numero: r.numero,
         cliente: r.cliente || null,
