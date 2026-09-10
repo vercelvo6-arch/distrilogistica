@@ -2061,16 +2061,19 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const borradorGuardado = localStorage.getItem(claveborrador)
     let borrador = borradorGuardado ? JSON.parse(borradorGuardado) : null
 
-    // ✅ Descartar borradores que no correspondan a este cuadre: viejos (>24h) o de
-    // otro conjunto de planillas — evita restaurar residuos de una sesión anterior
-    // sin relación con lo que se está cuadrando ahora, aunque sea el mismo entregador.
+    // ✅ Descartar solo borradores viejos (>24h) — un borrador reciente del mismo
+    // entregador se restaura aunque el conjunto de rutas seleccionadas haya cambiado.
+    //
+    // 🚨 FIX CRÍTICO: antes también se descartaba si la lista de rutas no coincidía
+    // EXACTO con la guardada — pero agregar una ruta más a media sesión (llegó una
+    // planilla nueva) es el caso normal, no una "sesión anterior sin relación". Esa
+    // comparación borraba billetes/monedas/consignaciones/cobros ya escritos a mano
+    // cada vez que caja sumaba una ruta, perdiendo el trabajo en curso.
     if (borrador) {
       const VEINTICUATRO_HORAS = 24 * 60 * 60 * 1000
       const esViejo = !borrador.guardadoEn || (Date.now() - borrador.guardadoEn) > VEINTICUATRO_HORAS
-      const mismasPlanillas = Array.isArray(borrador.planillaIds) &&
-        JSON.stringify([...borrador.planillaIds].sort()) === JSON.stringify([...selectedRoutes].sort())
 
-      if (esViejo || !mismasPlanillas) {
+      if (esViejo) {
         localStorage.removeItem(claveborrador)
         borrador = null
       }
