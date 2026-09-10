@@ -1703,6 +1703,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           montoNequi:      String(a.monto_nequi || 0),
           referencia:      a.referencia_pago || "",
           numeroFactura:   "",
+          fechaAbono:      a.fecha_abono || null,
           medioPago:       a.monto_nequi > 0 && a.monto_efectivo > 0 ? "Mixto" : a.monto_nequi > 0 ? "Nequi" : "Efectivo",
           monto:           String((Number(a.monto_efectivo) || 0) + (Number(a.monto_nequi) || 0)),
           yaRegistrado:    true, // flag para que caja sepa que viene del entregador
@@ -2018,9 +2019,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       if (resValidacion.ok) {
         const dataValidacion = await resValidacion.json()
         if (dataValidacion.duplicados && dataValidacion.duplicados.length > 0) {
+          const detalle = dataValidacion.duplicados
+            .map((d: any) => {
+              const info = describirDuplicado(d)
+              return info ? `${d.numero} (${info})` : d.numero
+            })
+            .join(" · ")
           toast({
             title: "Consignación duplicada",
-            description: `Los siguientes números ya fueron registrados: ${dataValidacion.duplicados.join(", ")}`,
+            description: `Los siguientes números ya fueron registrados: ${detalle}`,
             variant: "destructive",
           })
           setSubmitting(false)
@@ -3685,7 +3692,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                     </div>
                     <div>
                       <Label className="text-xs">Fecha</Label>
-                      <Input className="h-8 text-sm" type="date"
+                      <Input className="h-8 text-sm" type="date" max={new Date().toISOString().split("T")[0]}
                         value={cons.fecha} onChange={(e) => actualizarConsignacion(cons.id, "fecha", e.target.value)} />
                     </div>
                     <div className="col-span-2">
@@ -3960,10 +3967,20 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       </div>
 
                       {cobro.yaRegistrado || cobro.esPagoAnticipado ? (
-                        <div className="text-xs text-gray-600 flex items-center gap-4">
+                        <div className="text-xs text-gray-600 flex items-center gap-4 flex-wrap">
                           <span>Medio: <strong>{cobro.medioPago}</strong></span>
                           <span>Monto: <strong>{formatCOP(getCobroMontoTotal(cobro))}</strong></span>
-                          {cobro.numeroFactura && <span>Ref: <strong>{cobro.numeroFactura}</strong></span>}
+                          {(cobro.referencia || cobro.numeroFactura) && (
+                            <span>Ref: <strong>{cobro.referencia || cobro.numeroFactura}</strong></span>
+                          )}
+                          {!cobro.referencia && !cobro.numeroFactura && cobro.yaRegistrado && (
+                            <span className="text-amber-600">Sin referencia (pago en efectivo o sin soporte)</span>
+                          )}
+                          {cobro.fechaAbono && (
+                            <span className="text-gray-400">
+                              Registrado: {new Date(cobro.fechaAbono).toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <div className="grid grid-cols-3 gap-2">
@@ -3981,7 +3998,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           </div>
                           <div>
                             <Label className="text-xs">Fecha</Label>
-                            <Input type="date" className="h-8 text-sm"
+                            <Input type="date" className="h-8 text-sm" max={new Date().toISOString().split("T")[0]}
                               value={cobro.fecha || ""}
                               onChange={(e) => handleActualizarResultadoCobro(cobro.id, "fecha", e.target.value)} />
                           </div>
@@ -4119,7 +4136,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       </div>
                       <div>
                         <Label className="text-xs">Fecha</Label>
-                        <Input className="h-8 text-sm" type="date"
+                        <Input className="h-8 text-sm" type="date" max={new Date().toISOString().split("T")[0]}
                           value={cons.fecha} onChange={(e) => actualizarConsignacion(cons.id, "fecha", e.target.value)} />
                       </div>
                       <div className="relative">
