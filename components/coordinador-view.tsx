@@ -255,6 +255,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           id: ped.id,
           cliente: ped.cliente,
           estado: ped.estado,  // ✅ Agregar estado del pedido
+          comentarios: ped.observaciones,
           items: (ped.productos || []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
@@ -266,6 +267,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
             cantidadFaltante: prod.cantidad_faltante || 0,
             unidadIncompleta: prod.unidad_incompleta || false,
             observacionesFaltante: prod.observaciones_faltante,
+            comentario: prod.comentario,
           })),
         })),
       }))
@@ -801,6 +803,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       // Solo los pedidos 'pendiente' representan mercancía real por alistar.
       sheet.orders.filter((order) => order.estado === 'pendiente').forEach((order) => {
         order.items.forEach((item: any) => {
+          const comentarioItem = (item.comentario || "").trim()
           const existing = productMap.get(item.codigo)
           if (existing) {
             existing.cantidadTotal += item.cantidad
@@ -814,10 +817,14 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                 ? `${existing.observacionesFaltante}; ${item.observacionesFaltante}`
                 : item.observacionesFaltante
             }
+            if (comentarioItem) {
+              existing.comentarios.push({ cliente: order.cliente, texto: comentarioItem })
+            }
           } else {
             productMap.set(item.codigo, {
               ...item,
               cantidadTotal: item.cantidad,
+              comentarios: comentarioItem ? [{ cliente: order.cliente, texto: comentarioItem }] : [],
             })
           }
         })
@@ -1311,7 +1318,18 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                         <td className="py-2 md:py-3 px-2 md:px-4 font-mono text-xs">
                                           {producto.codigo}
                                         </td>
-                                        <td className="py-2 md:py-3 px-2 md:px-4">{producto.descripcion}</td>
+                                        <td className="py-2 md:py-3 px-2 md:px-4">
+                                          {producto.descripcion}
+                                          {producto.comentarios && producto.comentarios.length > 0 && (
+                                            <div className="mt-1 space-y-0.5">
+                                              {producto.comentarios.map((c: any, idx: number) => (
+                                                <p key={idx} className="text-xs text-amber-700">
+                                                  💬 <strong>{c.cliente}:</strong> {c.texto}
+                                                </p>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </td>
                                         <td className="py-2 md:py-3 px-2 md:px-4 hidden sm:table-cell">
                                           <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
                                             {producto.categoria || "Sin categoría"}
