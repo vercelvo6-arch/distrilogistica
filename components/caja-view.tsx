@@ -104,7 +104,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [guardandoCorreccion, setGuardandoCorreccion] = useState(false)
 
   const handleAbrirCorreccion = (cobro: any) => {
-    setCorrigiendoCobroId(cobro.id)
+    setCorrigiendoCobroId(cobroKey(cobro))
     setMedioCorreccion(Number(cobro.montoNequi) > 0 ? "nequi" : "efectivo")
     setMontoCorreccion(String(Number(cobro.montoEfectivo) + Number(cobro.montoNequi)))
     setReferenciaCorreccion(cobro.referencia || "")
@@ -136,7 +136,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Error al corregir el cobro")
 
-      const actualizar = (c: any) => c.id !== cobro.id ? c : {
+      const actualizar = (c: any) => cobroKey(c) !== cobroKey(cobro) ? c : {
         ...c,
         montoEfectivo: String(medioCorreccion === "efectivo" ? monto : 0),
         montoNequi: String(medioCorreccion === "nequi" ? monto : 0),
@@ -1904,17 +1904,31 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
+  // Identificador único de una línea de cobro en pantalla — nunca el id del fiado
+  // solo, porque un mismo cliente puede tener varias líneas (pagó en más de una
+  // transferencia, o en Nequi y efectivo por separado). Se usa como key de React y
+  // para editar/quitar la línea correcta sin tocar las demás del mismo cliente.
+  const cobroKey = (cobro: any) => cobro.abonoId ?? cobro.localId ?? cobro.id
+
   const handleVincularCobro = (cobro: any) => {
-    if (cobrosVinculados.find(c => c.id === cobro.id)) return
     // Los pagos anticipados llegan con medioPago/monto/numeroFactura ya definidos desde su registro — no se resetean.
+    // ✅ Ya NO se bloquea si el cliente ya tiene una línea — un mismo cobro puede
+    // pagarse en varias transacciones (dos Nequi distintos, Nequi + efectivo, etc.)
+    // y cada una necesita su propia línea con su propia referencia.
     setCobrosVinculados(prev => [...prev, cobro.esPagoAnticipado
-      ? { ...cobro }
-      : { ...cobro, numeroFactura: "", medioPago: "Nequi", montoEfectivo: "", montoElectronico: "", fecha: new Date().toISOString().split("T")[0], numeroReferencia: "" }
+      ? { ...cobro, localId: crypto.randomUUID() }
+      : { ...cobro, localId: crypto.randomUUID(), numeroFactura: "", medioPago: "Nequi", montoEfectivo: "", montoElectronico: "", fecha: new Date().toISOString().split("T")[0], numeroReferencia: "" }
     ])
   }
 
-  const handleDesvincularCobro = (cobroId: number) => {
-    setCobrosVinculados(prev => prev.filter(c => c.id !== cobroId))
+  // Agrega una línea de pago adicional en blanco para el mismo cliente/fiado que
+  // ya tiene una línea en el cuadre — para cuando pagó en más de una transacción.
+  const handleAgregarOtroPago = (cobro: any) => {
+    handleVincularCobro({ id: cobro.id, cliente: cobro.cliente, ruta: cobro.ruta, saldo_pendiente: cobro.saldo_pendiente })
+  }
+
+  const handleDesvincularCobro = (key: any) => {
+    setCobrosVinculados(prev => prev.filter(c => cobroKey(c) !== key))
   }
 
   // Monto total que aporta un cobro CxC al esperado, sin importar el medio de pago.
@@ -1941,8 +1955,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     return partes.length ? partes.join(" · ") : null
   }
 
-  const handleActualizarResultadoCobro = (cobroId: number, campo: string, valor: any) => {
-    setCobrosVinculados(prev => prev.map(c => c.id === cobroId ? { ...c, [campo]: valor } : c))
+  const handleActualizarResultadoCobro = (key: any, campo: string, valor: any) => {
+    setCobrosVinculados(prev => prev.map(c => cobroKey(c) === key ? { ...c, [campo]: valor } : c))
   }
 
   const handleCloseModal = () => {
@@ -3748,29 +3762,35 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 <div className="space-y-3 border-t pt-3">
                   <p className="text-xs font-medium text-purple-700">Cobros incluidos en este cuadre:</p>
                   {cobrosVinculados.map(cobro => (
-                    <div key={cobro.id} className="p-3 bg-white rounded border border-purple-200 space-y-2">
+                    <div key={cobroKey(cobro)} className="p-3 bg-white rounded border border-purple-200 space-y-2">
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="font-medium text-sm">{cobro.cliente}</span>
                           <span className="text-xs text-gray-500 ml-2">Saldo: {formatCOP(cobro.saldo_pendiente)}</span>
                         </div>
-                        <Button size="sm" variant="ghost" className="h-6 text-red-500 hover:text-red-700"
-                          onClick={() => handleDesvincularCobro(cobro.id)}>
-                          <X className="h-3 w-3" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" className="h-6 text-xs text-purple-600 hover:text-purple-800"
+                            onClick={() => handleAgregarOtroPago(cobro)} title="El cliente pagó en más de una transacción">
+                            + Otro pago
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-6 text-red-500 hover:text-red-700"
+                            onClick={() => handleDesvincularCobro(cobroKey(cobro))}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                       <div className="grid grid-cols-3 gap-2">
                         <div>
                           <Label className="text-xs">Efectivo</Label>
                           <Input type="number" min={0} placeholder="0" className="h-7 text-sm"
                             value={cobro.montoEfectivo}
-                            onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoEfectivo", e.target.value)} />
+                            onChange={(e) => handleActualizarResultadoCobro(cobroKey(cobro), "montoEfectivo", e.target.value)} />
                         </div>
                         <div>
                           <Label className="text-xs">Nequi</Label>
                           <Input type="number" min={0} placeholder="0" className="h-7 text-sm"
                             value={cobro.montoNequi}
-                            onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoNequi", e.target.value)} />
+                            onChange={(e) => handleActualizarResultadoCobro(cobroKey(cobro), "montoNequi", e.target.value)} />
                         </div>
                         <div>
                           <Label className="text-xs">Referencia {Number(cobro.montoNequi) > 0 && <span className="text-red-500">*</span>}</Label>
@@ -3781,7 +3801,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                 ? "border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500 ring-1 ring-red-500" : ""
                             }`}
                             value={cobro.referencia}
-                            onChange={(e) => handleActualizarResultadoCobro(cobro.id, "referencia", e.target.value)} />
+                            onChange={(e) => handleActualizarResultadoCobro(cobroKey(cobro), "referencia", e.target.value)} />
                           {referenciasRepetidasEnForm.has((cobro.referencia || "").trim().toLowerCase()) && (
                             <p className="text-xs text-red-600 mt-0.5">⚠ Referencia duplicada en este cuadre (consignación o cobro)</p>
                           )}
@@ -4145,7 +4165,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 <div className="space-y-3 border-t pt-3">
                   <p className="text-xs font-medium text-purple-700">Cobros incluidos:</p>
                   {cobrosVinculados.map(cobro => (
-                    <div key={cobro.id} className="p-3 bg-white rounded border border-purple-200 space-y-2">
+                    <div key={cobroKey(cobro)} className="p-3 bg-white rounded border border-purple-200 space-y-2">
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="font-medium text-sm">{cobro.cliente}</span>
@@ -4160,12 +4180,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           )}
                         </div>
                         <Button size="sm" variant="ghost" className="h-6 text-red-500"
-                          onClick={() => handleDesvincularCobro(cobro.id)}>
+                          onClick={() => handleDesvincularCobro(cobroKey(cobro))}>
                           <X className="h-3 w-3" />
                         </Button>
                       </div>
 
-                      {cobro.yaRegistrado && corrigiendoCobroId === cobro.id ? (
+                      {cobro.yaRegistrado && corrigiendoCobroId === cobroKey(cobro) ? (
                         <div className="bg-amber-50 border border-amber-200 rounded p-2 space-y-2">
                           <div className="flex gap-2">
                             <Button size="sm" variant={medioCorreccion === "efectivo" ? "default" : "outline"}
@@ -4228,25 +4248,25 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             <Label className="text-xs">N° Factura</Label>
                             <Input placeholder="Factura" className="h-8 text-sm"
                               value={cobro.numeroFactura || ""}
-                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "numeroFactura", e.target.value)} />
+                              onChange={(e) => handleActualizarResultadoCobro(cobroKey(cobro), "numeroFactura", e.target.value)} />
                           </div>
                           <div>
                             <Label className="text-xs">Monto Efectivo</Label>
                             <Input type="number" min={0} placeholder="0" className="h-8 text-sm"
                               value={cobro.montoEfectivo || ""}
-                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoEfectivo", e.target.value)} />
+                              onChange={(e) => handleActualizarResultadoCobro(cobroKey(cobro), "montoEfectivo", e.target.value)} />
                           </div>
                           <div>
                             <Label className="text-xs">Fecha</Label>
                             <Input type="date" className="h-8 text-sm" max={new Date().toISOString().split("T")[0]}
                               value={cobro.fecha || ""}
-                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "fecha", e.target.value)} />
+                              onChange={(e) => handleActualizarResultadoCobro(cobroKey(cobro), "fecha", e.target.value)} />
                           </div>
                           <div>
                             <Label className="text-xs">Medio electrónico</Label>
                             <Select
                               value={cobro.medioPago || "Nequi"}
-                              onValueChange={(v) => handleActualizarResultadoCobro(cobro.id, "medioPago", v)}
+                              onValueChange={(v) => handleActualizarResultadoCobro(cobroKey(cobro), "medioPago", v)}
                             >
                               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                               <SelectContent>
@@ -4264,7 +4284,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             <Label className="text-xs">Monto Electrónico</Label>
                             <Input type="number" min={0} placeholder="0" className="h-8 text-sm"
                               value={cobro.montoElectronico || ""}
-                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "montoElectronico", e.target.value)} />
+                              onChange={(e) => handleActualizarResultadoCobro(cobroKey(cobro), "montoElectronico", e.target.value)} />
                           </div>
                           <div>
                             <Label className="text-xs">N° Referencia {Number(cobro.montoElectronico) > 0 && <span className="text-red-500">*</span>}</Label>
@@ -4276,7 +4296,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                               }`}
                               placeholder="Referencia"
                               value={cobro.numeroReferencia || ""}
-                              onChange={(e) => handleActualizarResultadoCobro(cobro.id, "numeroReferencia", e.target.value)} />
+                              onChange={(e) => handleActualizarResultadoCobro(cobroKey(cobro), "numeroReferencia", e.target.value)} />
                             {referenciasRepetidasEnForm.has((cobro.numeroReferencia || "").trim().toLowerCase()) && (
                               <p className="text-xs text-red-600 mt-0.5">⚠ Referencia duplicada en este cuadre (consignación o cobro)</p>
                             )}
