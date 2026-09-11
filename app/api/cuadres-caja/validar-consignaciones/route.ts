@@ -87,11 +87,32 @@ export async function POST(request: NextRequest) {
       ORDER BY LOWER(af.referencia_pago), af.fecha_abono DESC
     `
 
-    // Una referencia puede aparecer en ambas fuentes — nos quedamos con un registro
+    // Buscar también en pagos_anticipados ("cuadre administrativo") — pagos ya
+    // identificados por banco/Nequi antes de saber a qué cliente pertenecen. Faltaba
+    // aquí: el chequeo final al confirmar sí los revisa (buscarReferenciasUsadas),
+    // pero en vivo, mientras caja escribe, no se avisaba de la colisión.
+    const resultadoPagosAnticipados = await sql`
+      SELECT DISTINCT ON (LOWER(pa.referencia))
+        pa.referencia as numero,
+        pa.cliente as cliente,
+        pa.fecha_pago as fecha,
+        pa.entregador_vinculado as entregador,
+        'pago_anticipado' as origen,
+        (pa.estado = 'vinculado') as cerrado
+      FROM pagos_anticipados pa
+      WHERE LOWER(pa.referencia) = ANY(
+        SELECT LOWER(n) FROM unnest(${numeros}::text[]) n
+      )
+      AND pa.referencia IS NOT NULL
+      AND pa.referencia != ''
+      ORDER BY LOWER(pa.referencia), pa.registrado_en DESC
+    `
+
+    // Una referencia puede aparecer en varias fuentes — nos quedamos con un registro
     // por número, dando prioridad a la consignación (trae la fecha del abono real,
-    // no la del cuadre) cuando exista en las dos.
+    // no la del cuadre) cuando exista en varias.
     const porNumero = new Map<string, any>()
-    for (const r of [...resultadoCobrosCxC, ...resultadoConsignacionesEntregador, ...resultadoConsignaciones]) {
+    for (const r of [...resultadoPagosAnticipados, ...resultadoCobrosCxC, ...resultadoConsignacionesEntregador, ...resultadoConsignaciones]) {
       porNumero.set(String(r.numero).toLowerCase(), {
         numero: r.numero,
         cliente: r.cliente || null,

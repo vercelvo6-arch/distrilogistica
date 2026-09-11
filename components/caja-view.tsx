@@ -1575,11 +1575,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // marca como "duplicados" — una falsa alarma contra su propio registro, no un segundo
   // uso real. Esa referencia ya pasó su propio control antifraude al crearse (ver
   // registrar-abono). Lo mismo aplica a las consignaciones que el entregador ya registró
-  // en ruta o de forma anticipada (traen origenConsignacionId): también se autocomparan
-  // contra su propio registro si se incluyen. Solo tiene sentido re-validar lo que caja
-  // está por escribir AHORA: consignaciones y cobros CxC nuevos de este cuadre.
+  // en ruta o de forma anticipada (traen origenConsignacionId) y a los pagos anticipados
+  // ("cuadre administrativo") ya identificados: también se autocomparan contra su propio
+  // registro si se incluyen. Solo tiene sentido re-validar lo que caja está por escribir
+  // AHORA: consignaciones y cobros CxC nuevos de este cuadre.
   useEffect(() => {
-    const cobrosNuevos = cobrosVinculados.filter(c => !c.yaRegistrado)
+    const cobrosNuevos = cobrosVinculados.filter(c => !c.yaRegistrado && !c.esPagoAnticipado)
     const consignacionesNuevas = consignaciones.filter(c => !c.origenConsignacionId)
     const numeros = Array.from(new Set([
       ...consignacionesNuevas.map(c => c.numero.trim()),
