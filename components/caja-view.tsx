@@ -181,6 +181,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     erroresFacturacion: "",
   })
   const [consignaciones, setConsignaciones] = useState<Array<{id: string; banco: string; numero: string; monto: string; fecha: string; cliente: string; numero_factura: string; origenConsignacionId?: number}>>([])
+
+  // Pendientes (cobros/consignaciones ya registrados por el entregador) que caja
+  // quitó explícitamente de este cuadre — sin esto, cada vez que se reabre el
+  // modal loadCobrosDisponibles/loadConsignacionesEntregador los vuelve a traer
+  // desde la BD, así que quitarlos con la X no servía de nada: reaparecían solos
+  // en la siguiente apertura. Se guardan en el mismo borrador del entregador, no
+  // se pierden al cerrar y volver a abrir el cuadre, y no ocultan el dinero para
+  // siempre — solo mientras se sigue armando este cuadre.
+  const [idsDescartados, setIdsDescartados] = useState<Set<string>>(new Set())
   // Referencias (consignaciones + cobros CxC) que ya existen en la BD — un solo mapa,
   // porque el endpoint de validación ya las busca juntas en una sola consulta. El valor
   // trae cliente/fecha/entregador para mostrar dónde se usó cada referencia repetida.
@@ -277,10 +286,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       monedas: formData.monedas,
       observaciones: formData.observaciones,
       planillaIds: agrupadoData.planillaIds,
+      idsDescartados: Array.from(idsDescartados),
       guardadoEn: Date.now(),
     }
     localStorage.setItem(clave, JSON.stringify(borrador))
-  }, [consignaciones, cobrosVinculados, formData.billetes, formData.monedas, formData.observaciones, agrupadoData, showAgrupadoModal])
+  }, [consignaciones, cobrosVinculados, formData.billetes, formData.monedas, formData.observaciones, agrupadoData, showAgrupadoModal, idsDescartados])
 
   useEffect(() => {
     fetch("/api/entregadores")
@@ -1537,6 +1547,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   }
 
   const eliminarConsignacion = (id: string) => {
+    const consig = consignaciones.find(c => c.id === id)
+    if (consig?.origenConsignacionId) {
+      setIdsDescartados(prev => new Set(prev).add(`consig:${consig.origenConsignacionId}`))
+    }
     setConsignaciones(prev => prev.filter(c => c.id !== id))
   }
 
@@ -1812,7 +1826,10 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       if (nuevas.length > 0) {
         setConsignaciones(prev => [
           ...prev,
-          ...nuevas.filter((n: any) => !prev.some(p => p.origenConsignacionId === n.origenConsignacionId)),
+          ...nuevas.filter((n: any) =>
+            !idsDescartados.has(`consig:${n.origenConsignacionId}`) &&
+            !prev.some(p => p.origenConsignacionId === n.origenConsignacionId)
+          ),
         ])
       }
     } catch (error) {
@@ -1887,10 +1904,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         // ✅ Fusionar con lo que ya había (borrador restaurado o cobros que caja
         // acaba de vincular a mano) en vez de reemplazar — antes esto borraba
         // cualquier cobro recién agregado cada vez que se reabría el modal.
+        // Tampoco se vuelve a traer uno que caja ya quitó explícitamente con la X.
         if (cobrosYaRegistrados.length > 0) {
           setCobrosVinculados(prev => [
             ...prev,
-            ...cobrosYaRegistrados.filter((n: any) => !prev.some(p => p.abonoId ? p.abonoId === n.abonoId : p.id === n.id)),
+            ...cobrosYaRegistrados.filter((n: any) =>
+              !idsDescartados.has(`abono:${n.abonoId}`) &&
+              !prev.some(p => p.abonoId ? p.abonoId === n.abonoId : p.id === n.id)
+            ),
           ])
         }
       }
@@ -1927,7 +1948,13 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     handleVincularCobro({ id: cobro.id, cliente: cobro.cliente, ruta: cobro.ruta, saldo_pendiente: cobro.saldo_pendiente })
   }
 
-  const handleDesvincularCobro = (key: any) => {
+  const handleDesvincularCobro = (cobro: any) => {
+    const key = cobroKey(cobro)
+    if (cobro.yaRegistrado && cobro.abonoId) {
+      setIdsDescartados(prev => new Set(prev).add(`abono:${cobro.abonoId}`))
+    } else if (cobro.esPagoAnticipado && cobro.pagoAnticipadoId) {
+      setIdsDescartados(prev => new Set(prev).add(`pa:${cobro.pagoAnticipadoId}`))
+    }
     setCobrosVinculados(prev => prev.filter(c => cobroKey(c) !== key))
   }
 
@@ -2164,6 +2191,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setAgrupadoData(agrupado)
     setCobrosVinculados(borrador?.cobrosVinculados || [])
     setConsignaciones(borradorConsignaciones)
+    setIdsDescartados(new Set(borrador?.idsDescartados || []))
     setDuplicadosBD(new Map())
     setBusquedaCobro("")
     setFormData(prev => ({
@@ -2365,6 +2393,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     setAgrupadoData(null)
     setCobrosVinculados([])
     setConsignaciones([])
+    setIdsDescartados(new Set())
     await loadData()
   } catch (error) {
     toast({ title: "Error", description: error instanceof Error ? error.message : "Error al registrar cuadre", variant: "destructive" })
@@ -3774,7 +3803,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                             + Otro pago
                           </Button>
                           <Button size="sm" variant="ghost" className="h-6 text-red-500 hover:text-red-700"
-                            onClick={() => handleDesvincularCobro(cobroKey(cobro))}>
+                            onClick={() => handleDesvincularCobro(cobro)}>
                             <X className="h-3 w-3" />
                           </Button>
                         </div>
@@ -4180,7 +4209,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           )}
                         </div>
                         <Button size="sm" variant="ghost" className="h-6 text-red-500"
-                          onClick={() => handleDesvincularCobro(cobroKey(cobro))}>
+                          onClick={() => handleDesvincularCobro(cobro)}>
                           <X className="h-3 w-3" />
                         </Button>
                       </div>
