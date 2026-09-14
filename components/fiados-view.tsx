@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Plus, ArrowRight, Upload, Trash2, ChevronDown, ChevronUp } from "lucide-react"
+import { CreditCard, LogOut, Download, DollarSign, CheckCircle2, Plus, ArrowRight, Upload, Trash2, ChevronDown, ChevronUp, Pencil } from "lucide-react"
 import { formatCOP } from "@/lib/format-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
@@ -107,6 +107,24 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
   const [showEliminarAbonoModal, setShowEliminarAbonoModal] = useState(false)
   const [selectedAbonoParaEliminar, setSelectedAbonoParaEliminar] = useState<any>(null)
   const [eliminandoAbono, setEliminandoAbono] = useState(false)
+
+  // Estados para editar el valor de una factura fiada
+  const [showEditarModal, setShowEditarModal] = useState(false)
+  const [selectedFiadoParaEditar, setSelectedFiadoParaEditar] = useState<Fiado | null>(null)
+  const [nuevoTotalEditar, setNuevoTotalEditar] = useState("")
+  const [editando, setEditando] = useState(false)
+
+  // Estados para crear un fiado manualmente
+  const [showCrearModal, setShowCrearModal] = useState(false)
+  const [nuevoFiadoCliente, setNuevoFiadoCliente] = useState("")
+  const [nuevoFiadoTelefono, setNuevoFiadoTelefono] = useState("")
+  const [nuevoFiadoDireccion, setNuevoFiadoDireccion] = useState("")
+  const [nuevoFiadoEntregador, setNuevoFiadoEntregador] = useState("")
+  const [nuevoFiadoRuta, setNuevoFiadoRuta] = useState("")
+  const [nuevoFiadoMonto, setNuevoFiadoMonto] = useState("")
+  const [nuevoFiadoFecha, setNuevoFiadoFecha] = useState(() => new Date().toISOString().split("T")[0])
+  const [nuevoFiadoObservaciones, setNuevoFiadoObservaciones] = useState("")
+  const [creandoFiado, setCreandoFiado] = useState(false)
 
   // Estados para importar
   const [importando, setImportando] = useState(false)
@@ -562,6 +580,108 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     }
   }
 
+  // ✅ NUEVO: Abrir modal de editar factura
+  const openEditarModal = (fiado: Fiado) => {
+    setSelectedFiadoParaEditar(fiado)
+    setNuevoTotalEditar(String(fiado.total || ""))
+    setShowEditarModal(true)
+  }
+
+  // ✅ NUEVO: Corregir el valor de una factura fiada
+  const handleEditarFiado = async () => {
+    if (!selectedFiadoParaEditar) return
+    const nuevoTotal = Number(nuevoTotalEditar)
+    if (!nuevoTotal || nuevoTotal <= 0) {
+      toast({ title: "Error", description: "El valor debe ser mayor a 0", variant: "destructive" })
+      return
+    }
+
+    try {
+      setEditando(true)
+
+      const body = selectedFiadoParaEditar.origen === 'fiados'
+        ? { fiadoId: selectedFiadoParaEditar.fiado_tabla_id || selectedFiadoParaEditar.id, nuevoTotal }
+        : { pedidoId: selectedFiadoParaEditar.id, nuevoTotal }
+
+      const response = await fetch('/api/fiados/editar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Error al editar la factura')
+
+      toast({
+        title: "Factura corregida",
+        description: `${selectedFiadoParaEditar.cliente} — nuevo valor: ${formatCOP(nuevoTotal)}`,
+      })
+
+      setShowEditarModal(false)
+      setSelectedFiadoParaEditar(null)
+      await loadFiados()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al editar la factura",
+        variant: "destructive",
+      })
+    } finally {
+      setEditando(false)
+    }
+  }
+
+  // ✅ NUEVO: Crear un fiado manualmente, sin pasar por un pedido ni por CSV
+  const handleCrearFiado = async () => {
+    if (!nuevoFiadoCliente.trim() || !nuevoFiadoEntregador || !nuevoFiadoMonto || Number(nuevoFiadoMonto) <= 0) {
+      toast({ title: "Error", description: "Cliente, entregador y monto son obligatorios", variant: "destructive" })
+      return
+    }
+
+    try {
+      setCreandoFiado(true)
+
+      const response = await fetch('/api/fiados/crear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cliente: nuevoFiadoCliente.trim(),
+          telefono: nuevoFiadoTelefono.trim(),
+          direccion: nuevoFiadoDireccion.trim(),
+          entregador: nuevoFiadoEntregador,
+          ruta: nuevoFiadoRuta.trim(),
+          montoTotal: Number(nuevoFiadoMonto),
+          fechaFiado: nuevoFiadoFecha,
+          observaciones: nuevoFiadoObservaciones.trim(),
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Error al crear el fiado')
+
+      toast({ title: "Fiado registrado", description: data.mensaje })
+
+      setShowCrearModal(false)
+      setNuevoFiadoCliente("")
+      setNuevoFiadoTelefono("")
+      setNuevoFiadoDireccion("")
+      setNuevoFiadoEntregador("")
+      setNuevoFiadoRuta("")
+      setNuevoFiadoMonto("")
+      setNuevoFiadoFecha(new Date().toISOString().split("T")[0])
+      setNuevoFiadoObservaciones("")
+      await loadFiados()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Error al crear el fiado",
+        variant: "destructive",
+      })
+    } finally {
+      setCreandoFiado(false)
+    }
+  }
+
   // ── Formatea timestamp o date de Neon a fecha legible Colombia ──
   const formatFechaColombia = (raw?: string | null): string => {
     if (!raw) return "—"
@@ -742,6 +862,13 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                   <Download className="h-4 w-4 mr-2" />
                   Exportar
                 </Button>
+                {userRole === "administrador" && (
+                  <Button onClick={() => setShowCrearModal(true)} variant="outline"
+                    className="flex-1 sm:flex-none border-orange-300 text-orange-700 hover:bg-orange-50">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nuevo Fiado
+                  </Button>
+                )}
               </div>
             </div>
           </Card>
@@ -844,6 +971,11 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                         {mostrarBotones && userRole === "administrador" && (
                           <Button variant="outline" size="sm" onClick={() => openCobroModal(fiado)} className="border-blue-300 text-blue-700 hover:bg-blue-50">
                             <ArrowRight className="h-3 w-3 mr-1" />Asignar a Cobrar
+                          </Button>
+                        )}
+                        {userRole === "administrador" && (
+                          <Button variant="outline" size="sm" onClick={() => openEditarModal(fiado)} className="border-blue-300 text-blue-700 hover:bg-blue-50">
+                            <Pencil className="h-3 w-3 mr-1" />Editar factura
                           </Button>
                         )}
                         {userRole === "administrador" && (
@@ -1123,6 +1255,120 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
       </Dialog>
 
       {/* ✅ NUEVO: MODAL PARA ELIMINAR FIADO */}
+      {/* ✅ NUEVO: MODAL PARA EDITAR EL VALOR DE UNA FACTURA */}
+      <Dialog open={showEditarModal} onOpenChange={setShowEditarModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Factura</DialogTitle>
+            <DialogDescription>
+              Corrige el valor de la factura fiada. El saldo pendiente se recalcula solo, conservando lo que el cliente ya abonó.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedFiadoParaEditar && (
+            <div className="space-y-4 py-4">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded space-y-1 text-sm">
+                <p className="font-medium text-blue-800">Cliente: {selectedFiadoParaEditar.cliente}</p>
+                <p className="text-blue-700">Valor actual: {formatCOP(Number(selectedFiadoParaEditar.total))}</p>
+                <p className="text-blue-700">Ya abonado: {formatCOP(Number(selectedFiadoParaEditar.monto_pagado))}</p>
+              </div>
+              <div>
+                <Label>Nuevo valor de la factura</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={nuevoTotalEditar}
+                  onChange={(e) => setNuevoTotalEditar(e.target.value)}
+                  className="text-lg h-12"
+                  autoFocus
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowEditarModal(false)
+                setSelectedFiadoParaEditar(null)
+              }}
+              disabled={editando}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleEditarFiado} disabled={editando}>
+              {editando ? "Guardando..." : "Guardar corrección"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ✅ NUEVO: MODAL PARA CREAR UN FIADO MANUALMENTE */}
+      <Dialog open={showCrearModal} onOpenChange={setShowCrearModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuevo Fiado Manual</DialogTitle>
+            <DialogDescription>
+              Registra una deuda directamente, sin pasar por un pedido de ruta ni por importación de CSV.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label>Cliente *</Label>
+              <Input value={nuevoFiadoCliente} onChange={(e) => setNuevoFiadoCliente(e.target.value)} placeholder="Nombre del cliente" autoFocus />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Entregador *</Label>
+                <Select value={nuevoFiadoEntregador} onValueChange={setNuevoFiadoEntregador}>
+                  <SelectTrigger><SelectValue placeholder="Selecciona" /></SelectTrigger>
+                  <SelectContent>
+                    {entregadores.map((e) => (
+                      <SelectItem key={e} value={e}>{e}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Ruta</Label>
+                <Input value={nuevoFiadoRuta} onChange={(e) => setNuevoFiadoRuta(e.target.value)} placeholder="Opcional" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Monto *</Label>
+                <Input type="number" min={0} value={nuevoFiadoMonto} onChange={(e) => setNuevoFiadoMonto(e.target.value)} placeholder="0" className="text-lg h-12" />
+              </div>
+              <div>
+                <Label>Fecha</Label>
+                <Input type="date" value={nuevoFiadoFecha} max={new Date().toISOString().split("T")[0]} onChange={(e) => setNuevoFiadoFecha(e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Teléfono</Label>
+                <Input value={nuevoFiadoTelefono} onChange={(e) => setNuevoFiadoTelefono(e.target.value)} placeholder="Opcional" />
+              </div>
+              <div>
+                <Label>Dirección</Label>
+                <Input value={nuevoFiadoDireccion} onChange={(e) => setNuevoFiadoDireccion(e.target.value)} placeholder="Opcional" />
+              </div>
+            </div>
+            <div>
+              <Label>Observaciones</Label>
+              <Textarea value={nuevoFiadoObservaciones} onChange={(e) => setNuevoFiadoObservaciones(e.target.value)} placeholder="Por qué se registra manualmente..." rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCrearModal(false)} disabled={creandoFiado}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCrearFiado} disabled={creandoFiado}>
+              {creandoFiado ? "Guardando..." : "Registrar Fiado"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
