@@ -154,18 +154,40 @@ export async function POST(request: Request) {
     // ni contra otra fuente del sistema ni entre sí dentro de este mismo cuadre. Esta es
     // la validación real y bloqueante — la que corre en el navegador mientras caja escribe
     // es solo un aviso, no protege nada si alguien la evade.
-    const numerosDelCuadre = [
-      ...(consignacionesArray || []).map((c: any) => String(c.numero || '').trim()),
-      ...cobros.map((c: any) => String(c.referencia || '').trim()),
-    ].filter((n: string) => n.length > 0)
+    //
+    // ✅ Excepción legítima: un mismo cliente puede pagar en una sola transferencia
+    // tanto un cobro CxC de hoy como un fiado viejo (o dos fiados distintos) — el
+    // entregador registra dos abonos que comparten el mismo comprobante. Eso no es
+    // fraude, es un pago dividido entre dos deudas del mismo cliente. Solo se bloquea
+    // cuando la misma referencia aparece para clientes DISTINTOS, que es la señal real
+    // de reutilización indebida de un comprobante.
+    const entradasDelCuadre = [
+      ...(consignacionesArray || []).map((c: any) => ({
+        numero:  String(c.numero || '').trim(),
+        cliente: String(c.cliente || '').trim().toLowerCase(),
+      })),
+      ...cobros.map((c: any) => ({
+        numero:  String(c.referencia || '').trim(),
+        cliente: String(c.cliente || '').trim().toLowerCase(),
+      })),
+    ].filter((e: { numero: string }) => e.numero.length > 0)
 
-    const vistosEnEsteCuadre = new Set<string>()
-    const repetidosEnEsteCuadre = new Set<string>()
-    for (const n of numerosDelCuadre) {
-      const nl = n.toLowerCase()
-      if (vistosEnEsteCuadre.has(nl)) repetidosEnEsteCuadre.add(nl)
-      vistosEnEsteCuadre.add(nl)
+    const numerosDelCuadre = entradasDelCuadre.map((e: { numero: string }) => e.numero)
+
+    const clientesPorReferencia = new Map<string, Set<string>>()
+    for (const e of entradasDelCuadre) {
+      const nl = e.numero.toLowerCase()
+      // Sin cliente identificado no se puede asumir que es el mismo — cada entrada
+      // sin cliente cuenta como "alguien distinto" para no debilitar el control.
+      const clienteKey = e.cliente || `__sin_cliente_${clientesPorReferencia.get(nl)?.size ?? 0}`
+      if (!clientesPorReferencia.has(nl)) clientesPorReferencia.set(nl, new Set())
+      clientesPorReferencia.get(nl)!.add(clienteKey)
     }
+    const repetidosEnEsteCuadre = new Set(
+      Array.from(clientesPorReferencia.entries())
+        .filter(([, clientes]) => clientes.size > 1)
+        .map(([numero]) => numero)
+    )
 
     const idsConsignacionPropia = (consignacionesArray || [])
       .map((c: any) => c.origenConsignacionId)

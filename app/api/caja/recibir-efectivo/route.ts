@@ -84,18 +84,36 @@ export async function POST(request: NextRequest) {
 
     // ── 3b. ANTIFRAUDE: ninguna referencia puede repetirse, ni contra otra fuente del
     // sistema ni entre sí dentro de este mismo cuadre.
-    const numerosDelCuadre = [
-      ...(consignacionesArray || []).map((c: any) => String(c.numero || '').trim()),
-      ...cobros.map((c: any) => String(c.referencia || '').trim()),
-    ].filter((n: string) => n.length > 0)
+    //
+    // ✅ Excepción legítima: un mismo cliente puede pagar en una sola transferencia
+    // dos deudas distintas (dos fiados, o un cobro de hoy + un fiado viejo) — el
+    // entregador registra dos abonos que comparten el mismo comprobante. Solo se
+    // bloquea cuando la misma referencia aparece para clientes DISTINTOS.
+    const entradasDelCuadre = [
+      ...(consignacionesArray || []).map((c: any) => ({
+        numero:  String(c.numero || '').trim(),
+        cliente: String(c.cliente || '').trim().toLowerCase(),
+      })),
+      ...cobros.map((c: any) => ({
+        numero:  String(c.referencia || '').trim(),
+        cliente: String(c.cliente || '').trim().toLowerCase(),
+      })),
+    ].filter((e: { numero: string }) => e.numero.length > 0)
 
-    const vistosEnEsteCuadre = new Set<string>()
-    const repetidosEnEsteCuadre = new Set<string>()
-    for (const n of numerosDelCuadre) {
-      const nl = n.toLowerCase()
-      if (vistosEnEsteCuadre.has(nl)) repetidosEnEsteCuadre.add(nl)
-      vistosEnEsteCuadre.add(nl)
+    const numerosDelCuadre = entradasDelCuadre.map((e: { numero: string }) => e.numero)
+
+    const clientesPorReferencia = new Map<string, Set<string>>()
+    for (const e of entradasDelCuadre) {
+      const nl = e.numero.toLowerCase()
+      const clienteKey = e.cliente || `__sin_cliente_${clientesPorReferencia.get(nl)?.size ?? 0}`
+      if (!clientesPorReferencia.has(nl)) clientesPorReferencia.set(nl, new Set())
+      clientesPorReferencia.get(nl)!.add(clienteKey)
     }
+    const repetidosEnEsteCuadre = new Set(
+      Array.from(clientesPorReferencia.entries())
+        .filter(([, clientes]) => clientes.size > 1)
+        .map(([numero]) => numero)
+    )
 
     const idsAbonoPropio = cobros
       .map((c: any) => c.abonoId)

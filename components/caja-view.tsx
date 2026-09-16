@@ -1561,22 +1561,32 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // ✅ Referencias repetidas DENTRO del cuadre que se está armando — cruza consignaciones
   // contra cobros CxC (antes cada lista solo se comparaba consigo misma, así que usar la
   // misma referencia en una consignación y en un cobro no se detectaba).
+  //
+  // ✅ Excepción legítima: un mismo cliente puede pagar en una sola transferencia un
+  // cobro de hoy y un fiado viejo (o dos fiados) — dos líneas, un solo comprobante. Solo
+  // se marca como sospechoso cuando la misma referencia aparece para clientes distintos.
   const referenciasRepetidasEnForm = useMemo(() => {
-    const contador = new Map<string, number>()
-    consignaciones.forEach(c => {
-      const n = c.numero.trim().toLowerCase()
-      if (n) contador.set(n, (contador.get(n) || 0) + 1)
-    })
+    const clientesPorReferencia = new Map<string, Set<string>>()
+    const registrar = (numero: string, cliente: string) => {
+      const n = numero.trim().toLowerCase()
+      if (!n) return
+      const clienteKey = (cliente || "").trim().toLowerCase() || `__sin_cliente_${clientesPorReferencia.get(n)?.size ?? 0}`
+      if (!clientesPorReferencia.has(n)) clientesPorReferencia.set(n, new Set())
+      clientesPorReferencia.get(n)!.add(clienteKey)
+    }
+    consignaciones.forEach(c => registrar(c.numero, c.cliente || ""))
     cobrosVinculados.forEach(c => {
-      const n1 = (c.numeroReferencia || "").trim().toLowerCase()
-      if (n1) contador.set(n1, (contador.get(n1) || 0) + 1)
+      registrar(c.numeroReferencia || "", c.cliente || "")
       // Referencia del cobro Nequi en el modal individual "Cuadre de Caja" —
       // mismo campo compartido de cobrosVinculados, distinto nombre porque lo
       // llena un flujo distinto (individual vs agrupado).
-      const n2 = (c.referencia || "").trim().toLowerCase()
-      if (n2) contador.set(n2, (contador.get(n2) || 0) + 1)
+      registrar(c.referencia || "", c.cliente || "")
     })
-    return new Set(Array.from(contador.entries()).filter(([, count]) => count > 1).map(([n]) => n))
+    return new Set(
+      Array.from(clientesPorReferencia.entries())
+        .filter(([, clientes]) => clientes.size > 1)
+        .map(([n]) => n)
+    )
   }, [consignaciones, cobrosVinculados])
 
   // ✅ Validar duplicados en BD con un solo debounce/consulta para consignaciones y
@@ -2344,6 +2354,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           const esEfectivo = c.medioPago === "Efectivo"
           return {
             id:                    c.id,
+            cliente:               c.cliente || "",
             montoEfectivo:         esEfectivo ? Number(c.monto) || 0 : 0,
             montoNequi:            esEfectivo ? 0 : Number(c.monto) || 0,
             referencia:            buildReferenciaCobro(c),
@@ -2356,6 +2367,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         if (c.yaRegistrado) {
           return {
             id:            c.id,
+            cliente:       c.cliente || "",
             abonoId:       c.abonoId || null,
             montoEfectivo: Number(c.montoEfectivo) || 0,
             montoNequi:    Number(c.montoNequi) || 0,
@@ -2364,6 +2376,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
         }
         return {
           id:               c.id,
+          cliente:          c.cliente || "",
           montoEfectivo:    Number(c.montoEfectivo) || 0,
           montoNequi:       Number(c.montoElectronico) || 0,
           referencia:       c.numeroReferencia?.trim() || null,
@@ -2660,6 +2673,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           agotados:          totals.agotados || 0,
           cobrosVinculados:  cobrosVinculados.map(c => ({
             id:            c.id,
+            cliente:       c.cliente || "",
             abonoId:       c.abonoId || null,
             montoEfectivo: Number(c.montoEfectivo) || 0,
             montoNequi:    Number(c.montoNequi) || 0,
