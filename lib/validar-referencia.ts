@@ -72,3 +72,34 @@ export async function buscarReferenciasUsadas(
       .map((n: string) => n.toLowerCase())
   ))
 }
+
+// Detecta referencias repetidas DENTRO de un mismo cuadre (individual o agrupado —
+// ambos deben comportarse igual, así que esta es la única implementación que los dos
+// endpoints de cierre de cuadre usan). Cruza consignaciones y cobros CxC juntos.
+//
+// ✅ Excepción legítima: un mismo cliente puede pagar en una sola transferencia dos
+// deudas distintas (dos fiados, o un cobro de hoy + un fiado viejo) — el entregador
+// registra dos abonos que comparten el mismo comprobante. Eso no es fraude, es un
+// pago dividido entre dos deudas del mismo cliente. Solo se bloquea cuando la misma
+// referencia aparece para clientes DISTINTOS, la señal real de reutilización indebida
+// de un comprobante. Sin cliente identificado en una de las dos entradas, no se puede
+// asumir que es el mismo — cuenta como "alguien distinto" para no debilitar el control.
+export function referenciasRepetidasDentroDelCuadre(
+  entradas: { numero: string | null | undefined; cliente?: string | null | undefined }[]
+): Set<string> {
+  const clientesPorReferencia = new Map<string, Set<string>>()
+  for (const e of entradas) {
+    const numero = String(e.numero || '').trim()
+    if (!numero) continue
+    const nl = numero.toLowerCase()
+    const cliente = String(e.cliente || '').trim().toLowerCase()
+    const clienteKey = cliente || `__sin_cliente_${clientesPorReferencia.get(nl)?.size ?? 0}`
+    if (!clientesPorReferencia.has(nl)) clientesPorReferencia.set(nl, new Set())
+    clientesPorReferencia.get(nl)!.add(clienteKey)
+  }
+  return new Set(
+    Array.from(clientesPorReferencia.entries())
+      .filter(([, clientes]) => clientes.size > 1)
+      .map(([numero]) => numero)
+  )
+}

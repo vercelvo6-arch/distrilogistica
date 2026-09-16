@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
-import { buscarReferenciasUsadas } from '@/lib/validar-referencia'
+import { buscarReferenciasUsadas, referenciasRepetidasDentroDelCuadre } from '@/lib/validar-referencia'
 
 export async function POST(request: NextRequest) {
   try {
@@ -85,35 +85,17 @@ export async function POST(request: NextRequest) {
     // ── 3b. ANTIFRAUDE: ninguna referencia puede repetirse, ni contra otra fuente del
     // sistema ni entre sí dentro de este mismo cuadre.
     //
-    // ✅ Excepción legítima: un mismo cliente puede pagar en una sola transferencia
-    // dos deudas distintas (dos fiados, o un cobro de hoy + un fiado viejo) — el
-    // entregador registra dos abonos que comparten el mismo comprobante. Solo se
-    // bloquea cuando la misma referencia aparece para clientes DISTINTOS.
+    // Misma lógica (cliente-consciente) que /api/cuadres-caja — cuadre es cuadre,
+    // individual o agrupado no deberían comportarse distinto — por eso vive en
+    // lib/validar-referencia.ts en vez de reimplementarse en cada endpoint.
     const entradasDelCuadre = [
-      ...(consignacionesArray || []).map((c: any) => ({
-        numero:  String(c.numero || '').trim(),
-        cliente: String(c.cliente || '').trim().toLowerCase(),
-      })),
-      ...cobros.map((c: any) => ({
-        numero:  String(c.referencia || '').trim(),
-        cliente: String(c.cliente || '').trim().toLowerCase(),
-      })),
-    ].filter((e: { numero: string }) => e.numero.length > 0)
-
-    const numerosDelCuadre = entradasDelCuadre.map((e: { numero: string }) => e.numero)
-
-    const clientesPorReferencia = new Map<string, Set<string>>()
-    for (const e of entradasDelCuadre) {
-      const nl = e.numero.toLowerCase()
-      const clienteKey = e.cliente || `__sin_cliente_${clientesPorReferencia.get(nl)?.size ?? 0}`
-      if (!clientesPorReferencia.has(nl)) clientesPorReferencia.set(nl, new Set())
-      clientesPorReferencia.get(nl)!.add(clienteKey)
-    }
-    const repetidosEnEsteCuadre = new Set(
-      Array.from(clientesPorReferencia.entries())
-        .filter(([, clientes]) => clientes.size > 1)
-        .map(([numero]) => numero)
-    )
+      ...(consignacionesArray || []).map((c: any) => ({ numero: c.numero, cliente: c.cliente })),
+      ...cobros.map((c: any) => ({ numero: c.referencia, cliente: c.cliente })),
+    ]
+    const numerosDelCuadre = entradasDelCuadre
+      .map((e: any) => String(e.numero || '').trim())
+      .filter((n: string) => n.length > 0)
+    const repetidosEnEsteCuadre = referenciasRepetidasDentroDelCuadre(entradasDelCuadre)
 
     const idsAbonoPropio = cobros
       .map((c: any) => c.abonoId)
@@ -211,10 +193,15 @@ export async function POST(request: NextRequest) {
       // vuelven a aplicar contra el saldo del fiado ni se duplican en abonos_fiados
       // (eso ya lo hizo /api/fiados/registrar-abono). Solo los cobros nuevos, escritos
       // por caja en este mismo modal, generan una fila nueva.
+      //
+      // ✅ El vínculo por abonoId se procesa ANTES de exigir monto > 0 — ese monto ya
+      // se validó cuando el abono se creó (registrar-abono no permite abonos en 0). Si
+      // el filtro de monto corriera primero y por cualquier motivo el payload llegara
+      // con el monto en 0, el abono quedaba sin vincular para siempre (planilla_cobro_id
+      // NULL) y volvía a aparecer como pendiente en cada cuadre futuro del entregador —
+      // el mismo arrastre que ya afectó a Carlos y Miguel.
       for (const cobro of cobros) {
-        const efectivo = Number(cobro.montoEfectivo) || 0
-        const nequi    = Number(cobro.montoNequi) || 0
-        if (!cobro.id || efectivo + nequi <= 0) continue
+        if (!cobro.id) continue
 
         if (cobro.abonoId) {
           await sql`
@@ -225,6 +212,10 @@ export async function POST(request: NextRequest) {
           `
           continue
         }
+
+        const efectivo = Number(cobro.montoEfectivo) || 0
+        const nequi    = Number(cobro.montoNequi) || 0
+        if (efectivo + nequi <= 0) continue
 
         const fiadoId = Number(cobro.id)
         const [fiado] = await sql`
