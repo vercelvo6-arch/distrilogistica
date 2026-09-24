@@ -54,6 +54,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // ✅ Duplicado coherente: si ya existe un abono para esta misma deuda con este
+    // mismo monto que todavía no se concilió en ningún cuadre (por ejemplo, caja ya
+    // lo había registrado desde el cuadre y el entregador lo vuelve a poner en ruta,
+    // o un reintento por conexión lenta), es el mismo pago — no uno nuevo. Se
+    // responde éxito sin insertar de nuevo ni volver a descontar el saldo.
+    const [abonoCoherente] = await sql`
+      SELECT id FROM abonos_fiados
+      WHERE pedido_id = ${String(fiadoId)}
+        AND monto_abono = ${efectivo}
+        AND monto_nequi = ${nequi}
+        AND planilla_cobro_id IS NULL
+      ORDER BY created_at ASC
+      LIMIT 1
+    `
+    if (abonoCoherente) {
+      return NextResponse.json({
+        success: true,
+        mensaje: 'Este cobro ya estaba registrado — no se duplicó.',
+        fiado_id:        fiado.id,
+        cliente:         fiado.cliente,
+        monto_abonado:   totalAbono,
+        efectivo,
+        nequi,
+        monto_pagado:    Number(fiado.monto_pagado),
+        saldo_pendiente: Number(fiado.saldo_pendiente),
+        estado:          fiado.estado,
+        pago_completo:   fiado.estado === 'pagado_completo',
+      })
+    }
+
     const saldoActual = Number(fiado.saldo_pendiente)
 
     if (totalAbono > saldoActual) {

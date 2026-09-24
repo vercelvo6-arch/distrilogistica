@@ -273,6 +273,29 @@ export async function POST(request: Request) {
             // Fiado: mismo tratamiento que un cobro CxC normal sobre 'fiados'
             const fiadoIdPA = Number(cobro.pagoAnticipadoFiadoId)
 
+            // ✅ Mismo criterio de duplicado coherente que en un cobro CxC normal —
+            // ver comentario en la rama esFiadoNumerico más abajo.
+            const [abonoCoherentePA] = await sql`
+              SELECT id, planilla_cobro_id FROM abonos_fiados
+              WHERE pedido_id = ${String(fiadoIdPA)}
+                AND monto_abono = ${efectivo}
+                AND monto_nequi = ${nequi}
+                AND planilla_cobro_id IS NULL
+              ORDER BY created_at ASC
+              LIMIT 1
+            `
+            if (abonoCoherentePA) {
+              abonosFrescoIds.push(abonoCoherentePA.id)
+              await sql`
+                UPDATE pagos_anticipados SET
+                  estado        = 'vinculado',
+                  vinculado_en  = NOW(),
+                  vinculado_por = ${session.user.nombre}
+                WHERE id = ${Number(cobro.pagoAnticipadoId)}
+              `
+              continue
+            }
+
             const [fiadoPA] = await sql`
               SELECT id, monto_pagado, saldo_pendiente
               FROM fiados
@@ -341,6 +364,27 @@ export async function POST(request: Request) {
         if (esFiadoNumerico) {
           const fiadoId = Number(cobro.id)
 
+          // ✅ Duplicado coherente: si ya existe un abono con esta misma deuda y este
+          // mismo monto que TODAVÍA no se concilió en ningún cuadre, es el mismo pago
+          // volviendo a pasar por el sistema (lo puso el entregador en ruta y ahora lo
+          // abre caja, o el mismo cuadre lo procesó dos veces) — no un segundo pago
+          // real. Se reutiliza y se vincula en vez de insertar de nuevo. Una vez que
+          // el primero ya quedó conciliado (planilla_cobro_id no nulo), un monto igual
+          // más adelante sí puede ser un pago legítimo distinto y no se bloquea.
+          const [abonoCoherente] = await sql`
+            SELECT id, planilla_cobro_id FROM abonos_fiados
+            WHERE pedido_id = ${String(fiadoId)}
+              AND monto_abono = ${efectivo}
+              AND monto_nequi = ${nequi}
+              AND planilla_cobro_id IS NULL
+            ORDER BY created_at ASC
+            LIMIT 1
+          `
+          if (abonoCoherente) {
+            abonosFrescoIds.push(abonoCoherente.id)
+            continue
+          }
+
           const [fiado] = await sql`
             SELECT id, monto_total, monto_pagado, saldo_pendiente, estado
             FROM fiados
@@ -393,6 +437,22 @@ export async function POST(request: Request) {
           abonosFrescoIds.push(abonoFresco.id)
         } else {
           const pedidoId = String(cobro.id)
+
+          // ✅ Mismo criterio de duplicado coherente que en la rama de fiados —
+          // ver comentario arriba.
+          const [abonoCoherentePedido] = await sql`
+            SELECT id, planilla_cobro_id FROM abonos_fiados
+            WHERE pedido_id = ${pedidoId}
+              AND monto_abono = ${efectivo}
+              AND monto_nequi = ${nequi}
+              AND planilla_cobro_id IS NULL
+            ORDER BY created_at ASC
+            LIMIT 1
+          `
+          if (abonoCoherentePedido) {
+            abonosFrescoIds.push(abonoCoherentePedido.id)
+            continue
+          }
 
           const [pedido] = await sql`
             SELECT id, total, monto_pagado, saldo_pendiente, estado

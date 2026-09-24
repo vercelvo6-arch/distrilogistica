@@ -218,6 +218,29 @@ export async function POST(request: NextRequest) {
         if (efectivo + nequi <= 0) continue
 
         const fiadoId = Number(cobro.id)
+
+        // ✅ Duplicado coherente — mismo criterio que /api/cuadres-caja: si ya existe
+        // un abono para esta misma deuda con este mismo monto que todavía no se
+        // concilió en ningún cuadre, es el mismo pago volviendo a pasar por el
+        // sistema (reintento, o caja procesándolo dos veces) — se vincula el que ya
+        // existe en vez de insertar uno nuevo y sumar el saldo dos veces.
+        const [abonoCoherente] = await sql`
+          SELECT id FROM abonos_fiados
+          WHERE pedido_id = ${String(fiadoId)}
+            AND monto_abono = ${efectivo}
+            AND monto_nequi = ${nequi}
+            AND planilla_cobro_id IS NULL
+          ORDER BY created_at ASC
+          LIMIT 1
+        `
+        if (abonoCoherente) {
+          await sql`
+            UPDATE abonos_fiados SET planilla_cobro_id = ${cuadre.id}
+            WHERE id = ${abonoCoherente.id}
+          `
+          continue
+        }
+
         const [fiado] = await sql`
           SELECT id, monto_pagado, saldo_pendiente
           FROM fiados
