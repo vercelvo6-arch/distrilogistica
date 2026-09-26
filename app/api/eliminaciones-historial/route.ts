@@ -116,6 +116,16 @@ export async function POST(request: NextRequest) {
             ON CONFLICT (id) DO NOTHING
           `
         }
+      } else if (registro.tipo_entidad === "fiado") {
+        // Los fiados nunca se borran de la tabla (soft delete) -- restaurar es solo
+        // revertir la marca, no reinsertar nada.
+        await sql`
+          UPDATE fiados SET
+            eliminado = false,
+            eliminado_por = NULL,
+            fecha_eliminacion = NULL
+          WHERE id = ${Number(registro.entidad_id)}
+        `
       } else {
         throw new Error(`tipo_entidad desconocido: ${registro.tipo_entidad}`)
       }

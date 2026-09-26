@@ -7,7 +7,7 @@ import { Trash2, RotateCcw, Loader2 } from "lucide-react"
 
 interface Eliminacion {
   id: string
-  tipo_entidad: "planilla" | "pedido" | "novedad"
+  tipo_entidad: "planilla" | "pedido" | "novedad" | "fiado"
   entidad_id: string
   contexto: Record<string, any> | null
   motivo: string | null
@@ -19,6 +19,12 @@ const ETIQUETA_TIPO: Record<string, string> = {
   planilla: "Planilla",
   pedido: "Pedido",
   novedad: "Novedad (fiado/agotado/devolución)",
+  fiado: "Fiado (cuenta por cobrar)",
+}
+
+function formatCOP(n: any): string {
+  const num = Number(n)
+  return isNaN(num) ? "?" : num.toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 })
 }
 
 function describirContexto(item: Eliminacion): string {
@@ -28,6 +34,9 @@ function describirContexto(item: Eliminacion): string {
   }
   if (item.tipo_entidad === "pedido") {
     return `${c.cliente ?? "sin cliente"} · planilla ${c.planilla_id ?? "?"}`
+  }
+  if (item.tipo_entidad === "fiado") {
+    return `${c.cliente ?? "sin cliente"} · saldo ${formatCOP(c.saldo_pendiente)} de ${formatCOP(c.monto_total)} · ${c.entregador ?? "sin entregador"}`
   }
   return `Pedido ${c.pedido_id ?? "?"} · ${c.tipo_novedad ?? "?"}`
 }
@@ -96,7 +105,7 @@ export function EliminadosView() {
           Eliminados
         </h2>
         <p className="text-sm text-muted-foreground">
-          Planillas, pedidos y novedades (fiados/agotados/devoluciones) eliminados — se pueden restaurar sin necesitar un archivo externo.
+          Planillas, pedidos, novedades (fiados/agotados/devoluciones) y fiados (cuentas por cobrar) eliminados — se pueden restaurar sin necesitar un archivo externo.
         </p>
       </div>
 

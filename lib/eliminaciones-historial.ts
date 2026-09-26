@@ -82,6 +82,39 @@ export async function registrarSnapshotPedido(
   `
 }
 
+// Fiados no se borran de la tabla -- solo se marcan eliminado=true (soft delete).
+// El snapshot es solo para mostrarlo en la pestaña "Eliminados" con contexto legible;
+// restaurar no reinserta nada, solo revierte esa marca (ver /api/eliminaciones-historial).
+export async function registrarSnapshotFiado(
+  sql: any,
+  fiadoId: number,
+  usuario: Usuario,
+  motivo: string
+) {
+  const [fiadoRow] = await sql`
+    SELECT to_jsonb(f) AS row FROM fiados f WHERE f.id = ${fiadoId}
+  `
+  if (!fiadoRow) return
+
+  const snapshot = { fiado: fiadoRow.row }
+  const contexto = {
+    fiado_id: fiadoId,
+    cliente: fiadoRow.row?.cliente || null,
+    saldo_pendiente: fiadoRow.row?.saldo_pendiente || null,
+    monto_total: fiadoRow.row?.monto_total || null,
+    entregador: fiadoRow.row?.entregador || null,
+  }
+
+  await sql`
+    INSERT INTO eliminaciones_historial (
+      tipo_entidad, entidad_id, contexto, snapshot, motivo, eliminado_por, eliminado_por_nombre
+    ) VALUES (
+      'fiado', ${String(fiadoId)}, ${JSON.stringify(contexto)}::jsonb, ${JSON.stringify(snapshot)}::jsonb,
+      ${motivo}, ${usuario.id}, ${usuario.nombre}
+    )
+  `
+}
+
 export async function registrarSnapshotNovedad(
   sql: any,
   novedadId: string,

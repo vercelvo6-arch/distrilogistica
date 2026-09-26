@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { registrarSnapshotFiado } from '@/lib/eliminaciones-historial'
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,14 +46,32 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Este fiado ya fue eliminado' }, { status: 400 })
       }
 
-      await sql`
-        UPDATE fiados
-        SET
-          eliminado = true,
-          eliminado_por = ${session.user.id},
-          fecha_eliminacion = NOW()
-        WHERE id = ${idNum}
-      `
+      await sql`BEGIN`
+      try {
+        // ✅ Respaldo ANTES de marcarlo eliminado, para que aparezca en la pestaña
+        // "Eliminados" y se pueda restaurar sin tener que ir a la base de datos --
+        // antes solo quedaba oculto sin dejar rastro (bug confirmado: un fiado con
+        // saldo real pendiente se eliminó por error y desapareció sin aviso).
+        await registrarSnapshotFiado(
+          sql,
+          idNum,
+          { id: session.user.id, nombre: session.user.nombre },
+          'fiados/eliminar'
+        )
+
+        await sql`
+          UPDATE fiados
+          SET
+            eliminado = true,
+            eliminado_por = ${session.user.id},
+            fecha_eliminacion = NOW()
+          WHERE id = ${idNum}
+        `
+        await sql`COMMIT`
+      } catch (txError) {
+        await sql`ROLLBACK`
+        throw txError
+      }
 
       console.log(`[FIADOS ELIMINAR] ✓ Fiado ${idNum} eliminado por ${session.user.nombre}`)
 
