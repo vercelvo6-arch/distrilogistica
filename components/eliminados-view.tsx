@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Trash2, RotateCcw, Loader2 } from "lucide-react"
+import { Trash2, RotateCcw, Loader2, XCircle } from "lucide-react"
 
 interface Eliminacion {
   id: string
@@ -45,6 +45,7 @@ export function EliminadosView() {
   const [eliminaciones, setEliminaciones] = useState<Eliminacion[]>([])
   const [loading, setLoading] = useState(true)
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null)
+  const [borrandoId, setBorrandoId] = useState<string | null>(null)
 
   useEffect(() => {
     cargar()
@@ -89,6 +90,32 @@ export function EliminadosView() {
     }
   }
 
+  async function handleEliminarDefinitivo(item: Eliminacion) {
+    if (!confirm(
+      `¿ELIMINAR DEFINITIVAMENTE ${ETIQUETA_TIPO[item.tipo_entidad]} — ${describirContexto(item)}?\n\n` +
+      `Esta acción NO se puede deshacer: ya no podrás restaurarlo.`
+    )) {
+      return
+    }
+
+    setBorrandoId(item.id)
+    try {
+      const response = await fetch("/api/eliminaciones-historial", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Error al eliminar definitivamente")
+
+      await cargar()
+    } catch (err) {
+      alert("No se pudo eliminar definitivamente: " + (err as Error).message)
+    } finally {
+      setBorrandoId(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -130,22 +157,39 @@ export function EliminadosView() {
                   {new Date(item.eliminado_en).toLocaleString("es-CO")}
                 </p>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleRestaurar(item)}
-                disabled={restaurandoId === item.id}
-                className="shrink-0"
-              >
-                {restaurandoId === item.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <RotateCcw className="h-4 w-4 mr-1" />
-                    Restaurar
-                  </>
-                )}
-              </Button>
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleRestaurar(item)}
+                  disabled={restaurandoId === item.id || borrandoId === item.id}
+                >
+                  {restaurandoId === item.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      Restaurar
+                    </>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleEliminarDefinitivo(item)}
+                  disabled={restaurandoId === item.id || borrandoId === item.id}
+                  className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+                >
+                  {borrandoId === item.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Eliminar definitivamente
+                    </>
+                  )}
+                </Button>
+              </div>
             </Card>
           ))}
         </div>

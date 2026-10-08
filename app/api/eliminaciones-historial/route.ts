@@ -155,3 +155,97 @@ export async function POST(request: NextRequest) {
     return handleDBError(error, "ELIMINACIONES_HISTORIAL_RESTAURAR")
   }
 }
+
+// DELETE: eliminar DEFINITIVAMENTE un registro de la pestaña "Eliminados" (ya no se podrá restaurar).
+// - planilla / pedido / novedad: esas filas ya no existen en sus tablas; lo único que queda es
+//   este respaldo, así que se borra el respaldo.
+// - fiado: la fila sigue en la tabla fiados (solo estaba marcada eliminado=true), así que se borra
+//   de verdad. Si tiene abonos registrados NO se borra: esos abonos son dinero ya manejado en caja.
+const ROLES_ELIMINAR_DEFINITIVO = ["coordinador", "administrador"]
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getSession()
+    if (!session?.user) {
+      return NextResponse.json({ error: "No autenticado" }, { status: 401 })
+    }
+    if (!ROLES_ELIMINAR_DEFINITIVO.includes(session.user.rol)) {
+      return NextResponse.json({ error: "No autorizado para eliminar definitivamente" }, { status: 403 })
+    }
+
+    const { id } = await request.json()
+    if (!id) {
+      return NextResponse.json({ error: "id requerido" }, { status: 400 })
+    }
+
+    const sql = getDB()
+
+    const [registro] = await sql`
+      SELECT id, tipo_entidad, entidad_id, contexto, restaurado
+      FROM eliminaciones_historial
+      WHERE id = ${id}
+    `
+    if (!registro) {
+      return NextResponse.json({ error: "Registro no encontrado" }, { status: 404 })
+    }
+    if (registro.restaurado) {
+      return NextResponse.json({ error: "Este registro ya fue restaurado; no está en eliminados" }, { status: 409 })
+    }
+
+    if (registro.tipo_entidad === "fiado") {
+      const fiadoId = Number(registro.entidad_id)
+
+      const [fiado] = await sql`SELECT id, eliminado FROM fiados WHERE id = ${fiadoId}`
+      if (fiado && !fiado.eliminado) {
+        return NextResponse.json({ error: "Este fiado está activo de nuevo; no se puede eliminar definitivamente" }, { status: 409 })
+      }
+
+      const [abonos] = await sql`
+        SELECT COUNT(*)::int AS n FROM abonos_fiados
+        WHERE pedido_id = ${String(fiadoId)} AND COALESCE(origen_tabla, 'fiados') = 'fiados'
+      `
+      if (abonos?.n > 0) {
+        return NextResponse.json(
+          { error: `Este fiado tiene ${abonos.n} abono(s) registrado(s) (dinero ya manejado en caja); no se puede borrar definitivamente` },
+          { status: 409 }
+        )
+      }
+
+      try {
+        // sql.transaction: ambas sentencias se aplican juntas o ninguna.
+        await sql.transaction([
+          sql`DELETE FROM fiados WHERE id = ${fiadoId} AND eliminado = true`,
+          sql`DELETE FROM eliminaciones_historial WHERE tipo_entidad = 'fiado' AND entidad_id = ${String(fiadoId)}`,
+        ])
+      } catch (e: any) {
+        if (e?.code === "23503") {
+          return NextResponse.json({ error: "Este fiado está referenciado por otros registros; no se puede borrar definitivamente" }, { status: 409 })
+        }
+        throw e
+      }
+    } else {
+      await sql`DELETE FROM eliminaciones_historial WHERE id = ${id}`
+    }
+
+    try {
+      await sql`
+        INSERT INTO audit_log (user_id, user_email, action, details)
+        VALUES (
+          ${String(session.user.id)}, ${session.user.email ?? null}, 'eliminar_definitivo',
+          ${JSON.stringify({ tipo_entidad: registro.tipo_entidad, entidad_id: registro.entidad_id, contexto: registro.contexto })}::jsonb
+        )
+      `
+    } catch (e) {
+      console.error("[ELIMINAR DEFINITIVO] No se pudo registrar en audit_log:", e)
+    }
+
+    return NextResponse.json({
+      success: true,
+      mensaje: "Eliminado definitivamente",
+      tipo_entidad: registro.tipo_entidad,
+      entidad_id: registro.entidad_id,
+    })
+  } catch (error) {
+    return handleDBError(error, "ELIMINACIONES_HISTORIAL_DEFINITIVO")
+  }
+}
