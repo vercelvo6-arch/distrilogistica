@@ -257,7 +257,7 @@ export async function updateEstadoAlistamiento(
       UPDATE pedido_productos pp
       SET estado_alistamiento = ${estadoAlistamiento}
       FROM pedidos ped
-      JOIN planillas pl ON ped.planilla_id = pl.id
+      JOIN planillas pl ON COALESCE(ped.planilla_mercancia_id, ped.planilla_id) = pl.id
       WHERE pp.pedido_id = ped.id
         AND pp.codigo = ${codigo}
         AND pl.entregador = ${entregador}

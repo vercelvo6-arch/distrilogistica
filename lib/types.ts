@@ -38,6 +38,7 @@ export interface Order {
   montoPagado: number
   saldoPendiente: number
   entregador?: string | null
+  mercanciaEnOtraPlanilla?: boolean
 }
 
 export interface RouteSheet {
@@ -58,6 +59,7 @@ export interface RouteSheet {
   cuentasPorCobrar: any[]
   cuadradoEnCaja?: boolean
   fechaCuadreCaja?: string
+  mercanciaReasignada?: Order[]
 }
 
 export interface SalesRecord {

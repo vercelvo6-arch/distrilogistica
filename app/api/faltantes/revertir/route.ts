@@ -74,7 +74,7 @@ export async function PATCH(request: NextRequest) {
       SET estado_alistamiento = 'incompleto'
       FROM pedidos p
       WHERE pp.pedido_id = p.id
-        AND p.planilla_id = ${faltante.planilla_id}
+        AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${faltante.planilla_id}
         AND pp.codigo = ${faltante.codigo}
     `;
 

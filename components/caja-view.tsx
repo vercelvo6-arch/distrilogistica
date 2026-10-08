@@ -193,7 +193,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   // Referencias (consignaciones + cobros CxC) que ya existen en la BD — un solo mapa,
   // porque el endpoint de validación ya las busca juntas en una sola consulta. El valor
   // trae cliente/fecha/entregador para mostrar dónde se usó cada referencia repetida.
-  const [duplicadosBD, setDuplicadosBD] = useState<Map<string, { cliente: string | null; fecha: string | null; entregador: string | null; origen: string; cerrado: boolean }>>(new Map())
+  const [duplicadosBD, setDuplicadosBD] = useState<Map<string, { cliente: string | null; fecha: string | null; entregador: string | null; origen: string; cerrado: boolean; cuadreId?: number | null; monto?: number | null; restante?: number | null }>>(new Map())
+  const [aplicandoPagoContado, setAplicandoPagoContado] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [validatingConsignacion, setValidatingConsignacion] = useState(false)
   const [selectedRoutes, setSelectedRoutes] = useState<number[]>([])
@@ -1626,7 +1627,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
           const data = await res.json()
           setDuplicadosBD(new Map((data.duplicados || []).map((d: any) => [
             String(d.numero).toLowerCase(),
-            { cliente: d.cliente || null, fecha: d.fecha || null, entregador: d.entregador || null, origen: d.origen, cerrado: Boolean(d.cerrado) },
+            { cliente: d.cliente || null, fecha: d.fecha || null, entregador: d.entregador || null, origen: d.origen, cerrado: Boolean(d.cerrado), cuadreId: d.cuadreId ?? null, monto: d.monto ?? null, restante: d.restante ?? null },
           ])))
         }
       } catch (e) {
@@ -1661,6 +1662,59 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       ? "ya fue usada en un cuadre ya cerrado"
       : "ya está registrada, pendiente de incluirse en un cuadre (no es un duplicado real, solo falta cuadrarla)"
     return detalle ? `${base} (${detalle})` : base
+  }
+
+  // Mismo cliente aunque cambien mayúsculas, tildes, espacios o signos.
+  const normalizarNombre = (s: unknown) =>
+    String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+
+  // Fiados vivos de un cliente (para avisar cuando alguien escribe su nombre en una consignación).
+  const fiadosVivosDeCliente = (nombre: string) => {
+    const n = normalizarNombre(nombre)
+    if (n.length < 5) return { cantidad: 0, total: 0 }
+    const propios = cobrosDisponibles.filter(c => !c.esPagoAnticipado && normalizarNombre(c.cliente) === n)
+    return { cantidad: propios.length, total: propios.reduce((s, c) => s + (Number(c.saldo_pendiente) || 0), 0) }
+  }
+
+  // El comprobante ya se contó en un cuadre cerrado como consignación del MISMO cliente
+  // y todavía le queda monto sin aplicar a fiados: en vez de bloquear, se puede aplicar
+  // al fiado sin volver a contar el dinero.
+  const puedeAplicarPagoContado = (cobro: any, info?: { cliente: string | null; origen: string; cerrado: boolean; cuadreId?: number | null; restante?: number | null }) =>
+    !!info && info.origen === "consignacion" && info.cerrado && !!info.cuadreId &&
+    (info.restante ?? 0) >= 1 &&
+    !cobro.yaRegistrado && !cobro.esPagoAnticipado && /^\d+$/.test(String(cobro.id)) &&
+    normalizarNombre(info.cliente) !== "" && normalizarNombre(info.cliente) === normalizarNombre(cobro.cliente)
+
+  const aplicarPagoContado = async (cobro: any, referencia: string, recargar: () => Promise<void>) => {
+    const ref = referencia.trim()
+    const info = duplicadosBD.get(ref.toLowerCase())
+    const confirmado = window.confirm(
+      `Este pago (ref. ${ref}) ya se contó en el cuadre #${info?.cuadreId} como consignación de ${info?.cliente} ` +
+      `por ${formatCOP(Number(info?.monto) || 0)}.\n\n` +
+      `¿Aplicarlo al fiado de ${cobro.cliente} (saldo ${formatCOP(Number(cobro.saldo_pendiente) || 0)})?\n\n` +
+      `El dinero NO se vuelve a contar en ningún cuadre: solo se descuenta del fiado.`
+    )
+    if (!confirmado) return
+    setAplicandoPagoContado(true)
+    try {
+      const res = await fetch("/api/fiados/aplicar-pago-contado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fiadoId: Number(cobro.id), referencia: ref }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "No se pudo aplicar el pago")
+      toast({
+        title: "Pago aplicado al fiado",
+        description: `${cobro.cliente}: se descontaron ${formatCOP(data.aplicado)}. Saldo del fiado: ${formatCOP(data.saldo_pendiente)}`,
+      })
+      setCobrosVinculados(prev => prev.filter(c => cobroKey(c) !== cobroKey(cobro)))
+      await recargar()
+    } catch (e) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "No se pudo aplicar el pago", variant: "destructive" })
+    } finally {
+      setAplicandoPagoContado(false)
+    }
   }
 
   const loadAnticipadasCajaPendientes = async (entregador: string) => {
@@ -3853,6 +3907,22 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                               ⚠ {fraseDuplicado(duplicadosBD.get((cobro.referencia || "").trim().toLowerCase()))}
                             </p>
                           )}
+                          {puedeAplicarPagoContado(cobro, duplicadosBD.get((cobro.referencia || "").trim().toLowerCase())) && (
+                            <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 space-y-1">
+                              <p className="text-xs text-amber-900">
+                                Este pago ya entró al cuadre #{duplicadosBD.get((cobro.referencia || "").trim().toLowerCase())?.cuadreId} como consignación de este mismo cliente. No se contará de nuevo.
+                              </p>
+                              <Button
+                                type="button" size="sm" variant="outline" disabled={aplicandoPagoContado}
+                                className="h-7 text-xs border-amber-400 text-amber-900 hover:bg-amber-100"
+                                onClick={() => aplicarPagoContado(cobro, cobro.referencia || "", async () => {
+                                  if (selectedPlanilla?.entregador) await loadCobrosDisponibles(selectedPlanilla.entregador)
+                                })}
+                              >
+                                {aplicandoPagoContado ? "Aplicando..." : "Aplicar este pago al fiado"}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                       {(Number(cobro.montoEfectivo) > 0 || Number(cobro.montoNequi) > 0) && (
@@ -3962,6 +4032,15 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       <Label className="text-xs">Nombre del Cliente</Label>
                       <Input className="h-8 text-sm" placeholder="Nombre del cliente que consignó"
                         value={cons.cliente || ""} onChange={(e) => actualizarConsignacion(cons.id, "cliente", e.target.value)} />
+                      {!cons.origenConsignacionId && (() => {
+                        const v = fiadosVivosDeCliente(cons.cliente || "")
+                        if (v.cantidad === 0) return null
+                        return (
+                          <p className="text-xs text-amber-700 mt-0.5">
+                            ℹ Este cliente tiene {v.cantidad} fiado{v.cantidad > 1 ? "s" : ""} pendiente{v.cantidad > 1 ? "s" : ""} por {formatCOP(v.total)}. Si este pago es de un fiado, regístralo en «Cobros CxC», no como consignación.
+                          </p>
+                        )
+                      })()}
                     </div>
                     <div className="col-span-2">
                       <Label className="text-xs">Número de Factura</Label>
@@ -4348,6 +4427,22 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                 ⚠ {fraseDuplicado(duplicadosBD.get((cobro.numeroReferencia || "").trim().toLowerCase()))}
                               </p>
                             )}
+                            {puedeAplicarPagoContado(cobro, duplicadosBD.get((cobro.numeroReferencia || "").trim().toLowerCase())) && (
+                              <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 space-y-1">
+                                <p className="text-xs text-amber-900">
+                                  Este pago ya entró al cuadre #{duplicadosBD.get((cobro.numeroReferencia || "").trim().toLowerCase())?.cuadreId} como consignación de este mismo cliente. No se contará de nuevo.
+                                </p>
+                                <Button
+                                  type="button" size="sm" variant="outline" disabled={aplicandoPagoContado}
+                                  className="h-7 text-xs border-amber-400 text-amber-900 hover:bg-amber-100"
+                                  onClick={() => aplicarPagoContado(cobro, cobro.numeroReferencia || "", async () => {
+                                    if (agrupadoData?.entregador) await loadCobrosDisponibles(agrupadoData.entregador, true)
+                                  })}
+                                >
+                                  {aplicandoPagoContado ? "Aplicando..." : "Aplicar este pago al fiado"}
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -4471,6 +4566,15 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                 </button>
                               ))}
                             </div>
+                          )
+                        })()}
+                        {!cons.origenConsignacionId && (() => {
+                          const v = fiadosVivosDeCliente(cons.cliente || "")
+                          if (v.cantidad === 0) return null
+                          return (
+                            <p className="text-xs text-amber-700 mt-0.5">
+                              ℹ Este cliente tiene {v.cantidad} fiado{v.cantidad > 1 ? "s" : ""} pendiente{v.cantidad > 1 ? "s" : ""} por {formatCOP(v.total)}. Si este pago es de un fiado, regístralo en «Cobros CxC», no como consignación.
+                            </p>
                           )
                         })()}
                       </div>

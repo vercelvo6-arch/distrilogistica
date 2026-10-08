@@ -47,50 +47,50 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [observaciones, setObservaciones] = useState("")
   const [productoReemplazo, setProductoReemplazo] = useState("")
 
-  // ── Timer de alistamiento ──────────────────────────────────────────────────
-  const [timerActivo, setTimerActivo] = useState(false)
-  const [timerPausado, setTimerPausado] = useState(false)
-  const [timerSegundos, setTimerSegundos] = useState(0)
-  const [timerEntregador, setTimerEntregador] = useState<string | null>(null)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  // ── Timer de alistamiento: un cronómetro por tarjeta de entregador ────────
+  // El servidor guarda las marcas (inicio, pausa, segundos pausados) y la
+  // pantalla calcula el tiempo contra la hora del servidor. Así refrescar,
+  // cambiar de equipo o dejar la pestaña en segundo plano no altera el tiempo,
+  // y cada entregador lleva su propio reloj sin mezclarse con los demás.
+  const [ahoraMs, setAhoraMs] = useState(() => Date.now())
+  const [relojOffset, setRelojOffset] = useState(0)
+  const [timerBusy, setTimerBusy] = useState(false)
+  const [inicioDialog, setInicioDialog] = useState<{ entregador: string; enCurso: string[] } | null>(null)
+  const [pausaDialog, setPausaDialog] = useState<string | null>(null)
+  const [motivoPausa, setMotivoPausa] = useState("Esperando proveedor")
+  const [motivoOtro, setMotivoOtro] = useState("")
   const [activeTab, setActiveTab] = useState("alistamiento")
 
   useEffect(() => {
     loadData()
   }, [])
 
-  // ✅ Restaurar timer activo desde BD cuando cargan las planillas
+  // Solo se "late" cada segundo mientras haya algún cronómetro abierto.
+  const hayTimerAbierto = routeSheets.some((s: any) => s.timer_inicio && !s.timer_fin)
   useEffect(() => {
-    if (routeSheets.length === 0) return
-    if (timerActivo) return // ya hay un timer corriendo en memoria
+    if (!hayTimerAbierto) return
+    setAhoraMs(Date.now())
+    const id = setInterval(() => setAhoraMs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [hayTimerAbierto])
 
-    // Buscar si alguna planilla tiene timer_inicio sin timer_fin (timer activo en BD)
-    const planillaConTimer = routeSheets.find(
-      (s: any) => s.timer_inicio && !s.timer_fin
-    )
-    if (!planillaConTimer) return
-
-    const entregador = planillaConTimer.entregador
-    const inicio = new Date((planillaConTimer as any).timer_inicio).getTime()
-    const pausados = (planillaConTimer as any).timer_segundos_pausados || 0
-    const enPausa = !!(planillaConTimer as any).timer_pausa
-
-    // Calcular segundos transcurridos netos
-    const ahora = Date.now()
-    const transcurridos = Math.round((ahora - inicio) / 1000) - pausados
-    
-    setTimerEntregador(entregador)
-    setTimerSegundos(Math.max(0, transcurridos))
-    setTimerActivo(true)
-    setTimerPausado(enPausa)
-
-    if (!enPausa) {
-      if (timerRef.current) clearInterval(timerRef.current)
-      timerRef.current = setInterval(() => {
-        setTimerSegundos(prev => prev + 1)
-      }, 1000)
+  // Al volver a la pestaña se recarga del servidor, para que dos pantallas
+  // (o un equipo que estuvo dormido) muestren siempre el mismo estado.
+  useEffect(() => {
+    let ultima = 0
+    const refrescar = () => {
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - ultima < 15000) return
+      ultima = Date.now()
+      loadData()
     }
-  }, [routeSheets])
+    document.addEventListener('visibilitychange', refrescar)
+    window.addEventListener('focus', refrescar)
+    return () => {
+      document.removeEventListener('visibilitychange', refrescar)
+      window.removeEventListener('focus', refrescar)
+    }
+  }, [])
 
   async function loadData() {
   try {
@@ -103,8 +103,12 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     
     const data = await response.json()
 
+    if (data && !Array.isArray(data) && data.servidor_ahora) {
+      setRelojOffset(new Date(data.servidor_ahora).getTime() - Date.now())
+    }
+
     let planillasArray = data
-    
+
     if (!Array.isArray(data)) {
       if (data.planillas && Array.isArray(data.planillas)) {
         planillasArray = data.planillas
@@ -167,6 +171,32 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         total: Number(ped.total) || 0,
         montoPagado: 0,
         saldoPendiente: Number(ped.total) || 0,
+        comentarios: ped.observaciones,
+        mercanciaEnOtraPlanilla: !!ped.planilla_mercancia_id,
+        items: (ped.productos || []).map((prod: any) => ({
+          codigo: prod.codigo,
+          descripcion: prod.nombre,
+          categoria: prod.categoria || '',
+          cantidad: Number(prod.cantidad) || 0,
+          valorUnidad: Number(prod.precio_unitario) || 0,
+          subtotal: Number(prod.total) || 0,
+          cantidadDisponible: prod.cantidad_disponible,
+          cantidadFaltante: prod.cantidad_faltante || 0,
+          unidadIncompleta: prod.unidad_incompleta || false,
+          observacionesFaltante: prod.observaciones_faltante,
+          estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
+          comentario: prod.comentario,
+        })),
+      })),
+      mercanciaReasignada: (p.pedidos_mercancia_reasignada || []).map((ped: any) => ({
+        id: ped.id,
+        cliente: ped.cliente,
+        ruta: p.tipo_ruta,
+        fecha: p.fecha,
+        estado: ped.estado,
+        total: 0,
+        montoPagado: 0,
+        saldoPendiente: 0,
         comentarios: ped.observaciones,
         items: (ped.productos || []).map((prod: any) => ({
           codigo: prod.codigo,
@@ -264,7 +294,15 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       // resuelto (entregado/fiado/devolucion): la mercancía ya salió con
       // otro entregador otro día, solo se movieron para efectos de cuentas.
       // Solo los pedidos 'pendiente' representan mercancía real por alistar.
-      sheet.orders.filter((order) => order.estado === 'pendiente').forEach((order) => {
+      //
+      // Un pedido reasignado después de cargado (mercanciaEnOtraPlanilla) no suma
+      // aquí: su mercancía se alistó en otra planilla. Y al revés, esta planilla
+      // conserva la mercancía de los pedidos que ya se reasignaron a otra.
+      const pedidosConMercancia = [
+        ...sheet.orders.filter((order) => order.estado === 'pendiente' && !order.mercanciaEnOtraPlanilla),
+        ...(sheet.mercanciaReasignada || []).filter((order) => order.estado === 'pendiente'),
+      ]
+      pedidosConMercancia.forEach((order) => {
         order.items.forEach((item) => {
           const comentarioItem = (item.comentario || "").trim()
           const existing = productMap.get(item.codigo)
@@ -347,7 +385,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
       const sheetForEntregador = routeSheets.find(s => 
         s.entregador === editingProduct.entregador &&
-        s.orders.some(order => 
+        [...s.orders.filter(order => !order.mercanciaEnOtraPlanilla), ...(s.mercanciaReasignada || [])].some(order =>
           order.items.some(item => item.codigo === editingProduct.product.codigo)
         )
       )
@@ -389,7 +427,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         if (sheet.entregador === editingProduct.entregador) {
           return {
             ...sheet,
-            orders: sheet.orders.map(order => ({
+            orders: sheet.orders.map(order => order.mercanciaEnOtraPlanilla ? order : ({
               ...order,
               items: order.items.map(item => {
                 if (item.codigo === editingProduct.product.codigo) {
@@ -503,72 +541,121 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     setExpandedDeliveryPersons(newExpanded)
   }
 
-  // ── Funciones del timer — persisten en BD ────────────────────────────────
-  const callTimerApi = async (planillaId: string, accion: string) => {
+  // ── Funciones del timer — persisten en BD, una tarjeta de entregador a la vez ──
+  const callTimerApi = async (planillaId: string, accion: string, extra: Record<string, any> = {}) => {
     try {
-      await fetch(`/api/planillas/${planillaId}/timer`, {
+      const res = await fetch(`/api/planillas/${planillaId}/timer`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion }),
+        body: JSON.stringify({ accion, ...extra }),
       })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      return data.timer || null
     } catch (e) {
       console.error('[TIMER]', e)
+      return null
     }
   }
 
-  const iniciarTimer = (entregador: string) => {
-    if (timerActivo && timerEntregador === entregador) return
-    // ✅ FIX: incluir 'pendiente' además de 'alistando' porque handleStartPreparation
-    // puede no haber actualizado el estado de React todavía (asincronía de setState)
-    const planillasEntregador = routeSheets.filter(
+  // Aplica a la pantalla lo que el servidor confirmó (nunca lo que "debería" haber pasado).
+  const aplicarTimers = (resultados: { id: string; timer: any }[]) => {
+    setRouteSheets((prev: any[]) => prev.map((s: any) => {
+      const r = resultados.find(x => x.id === s.id)
+      if (!r || !r.timer) return s
+      return {
+        ...s,
+        timer_inicio: r.timer.timer_inicio || null,
+        timer_fin: r.timer.timer_fin || null,
+        timer_pausa: r.timer.timer_pausa || null,
+        timer_segundos_pausados: r.timer.timer_segundos_pausados || 0,
+      }
+    }))
+  }
+
+  const ejecutarAccionTimer = async (hojas: any[], accion: string, extra: Record<string, any> = {}) => {
+    if (hojas.length === 0) return true
+    setTimerBusy(true)
+    try {
+      const resultados = await Promise.all(
+        hojas.map(async (s) => ({ id: s.id as string, timer: await callTimerApi(s.id, accion, extra) }))
+      )
+      aplicarTimers(resultados)
+      const fallo = resultados.some(r => !r.timer)
+      if (fallo) alert('No se pudo guardar el cronómetro en el servidor. Revisa la conexión e inténtalo de nuevo.')
+      return !fallo
+    } finally {
+      setTimerBusy(false)
+    }
+  }
+
+  const hojasConTimerAbierto = (entregador: string): any[] =>
+    routeSheets.filter((s: any) => s.entregador === entregador && s.timer_inicio && !s.timer_fin)
+
+  // Tiempo de una tarjeta: se toma la planilla que arrancó primero (todas las de la
+  // tarjeta se inician, pausan y terminan juntas) y se calcula contra la hora del servidor.
+  const timerDe = (entregador: string) => {
+    const hojas = hojasConTimerAbierto(entregador)
+    if (hojas.length === 0) return null
+    const ref = hojas.reduce((a, b) => (new Date(a.timer_inicio) <= new Date(b.timer_inicio) ? a : b))
+    const ahora = ahoraMs + relojOffset
+    const inicio = new Date(ref.timer_inicio).getTime()
+    const pausa = ref.timer_pausa ? new Date(ref.timer_pausa).getTime() : null
+    const pausadosSeg = ref.timer_segundos_pausados || 0
+    const enPausaSeg = pausa ? Math.floor((ahora - pausa) / 1000) : 0
+    const segundos = Math.floor((ahora - inicio) / 1000) - pausadosSeg - enPausaSeg
+    return { segundos: Math.max(0, segundos), pausado: !!pausa }
+  }
+
+  const entregadoresCorriendo = (): string[] =>
+    Array.from(new Set(
+      routeSheets
+        .filter((s: any) => s.timer_inicio && !s.timer_fin && !s.timer_pausa)
+        .map((s: any) => s.entregador as string)
+    ))
+
+  // Si ya hay otra tarjeta corriendo, se pregunta qué hacer con ella antes de iniciar.
+  const solicitarInicio = async (entregador: string) => {
+    const enCurso = entregadoresCorriendo().filter(e => e !== entregador)
+    if (enCurso.length > 0) {
+      setInicioDialog({ entregador, enCurso })
+      return
+    }
+    await ejecutarInicio(entregador, [])
+  }
+
+  const ejecutarInicio = async (entregador: string, pausarOtros: string[]) => {
+    setInicioDialog(null)
+    for (const otro of pausarOtros) {
+      await ejecutarAccionTimer(hojasConTimerAbierto(otro), 'pausar', {
+        entregador: otro,
+        motivo: `Pausado al iniciar a ${entregador}`,
+      })
+    }
+    await handleStartPreparation(entregador)
+    // Se incluye 'pendiente' porque la lista de React de este render aún tiene el estado anterior.
+    const hojas = routeSheets.filter(
       s => s.entregador === entregador && (s.estado === 'alistando' || s.estado === 'pendiente')
     )
-    planillasEntregador.forEach(s => callTimerApi(s.id, 'iniciar'))
-    setTimerEntregador(entregador)
-    setTimerActivo(true)
-    setTimerPausado(false)
-    if (timerRef.current) clearInterval(timerRef.current)
-    timerRef.current = setInterval(() => {
-      setTimerSegundos(prev => prev + 1)
-    }, 1000)
+    await ejecutarAccionTimer(hojas, 'iniciar', { entregador })
   }
 
-  const pausarTimer = () => {
-    if (timerEntregador) {
-      const planillasEntregador = routeSheets.filter(
-        s => s.entregador === timerEntregador && s.estado === 'alistando'
-      )
-      planillasEntregador.forEach(s => callTimerApi(s.id, 'pausar'))
-    }
-    if (timerRef.current) clearInterval(timerRef.current)
-    setTimerPausado(true)
+  const confirmarPausa = async () => {
+    const entregador = pausaDialog
+    if (!entregador) return
+    const motivo = motivoPausa === 'Otro' ? (motivoOtro.trim() || 'Otro') : motivoPausa
+    setPausaDialog(null)
+    setMotivoOtro("")
+    setMotivoPausa("Esperando proveedor")
+    await ejecutarAccionTimer(hojasConTimerAbierto(entregador), 'pausar', { entregador, motivo })
   }
 
-  const reanudarTimer = () => {
-    if (timerEntregador) {
-      const planillasEntregador = routeSheets.filter(
-        s => s.entregador === timerEntregador && s.estado === 'alistando'
-      )
-      planillasEntregador.forEach(s => callTimerApi(s.id, 'reanudar'))
-    }
-    setTimerPausado(false)
-    timerRef.current = setInterval(() => {
-      setTimerSegundos(prev => prev + 1)
-    }, 1000)
+  const reanudarTimer = async (entregador: string) => {
+    await ejecutarAccionTimer(hojasConTimerAbierto(entregador), 'reanudar', { entregador })
   }
 
-  const detenerTimer = () => {
-    if (timerEntregador) {
-      const planillasEntregador = routeSheets.filter(
-        s => s.entregador === timerEntregador && (s.estado === 'alistando' || s.estado === 'alistado')
-      )
-      planillasEntregador.forEach(s => callTimerApi(s.id, 'finalizar'))
-    }
-    if (timerRef.current) clearInterval(timerRef.current)
-    setTimerActivo(false)
-    setTimerPausado(false)
-    setTimerSegundos(0)
-    setTimerEntregador(null)
+  const detenerTimer = async (entregador: string) => {
+    await ejecutarAccionTimer(hojasConTimerAbierto(entregador), 'finalizar', { entregador })
   }
 
   const formatTimer = (segundos: number) => {
@@ -578,10 +665,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
   }
-
-  useEffect(() => {
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [])
 
   const getEstadoInfo = (estado: string) => {
     switch (estado) {
@@ -772,40 +855,51 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                                 </Button>
                                 <Button
                                   size="sm"
-                                  onClick={() => {
-                                    handleStartPreparation(entregador)
-                                    iniciarTimer(entregador)
-                                  }}
+                                  disabled={timerBusy}
+                                  onClick={() => solicitarInicio(entregador)}
                                   className="bg-blue-600 text-xs md:text-sm"
                                 >
                                   Iniciar
                                 </Button>
                               </>
                             )}
-                            {/* Timer visible mientras alista */}
-                            {timerActivo && timerEntregador === entregador && (
-                              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
-                                <span className="font-mono font-bold text-blue-700 text-xs">
-                                  ⏱ {formatTimer(timerSegundos)}
-                                </span>
-                                {!timerPausado ? (
-                                  <button onClick={pausarTimer} className="text-xs text-orange-600 font-medium hover:underline">
-                                    Pausar
-                                  </button>
-                                ) : (
-                                  <button onClick={reanudarTimer} className="text-xs text-green-600 font-medium hover:underline">
-                                    Reanudar
-                                  </button>
-                                )}
-                              </div>
-                            )}
+                            {/* Cronómetro propio de esta tarjeta (calculado desde el servidor) */}
+                            {(() => {
+                              const t = timerDe(entregador)
+                              if (!t) return null
+                              return (
+                                <div className={`flex items-center gap-2 rounded-lg px-2 py-1 border ${t.pausado ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200'}`}>
+                                  <span className={`font-mono font-bold text-xs ${t.pausado ? 'text-orange-700' : 'text-blue-700'}`}>
+                                    {t.pausado ? '⏸' : '⏱'} {formatTimer(t.segundos)}
+                                  </span>
+                                  {!t.pausado ? (
+                                    <button
+                                      disabled={timerBusy}
+                                      onClick={() => setPausaDialog(entregador)}
+                                      className="text-xs text-orange-600 font-medium hover:underline disabled:opacity-50"
+                                    >
+                                      Pausar
+                                    </button>
+                                  ) : (
+                                    <button
+                                      disabled={timerBusy}
+                                      onClick={() => reanudarTimer(entregador)}
+                                      className="text-xs text-green-600 font-medium hover:underline disabled:opacity-50"
+                                    >
+                                      Reanudar
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            })()}
                             {/* ✅ FIX: Botón Completar aparece si hay al menos una planilla en "alistando" */}
                             {allReady && (
                               <Button
                                 size="sm"
-                                onClick={() => {
-                                  handleCompletePreparation(entregador)
-                                  detenerTimer()
+                                disabled={timerBusy}
+                                onClick={async () => {
+                                  await detenerTimer(entregador)
+                                  await handleCompletePreparation(entregador)
                                 }}
                                 className="bg-green-600 text-xs md:text-sm"
                               >
@@ -820,7 +914,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                         <div className="p-3 md:p-5">
                           {(() => {
                             const pedidosConNota = sheets
-                              .flatMap(s => s.orders)
+                              .flatMap(s => [...s.orders.filter(o => !o.mercanciaEnOtraPlanilla), ...(s.mercanciaReasignada || [])])
                               .filter(o => o.comentarios && o.comentarios.trim() !== '')
 
                             if (pedidosConNota.length > 0) {
@@ -1108,6 +1202,73 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                 </>
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ya hay otro alistamiento corriendo: qué hacer con él antes de iniciar este */}
+      <Dialog open={!!inicioDialog} onOpenChange={(abierto) => { if (!abierto) setInicioDialog(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ya hay un alistamiento en curso</DialogTitle>
+            <DialogDescription>
+              {inicioDialog && (
+                <>
+                  El cronómetro de <strong>{inicioDialog.enCurso.join(", ")}</strong> sigue corriendo.
+                  Vas a iniciar a <strong>{inicioDialog.entregador}</strong>. ¿Qué hacemos con el anterior?
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p><strong>Pausarlo:</strong> su tiempo se detiene mientras alistas al nuevo (puedes reanudarlo después).</p>
+            <p><strong>Dejarlo corriendo:</strong> úsalo si otro alistador lo está atendiendo al mismo tiempo.</p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setInicioDialog(null)}>Cancelar</Button>
+            <Button
+              variant="outline"
+              onClick={() => inicioDialog && ejecutarInicio(inicioDialog.entregador, [])}
+            >
+              Dejarlo corriendo
+            </Button>
+            <Button
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={() => inicioDialog && ejecutarInicio(inicioDialog.entregador, inicioDialog.enCurso)}
+            >
+              Pausarlo e iniciar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Motivo de la pausa (queda registrado en la bitácora) */}
+      <Dialog open={!!pausaDialog} onOpenChange={(abierto) => { if (!abierto) setPausaDialog(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pausar alistamiento</DialogTitle>
+            <DialogDescription>
+              {pausaDialog && <>El tiempo de <strong>{pausaDialog}</strong> se detiene hasta que reanudes.</>}
+            </DialogDescription>
+          </DialogHeader>
+          <RadioGroup value={motivoPausa} onValueChange={setMotivoPausa} className="space-y-1">
+            {["Esperando proveedor", "Producto en camino", "Otro"].map((m) => (
+              <div key={m} className="flex items-center space-x-2 p-2 rounded border hover:bg-muted">
+                <RadioGroupItem value={m} id={`motivo-${m}`} />
+                <Label htmlFor={`motivo-${m}`} className="font-normal cursor-pointer flex-1">{m}</Label>
+              </div>
+            ))}
+          </RadioGroup>
+          {motivoPausa === "Otro" && (
+            <Input
+              value={motivoOtro}
+              onChange={(e) => setMotivoOtro(e.target.value)}
+              placeholder="¿Cuál es el motivo?"
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPausaDialog(null)}>Cancelar</Button>
+            <Button className="bg-orange-600 hover:bg-orange-700" onClick={confirmarPausa}>Pausar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -30,6 +30,8 @@ export async function POST(request: NextRequest) {
         elem->>'fecha' as fecha,
         cc.entregador as entregador,
         cc.fecha_cuadre as fecha_cuadre,
+        cc.id as cuadre_id,
+        NULLIF(elem->>'monto', '')::numeric as monto,
         'consignacion' as origen,
         true as cerrado
       FROM cuadres_caja cc,
@@ -111,9 +113,24 @@ export async function POST(request: NextRequest) {
     // Una referencia puede aparecer en varias fuentes — nos quedamos con un registro
     // por número, dando prioridad a la consignación (trae la fecha del abono real,
     // no la del cuadre) cuando exista en varias.
+    // Cuánto de cada comprobante ya se aplicó a fiados (un mismo pago puede cubrir
+    // varias deudas del mismo cliente). Sirve para saber si una consignación ya
+    // contada en un cuadre cerrado todavía tiene saldo por aplicar a un fiado.
+    const aplicados = await sql`
+      SELECT LOWER(referencia_pago) AS ref,
+             SUM(COALESCE(monto_abono, 0) + COALESCE(monto_nequi, 0)) AS aplicado
+      FROM abonos_fiados
+      WHERE LOWER(referencia_pago) = ANY(SELECT LOWER(n) FROM unnest(${numeros}::text[]) n)
+      GROUP BY LOWER(referencia_pago)
+    `
+    const aplicadoPorRef = new Map<string, number>()
+    for (const a of aplicados) aplicadoPorRef.set(String(a.ref), Number(a.aplicado) || 0)
+
     const porNumero = new Map<string, any>()
     for (const r of [...resultadoPagosAnticipados, ...resultadoCobrosCxC, ...resultadoConsignacionesEntregador, ...resultadoConsignaciones]) {
-      porNumero.set(String(r.numero).toLowerCase(), {
+      const clave = String(r.numero).toLowerCase()
+      const monto = r.monto != null ? Number(r.monto) : null
+      porNumero.set(clave, {
         numero: r.numero,
         cliente: r.cliente || null,
         fecha: r.fecha || r.fecha_cuadre || null,
@@ -124,6 +141,10 @@ export async function POST(request: NextRequest) {
         // precargándose a sí mismo, o un choque contra otro pendiente) — nunca "un cuadre
         // anterior" porque todavía no ha estado en ninguno.
         cerrado: Boolean(r.cerrado),
+        // Solo vienen cuando la fuente es una consignación de un cuadre cerrado.
+        cuadreId: r.cuadre_id ?? null,
+        monto,
+        restante: monto != null ? Math.max(0, monto - (aplicadoPorRef.get(clave) || 0)) : null,
       })
     }
 

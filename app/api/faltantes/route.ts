@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       SELECT DISTINCT pedido_id 
       FROM pedido_productos pp
       JOIN pedidos p ON pp.pedido_id = p.id
-      WHERE p.planilla_id = ${planilla_id}
+      WHERE COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${planilla_id}
         AND pp.codigo = ${codigo}
     `;
 
@@ -330,7 +330,7 @@ export async function PATCH(request: NextRequest) {
         observaciones_faltante = ${observacionesFinal}
       FROM pedidos p
       WHERE pp.pedido_id = p.id
-        AND p.planilla_id = ${faltante.planilla_id}
+        AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${faltante.planilla_id}
         AND pp.codigo = ${faltante.codigo}
     `;
 

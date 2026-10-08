@@ -35,8 +35,10 @@ export async function POST(request: NextRequest) {
         p.cliente,
         p.total,
         p.estado,
+        p.planilla_mercancia_id,
         pl.tipo_ruta as ruta_actual,
-        pl.entregador as entregador_actual
+        pl.entregador as entregador_actual,
+        pl.estado as estado_planilla_actual
       FROM pedidos p
       JOIN planillas pl ON p.planilla_id = pl.id
       WHERE p.id = ${pedidoId}
@@ -84,12 +86,11 @@ export async function POST(request: NextRequest) {
       a: `${planilla.tipo_ruta} - ${planilla.entregador}`
     })
 
-    // ✅ Todo lo que sigue muta datos (pedido, pedido_productos, faltantes,
-    // totales de 2 planillas). Sin transacción, un error a mitad de camino
-    // (como el de faltantes_planilla_codigo_unique que vimos) deja el
-    // pedido ya movido pero los totales de ambas planillas sin recalcular
-    // — el cargue le queda "pegado" a la planilla origen. BEGIN/COMMIT
-    // asegura que o se aplica todo, o no se aplica nada.
+    // ✅ Todo lo que sigue muta datos (pedido y totales de 2 planillas).
+    // Sin transacción, un error a mitad de camino deja el pedido ya movido
+    // pero los totales de ambas planillas sin recalcular — el cargue le
+    // queda "pegado" a la planilla origen. BEGIN/COMMIT asegura que o se
+    // aplica todo, o no se aplica nada.
     await sql`BEGIN`
 
     try {
@@ -104,86 +105,44 @@ export async function POST(request: NextRequest) {
     const nuevaSecuencia = Number(ultimaSecuencia[0].max_secuencia) + 1
     const nuevoEstado = pedido.estado === 'repaso' ? 'pendiente' : pedido.estado
 
-    // ✅ Solo si el pedido YA estaba resuelto (entregado/fiado/devolucion) la
-    // mercancía salió físicamente con un entregador otro día. Si seguía
-    // 'pendiente' (o era 'repaso', que vuelve a 'pendiente' arriba), nunca
-    // se entregó nada — es un traslado administrativo antes de despachar, y
-    // el alistador SÍ debe alistarlo de verdad. Marcarlo "completo" con la
-    // nota de "ya cargado" en ese caso era el bug: el producto no viajaba,
-    // pero quedaba marcado como si ya se hubiera alistado sin haberlo hecho.
-    const mercanciaYaEntregada = ['entregado', 'fiado', 'devolucion'].includes(pedido.estado)
+    // ✅ ¿La mercancía de este pedido ya se alistó/cargó en su planilla actual?
+    // Si sí, la mercancía NO se mueve con el pedido: se queda contando en la
+    // planilla donde se cargó (planilla_mercancia_id), y a la planilla destino
+    // solo pasa el pedido (cliente y dinero → cuadre de caja). Así el alistador
+    // y el coordinador de la planilla destino no ven mercancía que nunca se
+    // cargó ahí, y la planilla origen conserva la suya tal como se alistó.
+    //
+    // Cuenta como ya cargada si: el pedido ya estaba resuelto (entregado,
+    // fiado, devolución), si su planilla actual ya fue alistada/salió a ruta,
+    // o si ya venía de una reasignación anterior (la mercancía sigue en la
+    // planilla donde se cargó originalmente).
+    //
+    // Un pedido 'repaso' vuelve a 'pendiente' y se alista de nuevo, y un
+    // pedido que aún no se ha cargado sigue su mercancía: en ambos casos el
+    // alistador de la planilla destino SÍ debe alistarlo.
+    const pedidoResuelto = ['entregado', 'fiado', 'devolucion'].includes(pedido.estado)
+    const planillaActualYaCargada = ['alistado', 'en_ruta', 'completado'].includes(pedido.estado_planilla_actual)
+
+    let planillaMercancia: string | null = null
+    if (pedido.estado !== 'repaso' && (pedido.planilla_mercancia_id || pedidoResuelto || planillaActualYaCargada)) {
+      planillaMercancia = pedido.planilla_mercancia_id || pedido.planilla_actual
+    }
+    // Si vuelve a la planilla donde se cargó, deja de ser una reasignación.
+    if (planillaMercancia === nuevaPlanillaId) planillaMercancia = null
 
     // 6️⃣ Actualizar el pedido
     await sql`
       UPDATE pedidos
       SET
         planilla_id = ${nuevaPlanillaId},
+        planilla_mercancia_id = ${planillaMercancia},
         secuencia = ${nuevaSecuencia},
         estado = ${nuevoEstado},
         updated_at = NOW()
       WHERE id = ${pedidoId}
     `
 
-    console.log('[API Reasignar Pedido] ✓ Pedido actualizado')
-
-    let productosMarcados: any = []
-    let faltantesActualizados: any = []
-
-    if (mercanciaYaEntregada) {
-      // ✅ Marcar la mercancía como ya alistada — este pedido se reasigna desde
-      // el cuadre de caja, es decir, la mercancía ya salió cargada físicamente
-      // hoy con el entregador. Si no se marca así, la lista de "Productos
-      // Consolidados" del alistador vuelve a pedirla como pendiente en la
-      // planilla destino y el alistador no la encuentra en bodega (no existe
-      // ahí — ya está con el entregador).
-      productosMarcados = await sql`
-        UPDATE pedido_productos
-        SET
-          estado_alistamiento = 'completo',
-          cantidad_disponible = cantidad,
-          cantidad_faltante = 0,
-          observaciones_faltante = COALESCE(observaciones_faltante || ' | ', '') ||
-            'Ya cargado — reasignado desde ' || ${pedido.ruta_actual} || ' en cuadre de caja',
-          updated_at = NOW()
-        WHERE pedido_id = ${pedidoId}
-        RETURNING id
-      `
-
-      console.log(`[API Reasignar Pedido] ✓ Productos marcados como ya alistados: ${productosMarcados.length}`)
-
-      // ✅ Resolver (no re-asignar) los faltantes pendientes de la planilla
-      // ORIGEN para los códigos de este pedido.
-      //
-      // Antes este bloque intentaba mover la fila (UPDATE planilla_id) a la
-      // planilla destino, pero eso choca con faltantes_planilla_codigo_unique
-      // (planilla_id, codigo) cuando la planilla destino ya tiene su propio
-      // faltante pendiente para el mismo código — causaba un 500.
-      //
-      // Además ya no tiene sentido arrastrarlo: arriba marcamos los
-      // pedido_productos de este pedido como 'completo' (mercancía ya
-      // cargada), así que el faltante de origen queda resuelto, no movido.
-      faltantesActualizados = await sql`
-        UPDATE faltantes
-        SET
-          estado = 'resuelto',
-          tipo_resolucion = 'completo',
-          cantidad_resuelta = cantidad_faltante,
-          cantidad_disponible = cantidad_solicitada,
-          resuelto_por = ${session.user.id},
-          fecha_resolucion = NOW(),
-          observaciones_resolucion = 'Pedido reasignado a ' || ${planilla.tipo_ruta} || ' en cuadre de caja — mercancía ya cargada'
-        WHERE planilla_id = ${pedido.planilla_actual}
-          AND codigo IN (
-            SELECT codigo FROM pedido_productos WHERE pedido_id = ${pedidoId}
-          )
-          AND estado = 'pendiente'
-        RETURNING id
-      `
-    } else {
-      console.log('[API Reasignar Pedido] Pedido seguía pendiente — se deja para alistamiento real, sin marcar como ya cargado')
-    }
-
-    console.log(`[API Reasignar Pedido] ✓ Faltantes de origen resueltos: ${faltantesActualizados.length}`)
+    console.log('[API Reasignar Pedido] ✓ Pedido actualizado', planillaMercancia ? `(mercancía permanece en ${planillaMercancia})` : '(mercancía sigue al pedido)')
 
     // 7️⃣ Recalcular totales planilla ORIGEN
     const totalesOrigen = await sql`

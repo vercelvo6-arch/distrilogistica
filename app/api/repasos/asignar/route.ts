@@ -113,8 +113,9 @@ export async function POST(request: NextRequest) {
     
     await sql`
       UPDATE pedidos
-      SET 
+      SET
         planilla_id = ${planillaDestinoId},
+        planilla_mercancia_id = NULL,
         estado = 'pendiente',
         observaciones = COALESCE(observaciones || ' | ', '') || 
           'REPASO de ruta ' || ${pedido[0].ruta_origen} || 

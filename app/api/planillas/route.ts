@@ -226,6 +226,7 @@ export async function GET() {
         p.alistado_en,
         p.timer_inicio,
         p.timer_fin,
+        p.timer_pausa,
         p.timer_segundos_pausados,
         pe.id as pedido_id,
         pe.secuencia,
@@ -268,6 +269,46 @@ export async function GET() {
 
     console.log(`[API /planillas GET] Query ejecutado: ${resultado.length} filas`);
 
+    // Pedidos reasignados DESPUÉS de cargados: el pedido pertenece a su planilla
+    // actual (caja, cliente), pero su mercancía sigue en la planilla donde se
+    // alistó (planilla_mercancia_id). El try/catch evita tumbar todo el listado
+    // si la columna aún no existe (migración 019 pendiente de aplicar).
+    let mercanciaReasignada: any[] = [];
+    try {
+      mercanciaReasignada = (await sql`
+        SELECT
+          pe.id as pedido_id,
+          pe.planilla_mercancia_id,
+          pe.cliente,
+          pe.estado as pedido_estado,
+          pe.observaciones as pedido_observaciones,
+          pp.codigo,
+          pp.nombre,
+          pp.categoria,
+          pp.cantidad,
+          pp.precio_unitario,
+          pp.total as producto_total,
+          pp.estado_alistamiento,
+          pp.cantidad_disponible,
+          pp.cantidad_faltante,
+          pp.unidad_incompleta,
+          pp.observaciones_faltante,
+          pp.comentario
+        FROM pedidos pe
+        LEFT JOIN pedido_productos pp ON pp.pedido_id = pe.id
+        WHERE pe.planilla_mercancia_id IS NOT NULL
+          AND pe.planilla_mercancia_id <> pe.planilla_id
+        ORDER BY pe.id, pp.codigo
+      `) as any[];
+    } catch (e) {
+      console.error("[API /planillas GET] No se pudo leer planilla_mercancia_id:", e);
+    }
+
+    const mercanciaPorPedido = new Map<string, string>();
+    for (const row of mercanciaReasignada) {
+      mercanciaPorPedido.set(row.pedido_id, row.planilla_mercancia_id);
+    }
+
     // ✅ Agrupar resultados en memoria (mucho más eficiente)
     const planillasMap = new Map();
 
@@ -295,8 +336,10 @@ export async function GET() {
           alistado_en: row.alistado_en,
           timer_inicio: row.timer_inicio || null,
           timer_fin: row.timer_fin || null,
+          timer_pausa: row.timer_pausa || null,
           timer_segundos_pausados: row.timer_segundos_pausados || 0,
           pedidos: [],
+          pedidos_mercancia_reasignada: [],
           agotados: 0
         });
       }
@@ -322,7 +365,8 @@ export async function GET() {
             motivo_descuento: row.motivo_descuento || null,
             monto_pagado: row.monto_pagado || 0,
             saldo_pendiente: row.saldo_pendiente || 0,
-            es_cobro: row.es_cobro || false
+            es_cobro: row.es_cobro || false,
+            planilla_mercancia_id: mercanciaPorPedido.get(row.pedido_id) || null
           };
           planilla.pedidos.push(pedido);
         }
@@ -351,11 +395,50 @@ export async function GET() {
       }
     }
 
+    // Adjuntar a la planilla ORIGEN la mercancía que conserva de pedidos que ya
+    // se reasignaron a otra planilla (solo para listas de alistador/coordinador).
+    for (const row of mercanciaReasignada) {
+      const planillaMercancia = planillasMap.get(row.planilla_mercancia_id);
+      if (!planillaMercancia) continue;
+
+      let pedido = planillaMercancia.pedidos_mercancia_reasignada.find((p: any) => p.id === row.pedido_id);
+      if (!pedido) {
+        pedido = {
+          id: row.pedido_id,
+          cliente: row.cliente,
+          estado: row.pedido_estado,
+          observaciones: row.pedido_observaciones,
+          productos: []
+        };
+        planillaMercancia.pedidos_mercancia_reasignada.push(pedido);
+      }
+
+      if (row.codigo) {
+        pedido.productos.push({
+          codigo: row.codigo,
+          nombre: row.nombre,
+          categoria: row.categoria,
+          cantidad: row.cantidad,
+          precio_unitario: row.precio_unitario,
+          total: row.producto_total,
+          estado_alistamiento: row.estado_alistamiento,
+          cantidad_disponible: row.cantidad_disponible,
+          cantidad_faltante: row.cantidad_faltante,
+          unidad_incompleta: row.unidad_incompleta,
+          observaciones_faltante: row.observaciones_faltante,
+          comentario: row.comentario
+        });
+      }
+    }
+
     const planillasConPedidos = Array.from(planillasMap.values());
 
     console.log('[API /planillas GET] ✓', planillasConPedidos.length, 'planillas obtenidas con éxito');
 
-    return NextResponse.json({ planillas: planillasConPedidos });
+    // servidor_ahora: la pantalla calcula el tiempo del cronómetro contra la hora
+    // del servidor (las marcas de inicio/pausa vienen del servidor), así un reloj
+    // del computador adelantado o atrasado no altera el tiempo mostrado.
+    return NextResponse.json({ planillas: planillasConPedidos, servidor_ahora: new Date().toISOString() });
     
   } catch (error: any) {
     console.error("[API /planillas GET] ERROR COMPLETO:", error);

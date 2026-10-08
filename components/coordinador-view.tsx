@@ -256,6 +256,27 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           cliente: ped.cliente,
           estado: ped.estado,  // ✅ Agregar estado del pedido
           comentarios: ped.observaciones,
+          mercanciaEnOtraPlanilla: !!ped.planilla_mercancia_id,
+          items: (ped.productos || []).map((prod: any) => ({
+            codigo: prod.codigo,
+            descripcion: prod.nombre,
+            categoria: prod.categoria || "",
+            cantidad: Number(prod.cantidad) || 0,
+            valorUnidad: Number(prod.precio_unitario) || 0,
+            estadoAlistamiento: prod.estado_alistamiento || "pendiente",
+            cantidadDisponible: prod.cantidad_disponible,
+            cantidadFaltante: prod.cantidad_faltante || 0,
+            unidadIncompleta: prod.unidad_incompleta || false,
+            observacionesFaltante: prod.observaciones_faltante,
+            comentario: prod.comentario,
+          })),
+        })),
+        mercanciaReasignada: (p.pedidos_mercancia_reasignada || []).map((ped: any) => ({
+          id: ped.id,
+          cliente: ped.cliente,
+          estado: ped.estado,
+          comentarios: ped.observaciones,
+          mercanciaEnOtraPlanilla: false,
           items: (ped.productos || []).map((prod: any) => ({
             codigo: prod.codigo,
             descripcion: prod.nombre,
@@ -387,7 +408,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     if (!nota || !nota.trim()) return
 
     const sheetDelEntregador = sheets.find((s: any) =>
-      s.orders?.some((o: any) =>
+      [...(s.orders || []).filter((o: any) => !o.mercanciaEnOtraPlanilla), ...(s.mercanciaReasignada || [])].some((o: any) =>
         o.items?.some((p: any) => p.codigo === producto.codigo)
       )
     ) || sheets.find((s: any) => s.entregador === entregador)
@@ -801,7 +822,15 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       // resuelto (entregado/fiado/devolucion): la mercancía ya salió con
       // otro entregador otro día, solo se movieron para efectos de cuentas.
       // Solo los pedidos 'pendiente' representan mercancía real por alistar.
-      sheet.orders.filter((order) => order.estado === 'pendiente').forEach((order) => {
+      //
+      // Un pedido reasignado después de cargado (mercanciaEnOtraPlanilla) no suma
+      // aquí: su mercancía se alistó en otra planilla. Y al revés, esta planilla
+      // conserva la mercancía de los pedidos que ya se reasignaron a otra.
+      const pedidosConMercancia = [
+        ...sheet.orders.filter((order: any) => order.estado === 'pendiente' && !order.mercanciaEnOtraPlanilla),
+        ...(sheet.mercanciaReasignada || []).filter((order: any) => order.estado === 'pendiente'),
+      ]
+      pedidosConMercancia.forEach((order: any) => {
         order.items.forEach((item: any) => {
           const comentarioItem = (item.comentario || "").trim()
           const existing = productMap.get(item.codigo)
@@ -1265,7 +1294,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                             <div className="p-3 md:p-5">
                               {(() => {
                                 const pedidosConNota = sheets
-                                  .flatMap((s) => s.orders)
+                                  .flatMap((s) => [...s.orders.filter((o) => !o.mercanciaEnOtraPlanilla), ...(s.mercanciaReasignada || [])])
                                   .filter((o) => o.comentarios && o.comentarios.trim() !== "")
 
                                 if (pedidosConNota.length === 0) return null
