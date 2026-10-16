@@ -307,7 +307,7 @@ export async function POST(request: Request) {
 
             const saldoActualPA      = Number(fiadoPA.saldo_pendiente)
             const nuevoMontoPagadoPA = Number(fiadoPA.monto_pagado) + totalAbono
-            const nuevoSaldoPA       = Math.max(0, Math.round((saldoActualPA - totalAbono) * 100) / 100)
+            const nuevoSaldoPA       = (saldoActualPA - totalAbono) < 1 ? 0 : Math.round((saldoActualPA - totalAbono) * 100) / 100 // menos de $1 = redondeo de centavos, no una deuda viva
             const pagoCompletoPA     = nuevoSaldoPA <= 0
 
             await sql`
@@ -396,7 +396,7 @@ export async function POST(request: Request) {
 
           const saldoActual      = Number(fiado.saldo_pendiente)
           const nuevoMontoPagado = Number(fiado.monto_pagado) + totalAbono
-          const nuevoSaldo       = Math.max(0, Math.round((saldoActual - totalAbono) * 100) / 100)
+          const nuevoSaldo       = (saldoActual - totalAbono) < 1 ? 0 : Math.round((saldoActual - totalAbono) * 100) / 100 // menos de $1 = redondeo de centavos, no una deuda viva
           const pagoCompleto     = nuevoSaldo <= 0
 
           await sql`
@@ -464,7 +464,7 @@ export async function POST(request: Request) {
 
           const saldoActual      = Number(pedido.saldo_pendiente ?? pedido.total)
           const nuevoMontoPagado = Number(pedido.monto_pagado || 0) + totalAbono
-          const nuevoSaldo       = Math.max(0, Math.round((saldoActual - totalAbono) * 100) / 100)
+          const nuevoSaldo       = (saldoActual - totalAbono) < 1 ? 0 : Math.round((saldoActual - totalAbono) * 100) / 100 // menos de $1 = redondeo de centavos, no una deuda viva
           const pagoCompleto     = nuevoSaldo <= 0
 
           await sql`
@@ -716,7 +716,73 @@ export async function GET(request: Request) {
       LIMIT 100
     `
 
-    return NextResponse.json({ success: true, cuadres })
+    // Detalle de quién pagó: cada cobro (abono) ligado a estos cuadres con el nombre del
+    // cliente, y el cliente de cada consignación cuando quedó vacío en el cuadre pero se
+    // conoce por otra fuente (consignación de ruta o pago anticipado). Es solo lectura; si
+    // algo falla, el listado sigue funcionando sin el detalle.
+    const cobrosPorCuadre = new Map<number, any[]>()
+    const clientePorReferencia = new Map<string, string>()
+    try {
+      const ids = cuadres.map((c: any) => Number(c.id)).filter((n: number) => Number.isFinite(n))
+      if (ids.length > 0) {
+        const abonos = await sql`
+          SELECT af.planilla_cobro_id AS cuadre_id, af.id, af.pedido_id, af.origen_tabla,
+                 COALESCE(f.cliente, p.cliente) AS cliente,
+                 COALESCE(af.monto_abono, 0) AS monto_efectivo,
+                 COALESCE(af.monto_nequi, 0) AS monto_electronico,
+                 af.metodo_pago, af.referencia_pago, af.fecha_abono
+          FROM abonos_fiados af
+          LEFT JOIN fiados f ON af.origen_tabla = 'fiados' AND f.id::text = af.pedido_id
+          LEFT JOIN pedidos p ON af.origen_tabla = 'pedidos' AND p.id = af.pedido_id
+          WHERE af.planilla_cobro_id = ANY(${ids}::int[])
+          ORDER BY af.planilla_cobro_id, af.id
+        `
+        for (const a of abonos as any[]) {
+          const k = Number(a.cuadre_id)
+          if (!cobrosPorCuadre.has(k)) cobrosPorCuadre.set(k, [])
+          cobrosPorCuadre.get(k)!.push({
+            id: a.id,
+            cliente: a.cliente || null,
+            metodo: a.metodo_pago || null,
+            referencia: a.referencia_pago || null,
+            monto_efectivo: Number(a.monto_efectivo) || 0,
+            monto_electronico: Number(a.monto_electronico) || 0,
+            fecha: a.fecha_abono || null,
+          })
+        }
+
+        const refs = Array.from(new Set(
+          cuadres.flatMap((c: any) => Array.isArray(c.consignaciones) ? c.consignaciones : [])
+            .filter((x: any) => x?.numero && !String(x?.cliente || '').trim())
+            .map((x: any) => String(x.numero).toLowerCase())
+        ))
+        if (refs.length > 0) {
+          const fuentes = await sql`
+            SELECT LOWER(numero) AS ref, cliente FROM consignaciones_pedido
+            WHERE LOWER(numero) = ANY(${refs}::text[]) AND cliente IS NOT NULL AND cliente <> ''
+            UNION ALL
+            SELECT LOWER(referencia) AS ref, cliente FROM pagos_anticipados
+            WHERE LOWER(referencia) = ANY(${refs}::text[]) AND cliente IS NOT NULL AND cliente <> ''
+          `
+          for (const f of fuentes as any[]) clientePorReferencia.set(String(f.ref), String(f.cliente))
+        }
+      }
+    } catch (e) {
+      console.error('[CUADRE CAJA GET] No se pudo armar el detalle de cobros:', e)
+    }
+
+    const cuadresConDetalle = cuadres.map((c: any) => ({
+      ...c,
+      detalle_cobros: cobrosPorCuadre.get(Number(c.id)) || [],
+      consignaciones: Array.isArray(c.consignaciones)
+        ? c.consignaciones.map((x: any) => ({
+            ...x,
+            cliente: String(x?.cliente || '').trim() || clientePorReferencia.get(String(x?.numero || '').toLowerCase()) || '',
+          }))
+        : c.consignaciones,
+    }))
+
+    return NextResponse.json({ success: true, cuadres: cuadresConDetalle })
 
   } catch (error) {
     return handleDBError(error, 'CUADRE CAJA GET')

@@ -3065,45 +3065,118 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         </div>
                       </div>
 
-                      {/* Desglose de efectivo recibido */}
-                      {(rec.billetes > 0 || rec.monedas > 0 || rec.nequi_recibido > 0 || rec.total_cobros > 0) && (
-                        <div className="mt-2 pt-2 border-t grid grid-cols-4 gap-2 text-xs">
-                          {rec.billetes > 0 && (
-                            <div><span className="text-gray-400">Billetes</span><p className="font-medium">{formatCOP(Number(rec.billetes))}</p></div>
-                          )}
-                          {rec.monedas > 0 && (
-                            <div><span className="text-gray-400">Monedas</span><p className="font-medium">{formatCOP(Number(rec.monedas))}</p></div>
-                          )}
-                          {rec.nequi_recibido > 0 && (
-                            <div><span className="text-gray-400">Nequi</span><p className="font-medium text-purple-600">{formatCOP(Number(rec.nequi_recibido))}</p></div>
-                          )}
-                          {rec.total_cobros > 0 && (
-                            <div><span className="text-gray-400">Cobros CxC</span><p className="font-medium text-blue-600">{formatCOP(Number(rec.total_cobros))}</p></div>
-                          )}
-                        </div>
-                      )}
+                      {/* Cómo se llega al Esperado y al Recibido, y quién pagó cada cosa */}
+                      {(() => {
+                        const n = (v: any) => Number(v) || 0
+                        const billetes = n(rec.billetes)
+                        const monedas = n(rec.monedas)
+                        const consigs: any[] = Array.isArray(rec.consignaciones) ? rec.consignaciones : []
+                        const totalConsig = consigs.length > 0
+                          ? consigs.reduce((t, c) => t + n(c.monto), 0)
+                          : n(rec.total_consignado || rec.monto_consignacion)
+                        const cobros: any[] = Array.isArray(rec.detalle_cobros) ? rec.detalle_cobros : []
+                        const cobrosEfec = cobros.filter((c) => n(c.monto_efectivo) > 0)
+                        const cobrosElec = cobros.filter((c) => n(c.monto_electronico) > 0)
+                        const totCobrosEfec = n(rec.cobros_efectivo)
+                        const totCobrosElec = n(rec.cobros_nequi)
+                        const totCobros = n(rec.total_cobros)
+                        const cargue = n(rec.total_cargue)
+                        const novedades = n(rec.fiado) + n(rec.devoluciones) + n(rec.repasos) + n(rec.agotados)
+                          + n(rec.descuento) + n(rec.varios) + n(rec.errores_facturacion)
+                        const recibido = n(rec.efectivo_recibido)
+                        const sumaRecibido = billetes + monedas + totalConsig + totCobrosElec
+                        const descuadre = Math.abs(sumaRecibido - recibido) >= 1
+                        const sumCobros = (lista: any[], campo: string) => lista.reduce((t, c) => t + n(c[campo]), 0)
+                        const nombreCobro = (c: any) => c.cliente || "Cliente no disponible"
 
-                      {rec.tiene_consignacion && (
-                        <div className="mt-3 pt-3 border-t">
-                          <p className="text-sm font-medium text-gray-700 mb-1">Consignación</p>
-                          <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div>
-                              <span className="text-gray-500">Número</span>
-                              <p>{rec.numero_consignacion}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Banco</span>
-                              <p>{rec.banco}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-500">Monto</span>
-                              <p className="font-semibold">
-                                {formatCOP(Number(rec.total_consignado || rec.monto_consignacion || 0))}
+                        return (
+                          <>
+                            <div className="mt-3 pt-3 border-t text-xs space-y-1">
+                              <p className="text-sm font-medium text-gray-700 mb-1">Cómo se calculó</p>
+                              {cargue > 0 && (
+                                <p className="text-gray-600">
+                                  <span className="font-medium">Esperado</span> = Cargue {formatCOP(cargue)} − Novedades {formatCOP(novedades)} + Cobros CxC {formatCOP(totCobros)} = <span className="font-semibold">{formatCOP(cargue - novedades + totCobros)}</span>
+                                </p>
+                              )}
+                              <p className="text-gray-600">
+                                <span className="font-medium">Recibido</span> = Billetes {formatCOP(billetes)} + Monedas {formatCOP(monedas)} + Consignaciones {formatCOP(totalConsig)} + Cobros por Nequi/banco {formatCOP(totCobrosElec)} = <span className="font-semibold">{formatCOP(sumaRecibido)}</span>
                               </p>
+                              {totCobrosEfec > 0 && (
+                                <p className="text-gray-400">
+                                  Los cobros en efectivo ({formatCOP(totCobrosEfec)}) no se suman aparte: ya van dentro de los billetes y monedas.
+                                </p>
+                              )}
+                              {descuadre && (
+                                <p className="text-amber-700 bg-amber-50 rounded px-2 py-1">
+                                  Ojo: esa suma ({formatCOP(sumaRecibido)}) no coincide con el Recibido guardado ({formatCOP(recibido)}). Este cuadre se guardó con otra fórmula; revísalo.
+                                </p>
+                              )}
                             </div>
-                          </div>
-                        </div>
-                      )}
+
+                            {(cobros.length > 0 || totCobros > 0) && (
+                              <div className="mt-3 pt-3 border-t">
+                                <p className="text-sm font-medium text-gray-700 mb-2">Cobros CxC — quién pagó ({formatCOP(totCobros)})</p>
+                                {cobros.length === 0 ? (
+                                  <p className="text-xs text-gray-500">Este cuadre no tiene el detalle de cobros guardado.</p>
+                                ) : (
+                                  <div className="space-y-2 text-xs">
+                                    {cobrosElec.length > 0 && (
+                                      <div>
+                                        <p className="font-medium text-purple-700 mb-1">Por Nequi / banco — {formatCOP(sumCobros(cobrosElec, "monto_electronico"))}</p>
+                                        {cobrosElec.map((c) => (
+                                          <div key={`e-${c.id}`} className="flex justify-between gap-2 py-0.5 border-b border-gray-100">
+                                            <span className="min-w-0 truncate">
+                                              {nombreCobro(c)}
+                                              {c.referencia && <span className="text-gray-400"> · {c.referencia}</span>}
+                                            </span>
+                                            <span className="font-medium shrink-0">{formatCOP(n(c.monto_electronico))}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {cobrosEfec.length > 0 && (
+                                      <div>
+                                        <p className="font-medium text-green-700 mb-1">En efectivo — {formatCOP(sumCobros(cobrosEfec, "monto_efectivo"))} (ya incluido en billetes)</p>
+                                        {cobrosEfec.map((c) => (
+                                          <div key={`f-${c.id}`} className="flex justify-between gap-2 py-0.5 border-b border-gray-100">
+                                            <span className="min-w-0 truncate">{nombreCobro(c)}</span>
+                                            <span className="font-medium shrink-0">{formatCOP(n(c.monto_efectivo))}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {(rec.tiene_consignacion || consigs.length > 0) && (
+                              <div className="mt-3 pt-3 border-t">
+                                <p className="text-sm font-medium text-gray-700 mb-2">Consignaciones ({formatCOP(totalConsig)})</p>
+                                {consigs.length > 0 ? (
+                                  <div className="space-y-1 text-xs">
+                                    {consigs.map((c, i) => (
+                                      <div key={i} className="flex justify-between gap-2 py-0.5 border-b border-gray-100">
+                                        <span className="min-w-0 truncate">
+                                          {c.cliente ? c.cliente : <span className="text-amber-700">Sin cliente indicado</span>}
+                                          <span className="text-gray-400"> · {c.banco || "—"} · {c.numero || "sin número"}</span>
+                                        </span>
+                                        <span className="font-medium shrink-0">{formatCOP(n(c.monto))}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-3 gap-2 text-sm">
+                                    <div><span className="text-gray-500">Número</span><p>{rec.numero_consignacion}</p></div>
+                                    <div><span className="text-gray-500">Banco</span><p>{rec.banco}</p></div>
+                                    <div><span className="text-gray-500">Monto</span><p className="font-semibold">{formatCOP(totalConsig)}</p></div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
 
                       {rec.descuento && Number(rec.descuento) > 0 && (
                         <div className="mt-3 pt-3 border-t">
