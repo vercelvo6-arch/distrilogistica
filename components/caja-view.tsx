@@ -3083,9 +3083,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                         const cargue = n(rec.total_cargue)
                         const novedades = n(rec.fiado) + n(rec.devoluciones) + n(rec.repasos) + n(rec.agotados)
                           + n(rec.descuento) + n(rec.varios) + n(rec.errores_facturacion)
-                        const recibido = n(rec.efectivo_recibido)
                         const sumaRecibido = billetes + monedas + totalConsig + totCobrosElec
-                        const descuadre = Math.abs(sumaRecibido - recibido) >= 1
                         const sumCobros = (lista: any[], campo: string) => lista.reduce((t, c) => t + n(c[campo]), 0)
                         const nombreCobro = (c: any) => c.cliente || "Cliente no disponible"
 
@@ -3104,11 +3102,6 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                               {totCobrosEfec > 0 && (
                                 <p className="text-gray-400">
                                   Los cobros en efectivo ({formatCOP(totCobrosEfec)}) no se suman aparte: ya van dentro de los billetes y monedas.
-                                </p>
-                              )}
-                              {descuadre && (
-                                <p className="text-amber-700 bg-amber-50 rounded px-2 py-1">
-                                  Ojo: esa suma ({formatCOP(sumaRecibido)}) no coincide con el Recibido guardado ({formatCOP(recibido)}). Este cuadre se guardó con otra fórmula; revísalo.
                                 </p>
                               )}
                             </div>
