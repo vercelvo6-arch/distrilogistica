@@ -1933,6 +1933,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
               numeroFactura:         p.referencia,
               medioPago:             p.medio_pago,
               monto:                 String(p.monto),
+              fiadoEstado:           p.fiado_estado ?? null,
+              fiadoSaldo:            p.fiado_saldo != null ? Number(p.fiado_saldo) : null,
             }))
           }
         } catch (ePA) {
@@ -1941,6 +1943,49 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       }
 
       setCobrosDisponibles([...cobrosFiados, ...cobrosPagosAnticipados])
+
+      // ✅ Los pagos administrativos ya identificados para este entregador se cargan solos
+      // en su cuadre (igual que los cobros que él registra en ruta) y permanecen cargados en
+      // cada cuadre hasta que uno se confirme. Caja puede quitar uno con la X. Se cargan solo
+      // los que tienen fiado asignado, cuyo fiado sigue vivo y mientras alcance el saldo; los
+      // demás se avisan para no dejarlos olvidados.
+      if (incluirPagosAnticipados && cobrosPagosAnticipados.length > 0) {
+        const aCargar: any[] = []
+        const conAviso: string[] = []
+        const saldoPorFiado = new Map<string, number>()
+        const ordenados = [...cobrosPagosAnticipados].sort((a, b) => Number(a.pagoAnticipadoId) - Number(b.pagoAnticipadoId))
+        for (const c of ordenados) {
+          if (idsDescartados.has(`pa:${c.pagoAnticipadoId}`)) continue
+          const etiqueta = `${c.cliente} ${formatCOP(Number(c.monto))}`
+          if (!c.pagoAnticipadoFiadoId) { conAviso.push(`${etiqueta} (sin fiado asignado)`); continue }
+          if (c.pagoAnticipadoTipo === "fiado") {
+            const vivo = !c.fiadoEstado || ["pendiente", "abono_parcial"].includes(c.fiadoEstado)
+            if (!vivo) { conAviso.push(`${etiqueta} (su fiado ya está pagado)`); continue }
+            const clave = String(c.pagoAnticipadoFiadoId)
+            const restante = saldoPorFiado.has(clave) ? saldoPorFiado.get(clave)! : Number(c.fiadoSaldo ?? Infinity)
+            // Hasta $1.000 de más es redondeo de la factura (el pago cierra el fiado); más que eso
+            // es un sobrepago real y se avisa en vez de cargarlo.
+            if (Number(c.monto) > restante + 1000) { conAviso.push(`${etiqueta} (excede el saldo del fiado)`); continue }
+            saldoPorFiado.set(clave, restante - Number(c.monto))
+          }
+          aCargar.push(c)
+        }
+        if (aCargar.length > 0) {
+          setCobrosVinculados(prev => [
+            ...prev,
+            ...aCargar
+              .filter(c => !prev.some(p => p.esPagoAnticipado && p.pagoAnticipadoId === c.pagoAnticipadoId))
+              .map(c => ({ ...c, localId: crypto.randomUUID() })),
+          ])
+        }
+        if (conAviso.length > 0) {
+          toast({
+            title: `${conAviso.length} pago(s) administrativo(s) no se cargaron`,
+            description: conAviso.slice(0, 5).join(" · ") + (conAviso.length > 5 ? " · …" : "") + ". Revísalos en Cuadre Administrativo.",
+            variant: "destructive",
+          })
+        }
+      }
 
       // ✅ Precargar automáticamente los cobros que el entregador ya registró en ruta,
       // sin importar cuántos días hayan pasado — el entregador puede estar varios días
@@ -2039,6 +2084,12 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     if (cobro.yaRegistrado) return Number(cobro.montoNequi) || 0
     return Number(cobro.montoElectronico) || 0
   }
+
+  // Lo que un cobro suma al ESPERADO del entregador. Un pago administrativo en efectivo
+  // (pago anticipado) no suma: administración ya recibió esa plata y el entregador nunca
+  // la tocó, así que no puede aparecerle como dinero que debía entregar.
+  const esEfectivoAdministrativo = (cobro: any) => cobro.esPagoAnticipado && cobro.medioPago === "Efectivo"
+  const getCobroMontoEsperado = (cobro: any) => esEfectivoAdministrativo(cobro) ? 0 : getCobroMontoTotal(cobro)
 
   const buildReferenciaCobro = (cobro: any) => {
     if (cobro.yaRegistrado) return cobro.referencia?.trim() || null
@@ -2362,7 +2413,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
 
     // 2. Calcular totales
-    const totalCobrosCxC         = cobrosVinculados.reduce((s, c) => s + getCobroMontoTotal(c), 0)
+    const totalCobrosCxC         = cobrosVinculados.reduce((s, c) => s + getCobroMontoEsperado(c), 0)
     const totalCobrosElectronico = cobrosVinculados.reduce((s, c) => s + getCobroMontoElectronico(c), 0)
     const totalBilletes          = Number(formData.billetes || 0)
     const totalMonedas           = Number(formData.monedas || 0)
@@ -3075,7 +3126,8 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                           ? consigs.reduce((t, c) => t + n(c.monto), 0)
                           : n(rec.total_consignado || rec.monto_consignacion)
                         const cobros: any[] = Array.isArray(rec.detalle_cobros) ? rec.detalle_cobros : []
-                        const cobrosEfec = cobros.filter((c) => n(c.monto_efectivo) > 0)
+                        const cobrosEfec = cobros.filter((c) => n(c.monto_efectivo) > 0 && !c.administrativo)
+                        const cobrosAdminEfec = cobros.filter((c) => n(c.monto_efectivo) > 0 && c.administrativo)
                         const cobrosElec = cobros.filter((c) => n(c.monto_electronico) > 0)
                         const totCobrosEfec = n(rec.cobros_efectivo)
                         const totCobrosElec = n(rec.cobros_nequi)
@@ -3123,6 +3175,17 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                               {c.referencia && <span className="text-gray-400"> · {c.referencia}</span>}
                                             </span>
                                             <span className="font-medium shrink-0">{formatCOP(n(c.monto_electronico))}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {cobrosAdminEfec.length > 0 && (
+                                      <div>
+                                        <p className="font-medium text-blue-700 mb-1">Recibido por administración en efectivo — {formatCOP(sumCobros(cobrosAdminEfec, "monto_efectivo"))} (bajó el fiado; no suma a este cuadre)</p>
+                                        {cobrosAdminEfec.map((c) => (
+                                          <div key={`a-${c.id}`} className="flex justify-between gap-2 py-0.5 border-b border-gray-100">
+                                            <span className="min-w-0 truncate">{nombreCobro(c)}</span>
+                                            <span className="font-medium shrink-0">{formatCOP(n(c.monto_efectivo))}</span>
                                           </div>
                                         ))}
                                       </div>
@@ -4664,7 +4727,8 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
 
             {/* ── 4. RESULTADO (tiempo real) ─────────────────────────── */}
             {(() => {
-              const totalCobrosCxC     = cobrosVinculados.reduce((s, c) => s + getCobroMontoTotal(c), 0)
+              const totalCobrosCxC     = cobrosVinculados.reduce((s, c) => s + getCobroMontoEsperado(c), 0)
+              const totalAdminEfectivo = cobrosVinculados.reduce((s, c) => s + (esEfectivoAdministrativo(c) ? getCobroMontoTotal(c) : 0), 0)
               const totalCobrosElectronico = cobrosVinculados.reduce((s, c) => s + getCobroMontoElectronico(c), 0)
               const totalBilletes      = Number(formData.billetes || 0)
               const totalMonedas       = Number(formData.monedas || 0)
@@ -4714,6 +4778,11 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                       <p className="text-[10px] text-gray-400">
                         {formatCOP(totalCobrosCxC - totalCobrosElectronico)} efectivo (ya en Efectivo) + {formatCOP(totalCobrosElectronico)} electrónico
                       </p>
+                      {totalAdminEfectivo > 0 && (
+                        <p className="text-[10px] text-blue-600">
+                          + {formatCOP(totalAdminEfectivo)} en efectivo recibido por administración: baja el fiado pero no suma a este cuadre
+                        </p>
+                      )}
                     </div>
                   </div>
 

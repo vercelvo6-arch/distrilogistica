@@ -122,7 +122,12 @@ export async function POST(request: Request) {
 
     // ─── 4. CALCULAR COBROS VINCULADOS ────────────────────────────────────────
     const cobros = cobrosVinculados || []
-    const cobrosEfectivo = cobros.reduce((s: number, c: any) => s + (Number(c.montoEfectivo) || 0), 0)
+    // El efectivo de un pago administrativo (pago anticipado en efectivo) NO cuenta aquí: ya
+    // entró por administración y el entregador nunca lo manipuló, así que no suma al esperado
+    // ni a los cobros en efectivo del cuadre. Igual baja el fiado y deja su abono (más abajo).
+    const cobrosEfectivo = cobros
+      .filter((c: any) => !c.esPagoAnticipado)
+      .reduce((s: number, c: any) => s + (Number(c.montoEfectivo) || 0), 0)
     const cobrosNequi    = cobros.reduce((s: number, c: any) => s + (Number(c.montoNequi) || 0), 0)
     const totalCobros    = cobrosEfectivo + cobrosNequi
 
@@ -730,7 +735,7 @@ export async function GET(request: Request) {
                  COALESCE(f.cliente, p.cliente) AS cliente,
                  COALESCE(af.monto_abono, 0) AS monto_efectivo,
                  COALESCE(af.monto_nequi, 0) AS monto_electronico,
-                 af.metodo_pago, af.referencia_pago, af.fecha_abono
+                 af.metodo_pago, af.referencia_pago, af.fecha_abono, af.observaciones
           FROM abonos_fiados af
           LEFT JOIN fiados f ON af.origen_tabla = 'fiados' AND f.id::text = af.pedido_id
           LEFT JOIN pedidos p ON af.origen_tabla = 'pedidos' AND p.id = af.pedido_id
@@ -747,6 +752,7 @@ export async function GET(request: Request) {
             referencia: a.referencia_pago || null,
             monto_efectivo: Number(a.monto_efectivo) || 0,
             monto_electronico: Number(a.monto_electronico) || 0,
+            administrativo: String(a.observaciones || '').startsWith('Cuadre administrativo'),
             fecha: a.fecha_abono || null,
           })
         }

@@ -146,22 +146,17 @@ export async function GET(request: NextRequest) {
     const entregador = searchParams.get('entregador')
 
     const sql = getDB()
-    let pagos
-    if (estado && entregador) {
-      pagos = await sql`
-        SELECT * FROM pagos_anticipados
-        WHERE estado = ${estado} AND entregador_vinculado = ${entregador}
-        ORDER BY registrado_en DESC
-      `
-    } else if (estado) {
-      pagos = await sql`SELECT * FROM pagos_anticipados WHERE estado = ${estado} ORDER BY registrado_en DESC`
-    } else if (entregador) {
-      pagos = await sql`
-        SELECT * FROM pagos_anticipados WHERE entregador_vinculado = ${entregador} ORDER BY registrado_en DESC
-      `
-    } else {
-      pagos = await sql`SELECT * FROM pagos_anticipados ORDER BY registrado_en DESC`
-    }
+    // fiado_estado / fiado_saldo: el estado actual del fiado al que apunta el pago, para que
+    // el cuadre de caja pueda cargar solo los pagos cuyo fiado sigue vivo.
+    const pagos = await sql`
+      SELECT pa.*, f.estado AS fiado_estado, f.saldo_pendiente AS fiado_saldo
+      FROM pagos_anticipados pa
+      LEFT JOIN fiados f ON pa.tipo = 'fiado' AND f.id::text = pa.fiado_id
+      WHERE true
+        ${estado ? sql`AND pa.estado = ${estado}` : sql``}
+        ${entregador ? sql`AND pa.entregador_vinculado = ${entregador}` : sql``}
+      ORDER BY pa.registrado_en DESC
+    `
 
     return NextResponse.json({ success: true, pagos })
   } catch (error) {
