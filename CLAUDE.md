@@ -22,7 +22,7 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 
 ## 3. Cómo se cambia la base de datos de producción
 - Las escrituras en producción las corre **el dueño a mano en el editor SQL de Neon**. Tú dejas el script en `scripts/NNN_nombre.sql`
-  (el siguiente número libre es el **028**; el 025 no existe a propósito) y explicas qué hace.
+  (el siguiente número libre es el **030**; el 025 no existe a propósito) y explicas qué hace.
 - Consultas de **solo lectura** para investigar sí están bien (usa `@neondatabase/serverless` desde un `.mjs` temporal y bórralo después).
 - Todo script que cambie datos debe ser: **una sola sentencia** (CTEs) → todo o nada; **idempotente** (si se corre dos veces, la segunda no hace nada);
   con guardas en el `WHERE`; y dejar copia de lo borrado en `audit_log`. Valídalo con `EXPLAIN` (sin ejecutar) antes de entregarlo.
@@ -77,6 +77,10 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 
 ### 5.7 Alistador
 - Un cronómetro por tarjeta de entregador, guardado en el servidor (`timer_inicio`, `timer_fin`, `timer_pausa`, `timer_segundos_pausados`); la pantalla calcula contra la hora del servidor. Pausar pide motivo y queda en `audit_log`.
+
+- **Un producto puede estar en varias planillas del mismo entregador** (ej. una que venía de "Extra" reasignada a Mateo). El alistador lo marca una vez y `POST /api/faltantes` recibe `reparto` y lo marca en TODAS (reparte el faltante sin pasar de lo que pidió cada una). El estado consolidado de un producto es el MÁS pendiente de sus líneas (`lib/estado-alistamiento.ts`); no lo calcules de otra forma en las pantallas.
+- Reasignar una planilla que ya está `alistado` a otro entregador **conserva** su estado (solo cambia el entregador, también en `faltantes` e `inventario_salidas`).
+- **Faltantes (pestaña Novedades del alistador):** filtros por entregador/estado/fechas/código; "Eliminar seleccionados" (`POST /api/faltantes/baja-en-bloque`) los pasa de `pendiente` a `definitivo` ("No se entregó") con motivo; no borra nada y se revierte con "Revertir". La lista de pendientes no tiene tope de 7 días.
 
 ### 5.8 Inventario (pestaña "Inventario" del administrador; tablas `inventario_*`, script 027)
 - **Salida por producto:** cuando el alistador termina una planilla (`updatePlanillaEstado(..., "alistado")`) se guarda en `inventario_salidas` lo que salió, agrupado por código (pedido − faltante). No se borra al cuadrar caja. Solo cuentan pedidos `pendiente`; la mercancía es de `COALESCE(planilla_mercancia_id, planilla_id)`. El reemplazo del asesor queda en las observaciones como `REEMPLAZO POR: …`.

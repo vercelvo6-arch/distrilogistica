@@ -8,6 +8,7 @@ import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect, useRef } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { updatePlanillaEstado } from "@/lib/actions/planillas"
+import { combinarEstadoAlistamiento } from "@/lib/estado-alistamiento"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -314,9 +315,9 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
             if (item.unidadIncompleta) {
               existing.unidadIncompleta = true
             }
-            if (item.estadoAlistamiento && item.estadoAlistamiento !== 'pendiente') {
-              existing.estadoAlistamiento = item.estadoAlistamiento
-            }
+            // Una línea sin marcar mantiene el producto "pendiente" (antes ganaba la última marcada y
+            // se ocultaba lo que seguía sin alistar en otra planilla del mismo entregador).
+            existing.estadoAlistamiento = combinarEstadoAlistamiento(existing.estadoAlistamiento, item.estadoAlistamiento || 'pendiente')
             if (comentarioItem) {
               existing.comentarios.push({ cliente: order.cliente, texto: comentarioItem })
             }
@@ -396,10 +397,29 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
       const faltante = editingProduct.product.cantidadTotal - disponible
 
+      // El producto consolidado puede estar en varias planillas del mismo entregador (p. ej. una
+      // que venía de "Extra" y otra propia). Se manda cuánto pidió cada una para que el servidor
+      // marque TODAS y no solo la primera.
+      const reparto = routeSheets
+        .filter((s) => s.entregador === editingProduct.entregador)
+        .map((s) => {
+          const pedidos = [
+            ...s.orders.filter((o) => o.estado === 'pendiente' && !o.mercanciaEnOtraPlanilla),
+            ...(s.mercanciaReasignada || []).filter((o) => o.estado === 'pendiente'),
+          ]
+          const cantidad = pedidos.reduce(
+            (sum, o) => sum + o.items.filter((it) => it.codigo === editingProduct.product.codigo).reduce((a, it) => a + (Number(it.cantidad) || 0), 0),
+            0
+          )
+          return { planilla_id: s.id, ruta: s.ruta, cantidad }
+        })
+        .filter((r) => r.cantidad > 0)
+
       const saveResponse = await fetch('/api/faltantes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          reparto,
           planilla_id: sheetForEntregador.id,
           codigo: editingProduct.product.codigo,
           descripcion: editingProduct.product.descripcion,

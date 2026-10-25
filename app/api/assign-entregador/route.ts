@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
           es_asesor         = true,
           nombre_asesor     = ${nombreAsesorLimpio},
           fecha_alistamiento = ${fechaAlistamiento},
-          estado            = 'pendiente',
+          estado            = CASE WHEN estado = 'alistado' THEN 'alistado' ELSE 'pendiente' END,
           updated_at        = NOW()
         WHERE id = ${planillaId}
         RETURNING id, entregador, fecha_alistamiento, tipo_ruta, fecha, estado, es_asesor, nombre_asesor
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
           es_asesor          = false,
           nombre_asesor      = NULL,
           fecha_alistamiento = ${fechaAlistamiento},
-          estado             = 'pendiente',
+          estado             = CASE WHEN estado = 'alistado' THEN 'alistado' ELSE 'pendiente' END,
           updated_at         = NOW()
         WHERE id = ${planillaId}
         RETURNING id, entregador, fecha_alistamiento, tipo_ruta, fecha, estado, es_asesor, nombre_asesor
@@ -114,6 +114,15 @@ export async function POST(request: NextRequest) {
         { error: 'Error al actualizar la planilla' },
         { status: 500 }
       )
+    }
+
+    // Los registros que guardan el nombre del entregador (faltantes y salida de inventario) deben
+    // seguir a la planilla cuando cambia de entregador (ej. de "Extra" a Mateo).
+    try {
+      await sql`UPDATE faltantes SET entregador = ${result[0].entregador} WHERE planilla_id = ${planillaId}`
+      await sql`UPDATE inventario_salidas SET entregador = ${result[0].entregador} WHERE planilla_id = ${planillaId}`
+    } catch (syncError) {
+      console.error('[API assign] No se pudo sincronizar el entregador en faltantes/inventario:', syncError)
     }
 
     console.log('[API assign] ✓ Planilla asignada:', result[0])
