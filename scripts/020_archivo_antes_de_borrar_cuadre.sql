@@ -39,8 +39,9 @@
 -- QUÉ HACE ESTE SCRIPT:
 --   PARTE 1 — crea pedidos_archivo y pedido_productos_archivo, con la
 --             misma estructura de columnas que las tablas originales
---             en este momento (usa "LIKE ... INCLUDING ALL", así se
---             ajusta sola si una migración futura agrega columnas),
+--             en este momento (usa "LIKE ... INCLUDING ALL", las tablas
+--             de archivo se crean con las columnas de hoy; el trigger copia por
+--             nombre de columna, así que una columna nueva en pedidos no lo rompe),
 --             más dos columnas nuevas: cuándo se archivó y a qué
 --             cuadre perteneció. "LIKE" nunca copia llaves foráneas,
 --             así que el archivo queda desacoplado de "planillas": si
@@ -106,13 +107,21 @@ BEGIN
   );
 
   -- ── Nuevo: archivar antes de borrar ──
+  -- Se copia por NOMBRE de columna (jsonb_populate_record), no por posición: si algún día se
+  -- agrega una columna a pedidos, el archivo sigue funcionando y el cuadre nunca se cae.
   INSERT INTO pedidos_archivo
-  SELECT p.*, NOW(), NEW.id
+  SELECT (jsonb_populate_record(
+    NULL::pedidos_archivo,
+    to_jsonb(p) || jsonb_build_object('archivado_en', NOW(), 'cuadre_id', NEW.id)
+  )).*
   FROM pedidos p
   WHERE p.planilla_id = ANY(NEW.planillas_ids);
 
   INSERT INTO pedido_productos_archivo
-  SELECT pp.*, NOW(), NEW.id
+  SELECT (jsonb_populate_record(
+    NULL::pedido_productos_archivo,
+    to_jsonb(pp) || jsonb_build_object('archivado_en', NOW(), 'cuadre_id', NEW.id)
+  )).*
   FROM pedido_productos pp
   JOIN pedidos p ON p.id = pp.pedido_id
   WHERE p.planilla_id = ANY(NEW.planillas_ids);
@@ -123,3 +132,24 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+
+
+-- =====================================================================
+-- PARA DESHACER (solo si algo saliera mal): devuelve la función a como
+-- estaba antes de este script. Las tablas de archivo pueden quedarse.
+-- =====================================================================
+--
+-- CREATE OR REPLACE FUNCTION public.eliminar_planillas_cuadradas()
+-- RETURNS trigger
+-- LANGUAGE plpgsql
+-- AS $function$
+-- BEGIN
+--   UPDATE pedidos
+--   SET pedido_fiado_id = NULL
+--   WHERE pedido_fiado_id IN (
+--     SELECT id FROM pedidos WHERE planilla_id = ANY(NEW.planillas_ids)
+--   );
+--   DELETE FROM pedidos WHERE planilla_id = ANY(NEW.planillas_ids);
+--   RETURN NEW;
+-- END;
+-- $function$;

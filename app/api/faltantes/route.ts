@@ -24,10 +24,20 @@ export async function POST(request: NextRequest) {
       unidadIncompleta,
       observaciones,
       marcadoPor,
-      estadoAlistamiento
+      estadoAlistamiento,
+      productoReemplazo
     } = body;
 
     const sql = getDB();
+
+    // El producto que se entregó en reemplazo antes se perdía (llegaba pero no se guardaba).
+    // Se anota al inicio de las observaciones para que el inventario sepa qué salió realmente.
+    // Si el alistador vuelve a editar, el texto ya trae el prefijo: se quita para no duplicarlo.
+    const observacionesSinPrefijo = String(observaciones || '').replace(/^REEMPLAZO POR: [^|]*\|?\s*/, '').trim();
+    const observacionesGuardar =
+      estadoAlistamiento === 'reemplazo' && productoReemplazo
+        ? `REEMPLAZO POR: ${String(productoReemplazo).trim().replace(/\|/g, '/')}${observacionesSinPrefijo ? ' | ' + observacionesSinPrefijo : ''}`
+        : observaciones;
 
     const estadoFinal = estadoAlistamiento || 
       (cantidadDisponible === 0 || cantidadDisponible === null ? 'no_alistado' : 
@@ -64,7 +74,7 @@ export async function POST(request: NextRequest) {
           ${cantidadDisponible},
           ${cantidadFaltante},
           ${unidadIncompleta || false},
-          ${observaciones || ''},
+          ${observacionesGuardar || ''},
           ${marcadoPor},
           'pendiente',
           NOW()
@@ -74,7 +84,7 @@ export async function POST(request: NextRequest) {
           cantidad_disponible = ${cantidadDisponible},
           cantidad_faltante = ${cantidadFaltante},
           unidad_incompleta = ${unidadIncompleta || false},
-          observaciones = ${observaciones || ''},
+          observaciones = ${observacionesGuardar || ''},
           fecha_marcado = NOW()
       `;
       
@@ -116,7 +126,7 @@ export async function POST(request: NextRequest) {
           cantidad_disponible = ${cantidadDisponible},
           cantidad_faltante = ${cantidadFaltante},
           unidad_incompleta = ${unidadIncompleta || false},
-          observaciones_faltante = ${observaciones || null}
+          observaciones_faltante = ${observacionesGuardar || null}
         WHERE pedido_id = ANY(${pedidoIds}::text[])
           AND codigo = ${codigo}
       `;

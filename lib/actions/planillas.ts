@@ -2,6 +2,7 @@
 import { getDB } from "@/lib/db"
 import { getSession } from "@/lib/session"
 import { revalidatePath } from "next/cache"
+import { registrarSalidaPlanilla } from "@/lib/inventario-salidas"
 
 export async function updatePlanillaEstado(planillaId: string, estado: string, userId?: string) {
   const sql = getDB()
@@ -15,9 +16,17 @@ export async function updatePlanillaEstado(planillaId: string, estado: string, u
             updated_at = NOW()
         WHERE id = ${planillaId}
       `
+
+      // Inventario: se guarda lo que salió, por producto. Es un respaldo aparte (la planilla se
+      // borra al cuadrar caja), así que un fallo aquí nunca debe impedir terminar el alistamiento.
+      try {
+        await registrarSalidaPlanilla(planillaId, userId)
+      } catch (invError) {
+        console.error("[updatePlanillaEstado] No se pudo guardar la salida de inventario:", invError)
+      }
     } else {
       await sql`
-        UPDATE planillas 
+        UPDATE planillas
         SET estado = ${estado}, updated_at = NOW()
         WHERE id = ${planillaId}
       `

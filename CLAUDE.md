@@ -1,0 +1,110 @@
+# Distrilogística (Distrisanty) — guía para Claude Code
+
+Este archivo es la memoria del proyecto: Claude Code lo lee solo al abrir esta carpeta. Léelo completo antes de
+tocar nada. Si cambias una regla de negocio o descubres algo importante, **actualiza este archivo** para que el
+siguiente que trabaje aquí (persona o Claude) no pierda el contexto.
+
+## 1. Qué es
+Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, entrega en ruta, cobro de fiados
+(cuentas por cobrar) y cuadre de caja por entregador. Los usuarios no son técnicos.
+
+- **Stack:** Next.js (App Router) + TypeScript + Tailwind/shadcn + Neon (PostgreSQL serverless).
+- **Despliegue:** Vercel, desde la rama `main` de `github.com/vercelvo6-arch/distrilogistica` (cada push a `main` despliega).
+- **Base de datos:** Neon. La conexión va en la variable `DATABASE_URL` (Vercel). **Nunca** pongas credenciales en el repo ni en archivos.
+- **Roles:** `administrador`, `coordinador`, `alistador`, `caja`, `entregador` (cada uno con su pantalla en `app/<rol>` y su vista en `components/<rol>-view.tsx`).
+
+## 2. Cómo trabajar con el dueño (importante)
+- Responde **en español sencillo, sin jerga técnica**. Si algo no se entiende, explícalo con un ejemplo real (cliente, entregador, montos).
+- Cuando la intención es clara, **hazlo**; no pidas permiso por cada paso. Pregunta solo si hay dos lecturas con consecuencias distintas en dinero o datos.
+- **No hagas commit ni push sin que te lo pidan.** Cuando pidan "súbelo", haz commit y push a `main`.
+- Antes de decir "listo", verifica con datos reales (consultas de solo lectura) y di con honestidad lo que no pudiste probar.
+- Para tareas de revisión, "responde pero no ejecutes" significa exactamente eso: solo leer y explicar.
+
+## 3. Cómo se cambia la base de datos de producción
+- Las escrituras en producción las corre **el dueño a mano en el editor SQL de Neon**. Tú dejas el script en `scripts/NNN_nombre.sql`
+  (el siguiente número libre es el **028**; el 025 no existe a propósito) y explicas qué hace.
+- Consultas de **solo lectura** para investigar sí están bien (usa `@neondatabase/serverless` desde un `.mjs` temporal y bórralo después).
+- Todo script que cambie datos debe ser: **una sola sentencia** (CTEs) → todo o nada; **idempotente** (si se corre dos veces, la segunda no hace nada);
+  con guardas en el `WHERE`; y dejar copia de lo borrado en `audit_log`. Valídalo con `EXPLAIN` (sin ejecutar) antes de entregarlo.
+- Antes de borrar o modificar datos del dinero, mira primero el registro (qué es, de quién, qué lo referencia).
+- Revisa en la base si un script ya se aplicó antes de asumirlo (`scripts/` es solo el registro). Aplicados y verificados: 020 (respaldo antes de borrar cuadres) y 027 (tablas de inventario). Verificar si se aplicó: 026 (ajuste Yeimy/Leder).
+
+## 4. Trampas técnicas (te van a ahorrar horas)
+- **El driver `neon()` HTTP NO hace transacciones reales.** `BEGIN/COMMIT` en llamadas separadas no hacen nada. Para atomicidad usa `sql.transaction([...])` o una sola sentencia con CTEs. `app/api/cuadres-caja/route.ts` todavía tiene `BEGIN/COMMIT` falsos (deuda conocida; por eso se hicieron idempotentes las operaciones).
+- `next.config.mjs` tiene `ignoreBuildErrors: true` y hay ~420 errores de TypeScript preexistentes (casi todos por el tipado de `neon`). **No los "arregles" en bloque**; solo cuida no añadir errores nuevos en lo que tocas: `npx tsc --noEmit | grep archivo`.
+- Los archivos tienen finales de línea **CRLF** (Windows). Si editas por script, normaliza y restaura; con la herramienta Edit funciona normal.
+- El nombre del mismo entregador puede variar por grupo de rutas (ej. "Alfonso 6C-7B-93", "Alfonso 72 - 84"). **Alfonso en todas sus variantes es el mismo entregador.**
+- Los nombres de cliente llevan el número de ruta al inicio ("29 LUIS FERNANDO VELANDIA PLATA"). Al buscar, usa partes del apellido con `ILIKE`.
+- Hay caracteres rotos en nombres viejos (`Ó`, `Ñ` → `�`); busca con una parte sin tilde.
+
+## 5. Reglas de negocio que NO se deben romper
+
+### 5.1 Cuadre de caja (`cuadres_caja`, `app/api/cuadres-caja/route.ts`, `components/caja-view.tsx`)
+- **Esperado** = Cargue − Novedades (fiado, devoluciones, repasos, agotados, descuentos, varios, errores de facturación) + Cobros CxC.
+- **Recibido (lo que "entregó")** = Billetes + Monedas + Consignaciones + Cobros por Nequi/banco. **La comisión del entregador se calcula sobre este total.**
+- Los **cobros en efectivo ya van dentro de billetes/monedas**: no se suman aparte al Recibido.
+- Un **pago administrativo en efectivo** (módulo Cuadre Administrativo) baja el fiado y deja su abono, pero **NO suma al Esperado ni a los cobros en efectivo**: el entregador nunca manipuló ese dinero.
+- Hay un trigger (`after_cuadre_eliminar_planillas`) que **borra los pedidos (y sus productos) al insertar el cuadre**. El detalle de qué pidió cada cliente solo existe mientras caja no cuadra. Desde el script `020` (aplicado) ese detalle se copia a `pedidos_archivo` / `pedido_productos_archivo` justo antes de borrarse.
+- Al cerrar, un saldo de fiado **menor a $1 se cierra en 0** (los pagos son en pesos enteros y las facturas traen centavos).
+- El cuadre agrupado carga solo los cobros que el entregador registró en ruta y los **pagos administrativos identificados** de ese entregador.
+
+### 5.2 Fiados y abonos (`fiados`, `abonos_fiados`)
+- Un abono apunta al fiado con `abonos_fiados.pedido_id = fiados.id` (como texto). `planilla_cobro_id IS NULL` = abono aún sin conciliar en un cuadre.
+- Los fiados nunca se borran de la tabla: se marcan `eliminado = true` (soft delete). Solo los eliminados desde la creación de `eliminaciones_historial` aparecen en la pestaña **Eliminados** y se pueden restaurar.
+- "Eliminar definitivamente" (pestaña Eliminados; solo coordinador/administrador) no permite borrar un fiado con abonos.
+- La pantalla de Fiados muestra por defecto solo el mes actual y solo pendientes ("Mostrar pagados" y las fechas amplían).
+
+### 5.3 Antifraude de referencias (`lib/validar-referencia.ts`)
+- Una referencia de pago (Nequi, consignación…) **no puede usarse dos veces**. Se revisa en consignaciones, cobros (abonos), pagos anticipados y cuadres.
+- Índice único `idx_abonos_fiados_referencia_por_deuda (referencia_pago, pedido_id)`: el mismo comprobante puede repartirse entre **varias deudas del mismo cliente**, pero no reutilizarse para otro.
+- **Duplicado coherente:** mismo fiado + mismos montos + abono aún sin conciliar = es el mismo pago (no un fraude): se reutiliza en vez de crear otro. Así el entregador puede registrar en ruta y caja abrirlo sin que salga como duplicado.
+- `pagos_anticipados.referencia` es **única**; para partir un comprobante en dos pagos, la segunda parte lleva sufijo (`-2`).
+- Si una consignación ya contada en un cuadre cerrado pertenece al mismo cliente, el botón "Aplicar este pago al fiado" (`/api/fiados/aplicar-pago-contado`) baja el fiado **sin volver a contar el efectivo**.
+
+### 5.4 Cuadre Administrativo (`pagos_anticipados`, `components/pagos-anticipados-view.tsx`)
+- Estados: `pendiente` → `identificado` (se le asigna fiado/pedido de asesor y entregador) → `vinculado` (caja lo confirma dentro de un cuadre; recién ahí baja el fiado y se crea el abono).
+- Los `identificado` se **cargan solos** al abrir el cuadre agrupado de ese entregador, hasta que uno se confirme. No se cargan (y avisan) los que apuntan a un fiado ya pagado o que exceden su saldo en más de $1.000.
+- Nunca borres un pago administrativo "para quitar la alerta": se perdería un pago real. Se ajusta o se parte.
+
+### 5.5 Consignaciones
+- Cada consignación pertenece a un **pedido** o a un **cobro**. Si una consignación cubre ambos, se parte en dos líneas: valor del pedido y valor del cobro, con la referencia terminada en `-1`, `-2`.
+- Las que el entregador registra en ruta traen vínculo al pedido (`origenConsignacionId`). Las grandes **sin cliente** son depósitos de efectivo del entregador al banco.
+- Pendiente de construir: casilla "Pedido / Cobro / Depósito" en el cuadre y filtros en el Historial (ver sección 8).
+
+### 5.6 Reasignación de pedidos y mercancía
+- Al reasignar un pedido ya cargado a otra planilla, **el pedido y el dinero se mueven, la mercancía se queda en la planilla donde se cargó** (`pedidos.planilla_mercancia_id`; consultas usan `COALESCE(planilla_mercancia_id, planilla_id)`).
+- Los pedidos en estado repaso no arrastran mercancía.
+
+### 5.7 Alistador
+- Un cronómetro por tarjeta de entregador, guardado en el servidor (`timer_inicio`, `timer_fin`, `timer_pausa`, `timer_segundos_pausados`); la pantalla calcula contra la hora del servidor. Pausar pide motivo y queda en `audit_log`.
+
+### 5.8 Inventario (pestaña "Inventario" del administrador; tablas `inventario_*`, script 027)
+- **Salida por producto:** cuando el alistador termina una planilla (`updatePlanillaEstado(..., "alistado")`) se guarda en `inventario_salidas` lo que salió, agrupado por código (pedido − faltante). No se borra al cuadrar caja. Solo cuentan pedidos `pendiente`; la mercancía es de `COALESCE(planilla_mercancia_id, planilla_id)`. El reemplazo del asesor queda en las observaciones como `REEMPLAZO POR: …`.
+- **Códigos:** se guardan normalizados (mayúsculas, sin espacios, sin ceros a la izquierda en códigos numéricos). Misma regla en `lib/inventario.ts` y en el SQL de `lib/inventario-salidas.ts`; si cambias una, cambia la otra.
+- **Archivos que sube el administrador** (se leen en UTF-8 o Windows-1252): catálogo/inventario del POS (11 columnas con ";": ubicación, código, nombre, categoría, cantidad, descripción del combo, precio, valor…), y CSV de ventas del POS (16 columnas). Los kits (códigos con letras o nombre con LLEVA/INCLUYE/PROMO) se identifican, pero su composición sigue siendo texto libre: el cruce es por el código facturado, no por componente.
+- **Cruce de ventas:** diferencia = (facturado − devuelto en POS) − salió, por producto, y devoluciones en dinero (caja vs POS). Las devoluciones del POS se reconocen por cantidad/valor negativos (formato aún no confirmado con un archivo real).
+- **Cruce de inventario:** ajuste sugerido para el POS = (facturado − devuelto) − salió (positivo suma al POS); los ajustes manuales (`inventario_ajustes`) se restan para no repetirlos. No incluye compras.
+
+## 6. Mapa rápido del código
+- `app/api/*`: rutas del servidor (`cuadres-caja`, `fiados`, `pagos-anticipados`, `planillas`, `pedidos/reasignar`, `faltantes`, `eliminaciones-historial`, `comisiones`…).
+- `components/*-view.tsx`: una vista por rol; `caja-view.tsx` es la más grande y delicada (cuadre individual y agrupado, historial).
+- `lib/db.ts` (cliente Neon), `lib/session.ts` (sesión por cookie), `lib/validar-referencia.ts`, `lib/eliminaciones-historial.ts`.
+- `scripts/*.sql`: migraciones y correcciones manuales numeradas (registro de lo que se corrió en Neon).
+- `docs/inventario-gerencia.md`: diseño original del inventario (se decidió construirlo DENTRO de este proyecto, ver 5.8).
+- `lib/inventario.ts`, `lib/inventario-salidas.ts`, `lib/inventario-api.ts`, `app/api/inventario/*`, `components/inventario-view.tsx`: módulo de inventario.
+
+## 7. Al recibir el proyecto (checklist de seguridad)
+1. **Cambiar la contraseña de la base de datos de Neon** y actualizar `DATABASE_URL` en Vercel (la anterior circuló en conversaciones).
+2. Cambiar las contraseñas de los usuarios administrador/maestro (el README trae credenciales de ejemplo `admin@distrisanty.com / admin123`; no deben seguir vigentes).
+3. Confirmar quién tiene acceso al repositorio de GitHub, a Vercel y a Neon.
+4. Verificar en Neon qué scripts de `scripts/` ya están aplicados (ver sección 3).
+
+## 8. Pendientes conocidos
+- **Inventario:** conseguir un CSV de ventas del POS que contenga una devolución para confirmar cómo las marca; subir el inventario real del POS (con cantidades) para el cruce de saldos; interpretar la composición de los kits.
+- **Historial de cuadres:** filtro por entregador (agrupando variantes como Alfonso), por rango de fechas y vista de **cobros por entregador** con el desglose: billetes, monedas, consignaciones (pedido / cobro / depósito de efectivo) y cobros por Nequi/banco; descarga a Excel para caja y administrador.
+- Casilla "Pedido / Cobro / Depósito" por consignación en el cuadre (y reparto con sufijo `-#`).
+- Revisar ~60 abonos registrados directo por administración (sin entregador y sin cuadre; algunos de montos grandes) que no entran a ningún cuadre.
+- Revisar los ~28 fiados históricos pagados de más (necesita verificación caso por caso con el dueño).
+- Reemplazar los `BEGIN/COMMIT` falsos de `cuadres-caja/route.ts` por `sql.transaction` o un cliente con transacciones reales.
+- Borrador del cuadre en `localStorage` (`cuadre_borrador_<entregador>`) caduca a las 24 h.
+- Posible fiado antiguo mal eliminado: hay ~700 fiados con `eliminado = true` de mayo a septiembre que no aparecen en la pestaña Eliminados (se eliminaron antes de existir el historial); restaurar solo con confirmación del dueño.
