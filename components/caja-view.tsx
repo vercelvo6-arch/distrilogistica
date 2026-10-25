@@ -240,6 +240,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [cambiandoFecha, setCambiandoFecha] = useState(false)
   const [editandoCuadreId, setEditandoCuadreId] = useState<number | null>(null)
   // Estados para export
+  // Filtro del Historial por entregador. Un mismo entregador puede aparecer con nombres distintos
+  // según el grupo de rutas ("Alfonso 72 - 84", "Alfonso 6C-7B-93"…), así que se filtra por la
+  // primera palabra del nombre: todas las variantes de Alfonso cuentan como uno solo.
+  const [filtroEntregadorHist, setFiltroEntregadorHist] = useState("todos")
+  const [entregadoresHist, setEntregadoresHist] = useState<string[]>([])
   const [exportFechaDesde, setExportFechaDesde] = useState(new Date().toISOString().split("T")[0])
   const [exportFechaHasta, setExportFechaHasta] = useState(new Date().toISOString().split("T")[0])
   const [exportando, setExportando] = useState(false)
@@ -307,6 +312,25 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     if (selectedView === "historial") {
       loadHistorial()
     }
+  }, [selectedView, filtroEntregadorHist])
+
+  useEffect(() => {
+    if (selectedView !== "historial") return
+    fetch("/api/cuadres-caja?listar=entregadores")
+      .then((r) => r.json())
+      .then((d) => {
+        const familias = new Map<string, string>()
+        for (const nombre of d.entregadores || []) {
+          const palabras = String(nombre || "").trim().split(/\s+/)
+          const clave = (palabras[0] || "").toLowerCase()
+          if (!clave) continue
+          // "Entregador Extra" no es una familia de nombres: se deja completo.
+          const etiqueta = clave === "entregador" ? String(nombre).trim() : palabras[0]
+          familias.set(etiqueta.toLowerCase(), etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1).toLowerCase())
+        }
+        setEntregadoresHist(Array.from(familias.values()).sort((a, b) => a.localeCompare(b)))
+      })
+      .catch(console.error)
   }, [selectedView])
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -452,7 +476,11 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
 
   async function loadHistorial() {
     try {
-      const responseAgrupados = await fetch("/api/cuadres-caja")
+      const responseAgrupados = await fetch(
+        filtroEntregadorHist === "todos"
+          ? "/api/cuadres-caja"
+          : `/api/cuadres-caja?familia=${encodeURIComponent(filtroEntregadorHist)}`
+      )
       const dataAgrupados = await responseAgrupados.json()
 
       const cuadresAgrupados = Array.isArray(dataAgrupados.cuadres)
@@ -2992,6 +3020,38 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
       </Button>
     </div>
   </div>
+
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <label className="text-sm font-medium text-gray-700">Entregador</label>
+                <Select value={filtroEntregadorHist} onValueChange={setFiltroEntregadorHist}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los entregadores</SelectItem>
+                    {entregadoresHist.map((e) => (
+                      <SelectItem key={e} value={e}>{e}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {filtroEntregadorHist !== "todos" && (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => setFiltroEntregadorHist("todos")}>Quitar filtro</Button>
+                    {(() => {
+                      const entrego = recepciones.reduce((s, r) => s + (Number(r.efectivo_recibido) || 0), 0)
+                      const esperado = recepciones.reduce((s, r) => s + (Number(r.efectivo_esperado) || 0), 0)
+                      const dif = recepciones.reduce((s, r) => s + (Number(r.diferencia_efectivo) || 0), 0)
+                      return (
+                        <span className="text-sm text-gray-600">
+                          {recepciones.length} cuadres · Entregó <strong>{formatCOP(entrego)}</strong> · Esperado {formatCOP(esperado)} ·{" "}
+                          Diferencia <strong className={Math.abs(dif) < 1 ? "text-green-700" : "text-red-600"}>{formatCOP(dif)}</strong>
+                        </span>
+                      )
+                    })()}
+                  </>
+                )}
+              </div>
+
               {recepciones.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">No hay recepciones registradas</p>
               ) : (

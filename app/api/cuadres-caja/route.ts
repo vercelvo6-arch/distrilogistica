@@ -707,18 +707,30 @@ export async function GET(request: Request) {
     const entregador = searchParams.get('entregador')
     const fechaDesde = searchParams.get('fechaDesde')
     const fechaHasta = searchParams.get('fechaHasta')
+    // familia: primera palabra del nombre del entregador. Un mismo entregador aparece con nombres
+    // distintos según el grupo de rutas ("Alfonso 72 - 84", "Alfonso 6C-7B-93"…).
+    const familia = searchParams.get('familia')?.trim() || ''
 
     const sql = getDB()
+
+    // Lista de nombres de entregador que tienen cuadres (para el filtro del Historial).
+    if (searchParams.get('listar') === 'entregadores') {
+      const filas = (await sql`
+        SELECT DISTINCT entregador FROM cuadres_caja WHERE entregador IS NOT NULL AND entregador <> '' ORDER BY entregador
+      `) as any[]
+      return NextResponse.json({ success: true, entregadores: filas.map((f) => f.entregador) })
+    }
 
     const cuadres = await sql`
       SELECT *
       FROM cuadres_caja
       WHERE true
         ${entregador ? sql`AND entregador = ${entregador}` : sql``}
+        ${familia ? sql`AND (entregador ILIKE ${familia + ' %'} OR entregador ILIKE ${familia})` : sql``}
         ${fechaDesde ? sql`AND fecha_desde >= ${fechaDesde}::date` : sql``}
         ${fechaHasta ? sql`AND fecha_hasta <= ${fechaHasta}::date` : sql``}
       ORDER BY fecha_cuadre DESC
-      LIMIT 100
+      LIMIT ${familia ? 400 : 100}
     `
 
     // Detalle de quién pagó: cada cobro (abono) ligado a estos cuadres con el nombre del

@@ -1314,6 +1314,49 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                 )
                               })()}
 
+                              {(() => {
+                                // Faltantes que el alistador marcó en estas planillas y que siguen sin resolver,
+                                // con lo que falta por entregar de cada uno.
+                                const idsPlanillas = new Set(sheets.map((s) => s.id))
+                                const faltantesPendientes = faltantes
+                                  .filter((f: any) => idsPlanillas.has(f.planilla_id))
+                                  .map((f: any) => ({
+                                    ...f,
+                                    pendiente: Math.max(0, (Number(f.cantidad_faltante) || 0) - (Number(f.cantidad_resuelta) || 0)),
+                                  }))
+                                  .filter((f: any) => f.pendiente > 0)
+                                  .sort((a: any, b: any) => String(a.descripcion || "").localeCompare(String(b.descripcion || "")))
+
+                                if (faltantesPendientes.length === 0) return null
+                                const totalUnidades = faltantesPendientes.reduce((sum: number, f: any) => sum + f.pendiente, 0)
+
+                                return (
+                                  <div className="mb-4 bg-red-50 border-l-4 border-red-500 rounded p-3">
+                                    <h4 className="font-bold text-sm text-red-900 mb-2">
+                                      ⚠️ Faltantes pendientes ({faltantesPendientes.length} productos, {totalUnidades} unidades)
+                                    </h4>
+                                    <ul className="space-y-1.5">
+                                      {faltantesPendientes.map((f: any) => (
+                                        <li key={f.id} className="text-sm text-gray-700 flex gap-2">
+                                          <span className="text-red-600">•</span>
+                                          <span>
+                                            <strong>{f.descripcion || f.codigo}</strong>
+                                            <span className="text-gray-500 font-mono text-xs"> ({f.codigo})</span>
+                                            {" — "}
+                                            <strong className="text-red-700">faltan {f.pendiente}</strong>
+                                            {" de "}{f.cantidad_solicitada}
+                                            {Number(f.cantidad_disponible) > 0
+                                              ? ` (se alistaron ${f.cantidad_disponible})`
+                                              : " (no se alistó)"}
+                                            {f.observaciones ? <span className="text-gray-500"> · {f.observaciones}</span> : null}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )
+                              })()}
+
                               <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 md:p-4 mb-4">
                                 <h3 className="font-bold text-base md:text-lg mb-1 text-blue-800 flex items-center gap-2">
                                   <Package className="h-4 w-4 md:h-5 md:w-5" />
