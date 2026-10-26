@@ -29,7 +29,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
 import { EliminadosView } from "@/components/eliminados-view"
-import { combinarEstadoAlistamiento } from "@/lib/estado-alistamiento"
 import { devolverAlistamiento } from "@/lib/actions/planillas"
 
 interface CoordinadorViewProps {
@@ -837,8 +836,11 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           const existing = productMap.get(item.codigo)
           if (existing) {
             existing.cantidadTotal += item.cantidad
-            // Estado más pendiente de todas las líneas del producto, sin depender del orden.
-            existing.estadoAlistamiento = combinarEstadoAlistamiento(existing.estadoAlistamiento, item.estadoAlistamiento)
+            if (item.estadoAlistamiento === "no_alistado") {
+              existing.estadoAlistamiento = "no_alistado"
+            } else if (item.estadoAlistamiento === "incompleto" && existing.estadoAlistamiento !== "no_alistado") {
+              existing.estadoAlistamiento = "incompleto"
+            }
             if (item.observacionesFaltante) {
               existing.observacionesFaltante = existing.observacionesFaltante
                 ? `${existing.observacionesFaltante}; ${item.observacionesFaltante}`
