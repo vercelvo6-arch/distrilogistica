@@ -121,7 +121,7 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 - `components/*-view.tsx`: una vista por rol; `caja-view.tsx` es la más grande y delicada (cuadre individual y agrupado, historial).
 - `lib/db.ts` (cliente Neon), `lib/session.ts` (sesión por cookie), `lib/validar-referencia.ts`, `lib/eliminaciones-historial.ts`.
 - `scripts/*.sql`: migraciones y correcciones manuales numeradas (registro de lo que se corrió en Neon).
-- `docs/manual/index.html`: manual de usuario pantalla por pantalla (para personal no técnico). **Si cambias una pantalla o un flujo, actualiza también el manual.**
+- `docs/manual/guia-practica.html`: guía práctica por cargo (Entregador, Caja, Alistador, Coordinador, Administrador) con pantallas dibujadas y pasos numerados, pensada para la persona menos hábil. `docs/manual/index.html`: manual completo de referencia. **Si cambias una pantalla, un botón o un flujo, actualiza también la guía y el manual** (los nombres de botones deben coincidir con los de la pantalla).
 - `docs/inventario-gerencia.md`: diseño original del inventario (se decidió construirlo DENTRO de este proyecto, ver 5.8).
 - `lib/inventario.ts`, `lib/inventario-salidas.ts`, `lib/inventario-api.ts`, `app/api/inventario/*`, `components/inventario-view.tsx`: módulo de inventario.
 

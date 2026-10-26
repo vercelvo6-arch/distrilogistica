@@ -1459,7 +1459,9 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                 ? "Registrar Fiado"
                 : tipoNovedad === "devolucion"
                   ? "Registrar Devolución"
-                  : "Confirmar Agotado"}
+                  : tipoNovedad === "descuento"
+                    ? "Registrar Descuento"
+                    : "Confirmar Agotado"}
             </DialogTitle>
             <DialogDescription>
               {selectedOrder?.cliente} — {formatCOP(calcularSaldoDisponible(selectedOrder))}

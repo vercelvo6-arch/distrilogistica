@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía práctica de Distrilogística</title>
+<style>
+  :root {
+    --fondo: #f5f6f8; --tarjeta: #ffffff; --texto: #1c2430; --suave: #576273; --borde: #d9dee5;
+    --azul: #1d4ed8; --azul-bg: #e8efff; --verde: #15803d; --verde-bg: #e6f6ea;
+    --ambar: #a85a04; --ambar-bg: #fff3d6; --rojo: #b42318; --rojo-bg: #fdeceb;
+    --naranja: #c2410c; --naranja-bg: #fff0e6; --morado: #6d28d9; --morado-bg: #f0eaff; --gris-bg: #eceff3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fondo: #0e1318; --tarjeta: #171f29; --texto: #e9eef3; --suave: #a1adbb; --borde: #2b3744;
+      --azul: #8db1ff; --azul-bg: #16253f; --verde: #6fe8a2; --verde-bg: #11301f;
+      --ambar: #fbbf6a; --ambar-bg: #3a2a10; --rojo: #ff9d96; --rojo-bg: #3b1918;
+      --naranja: #ffa772; --naranja-bg: #3b2312; --morado: #c6b3ff; --morado-bg: #2a2147; --gris-bg: #222c37;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+      --fondo: #0e1318; --tarjeta: #171f29; --texto: #e9eef3; --suave: #a1adbb; --borde: #2b3744;
+      --azul: #8db1ff; --azul-bg: #16253f; --verde: #6fe8a2; --verde-bg: #11301f;
+      --ambar: #fbbf6a; --ambar-bg: #3a2a10; --rojo: #ff9d96; --rojo-bg: #3b1918;
+      --naranja: #ffa772; --naranja-bg: #3b2312; --morado: #c6b3ff; --morado-bg: #2a2147; --gris-bg: #222c37;
+      color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 70px; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 19px/1.7 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .contenedor { max-width: 860px; margin: 0 auto; padding: 0 16px; }
+  header.portada { background: #1e3a8a; color: #fff; padding: 36px 0 30px; }
+  header.portada h1 { margin: 0 0 8px; font-size: 2.1rem; line-height: 1.2; }
+  header.portada p { margin: 0; max-width: 620px; opacity: .95; }
+  .barra { position: sticky; top: 0; z-index: 20; background: var(--tarjeta); border-bottom: 1px solid var(--borde); }
+  .barra .contenedor { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; padding-bottom: 10px; }
+  .barra .t { font-weight: 800; margin-right: 4px; }
+  .rol { font: inherit; font-size: .95rem; font-weight: 800; cursor: pointer; padding: 9px 18px; border-radius: 999px;
+    border: 2px solid var(--borde); background: var(--fondo); color: var(--texto); }
+  .rol:hover { border-color: var(--azul); }
+  .rol[aria-pressed="true"] { background: var(--azul); border-color: var(--azul); color: #fff; }
+  .rol.pronto { opacity: .55; }
+  main { padding-bottom: 80px; }
+  .oculto { display: none !important; }
+  h2 { font-size: 1.8rem; margin: 40px 0 4px; line-height: 1.25; }
+  h3 { font-size: 1.4rem; margin: 0 0 4px; line-height: 1.3; }
+  h4 { margin: 22px 0 6px; font-size: 1rem; text-transform: uppercase; letter-spacing: .06em; color: var(--suave); }
+  p { margin: 8px 0; }
+  .lead { color: var(--suave); font-size: 1.1rem; margin-top: 4px; }
+  .caja { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 16px; padding: 18px 22px 22px; margin-top: 18px; }
+  .caja.dia { border: 2px solid var(--azul); }
+  .cuando { background: var(--azul-bg); border-radius: 10px; padding: 10px 14px; margin: 10px 0 4px; }
+  .cuando b { color: var(--azul); }
+  ol.pasos { list-style: none; counter-reset: p; padding: 0; margin: 12px 0; }
+  ol.pasos > li { counter-increment: p; position: relative; padding: 6px 0 12px 54px; min-height: 44px; }
+  ol.pasos > li::before { content: counter(p); position: absolute; left: 0; top: 4px; width: 38px; height: 38px; border-radius: 50%;
+    background: var(--azul); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 1.05rem; }
+  ol.pasos > li small { display: block; color: var(--suave); font-size: .9rem; line-height: 1.45; margin-top: 2px; }
+  .pin { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--rojo); color: #fff;
+    font: 800 .8rem/1 system-ui; font-style: normal; vertical-align: middle; margin: 0 3px; }
+  .b { display: inline-block; padding: 1px 10px; border-radius: 8px; font-weight: 800; font-size: .88em; white-space: nowrap; }
+  .b.verde { background: var(--verde); color: #fff; }
+  .b.naranja { background: var(--naranja-bg); color: var(--naranja); border: 1px solid var(--naranja); }
+  .b.rojo { background: var(--rojo-bg); color: var(--rojo); border: 1px solid var(--rojo); }
+  .b.gris { background: var(--gris-bg); color: var(--suave); border: 1px solid var(--borde); }
+  .b.morado { background: var(--morado-bg); color: var(--morado); border: 1px solid var(--morado); }
+  .b.azul { background: var(--azul); color: #fff; }
+  .b.borde { background: var(--tarjeta); color: var(--texto); border: 1px solid var(--borde); }
+  .aviso { border-left: 6px solid; border-radius: 10px; padding: 10px 16px; margin: 14px 0; }
+  .aviso > b:first-child { display: block; }
+  .aviso.ojo { background: var(--ambar-bg); border-color: var(--ambar); }
+  .aviso.bien { background: var(--verde-bg); border-color: var(--verde); }
+  .aviso.mal { background: var(--rojo-bg); border-color: var(--rojo); }
+  /* Pantalla dibujada */
+  .pantalla { border: 2px solid var(--borde); border-radius: 14px; background: var(--fondo); padding: 12px; margin: 14px 0; max-width: 560px; font-size: .92rem; line-height: 1.4; }
+  .pantalla .etq { display: block; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); margin-bottom: 8px; }
+  .fila { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; padding: 9px 11px; margin: 6px 0; }
+  .fila .nom { font-weight: 700; }
+  .fila .sub { color: var(--suave); font-size: .85rem; }
+  .fila .btns { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; align-items: center; }
+  .estado { display: inline-block; font-size: .72rem; font-weight: 800; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--borde); background: var(--gris-bg); color: var(--suave); }
+  .estado.v { background: var(--verde-bg); color: var(--verde); border-color: var(--verde); }
+  .campo { display: block; background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 8px; padding: 7px 10px; margin: 4px 0 8px; color: var(--suave); }
+  .campo.lleno { color: var(--texto); font-weight: 700; }
+  .etiqueta { font-weight: 800; font-size: .85rem; }
+  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; margin: 6px 0; }
+  .cifras div { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 8px; padding: 6px 9px; }
+  .cifras small { display: block; color: var(--suave); font-size: .72rem; }
+  .cifras b { font-size: 1rem; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: .95rem; display: block; overflow-x: auto; }
+  th, td { border: 1px solid var(--borde); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--gris-bg); }
+  .palabras { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; margin: 10px 0; }
+  .palabras div { background: var(--gris-bg); border-radius: 10px; padding: 8px 12px; font-size: .95rem; }
+  .indice { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px; margin: 10px 0; padding: 0; list-style: none; }
+  .indice a { display: block; text-decoration: none; color: var(--texto); background: var(--tarjeta); border: 1px solid var(--borde);
+    border-radius: 12px; padding: 10px 14px; font-weight: 700; }
+  .indice a:hover { border-color: var(--azul); color: var(--azul); }
+  .indice small { display: block; font-weight: 400; color: var(--suave); }
+  .arriba { display: inline-block; margin-top: 14px; font-size: .9rem; color: var(--azul); text-decoration: none; font-weight: 700; }
+  footer { text-align: center; color: var(--suave); font-size: .85rem; padding: 26px 16px 50px; }
+  @media (max-width: 700px) { .barra { position: static; } html { scroll-padding-top: 12px; } }
+  @media (max-width: 560px) { body { font-size: 18px; } header.portada h1 { font-size: 1.7rem; } }
+  @media print {
+    .barra { display: none; }
+    body { font-size: 14px; background: #fff; color: #000; }
+    .oculto { display: block !important; }
+    .caja { break-inside: avoid; }
+    section.rol-seccion { page-break-before: always; }
+  }
+</style>
+</head>
+<body>
+
+<header class="portada"><div class="contenedor">
+  <h1>Guía práctica de Distrilogística</h1>
+  <p>Paso a paso, con pantallas dibujadas y sin palabras raras. Toca tu cargo y sigue los pasos en orden. Si algo no sale como aquí, no sigas adelante: pregunta.</p>
+</div></header>
+
+<div class="barra"><div class="contenedor">
+  <span class="t">Soy:</span>
+  <button class="rol" type="button" data-rol="entregador" aria-pressed="false">Entregador</button>
+  <button class="rol" type="button" data-rol="caja" aria-pressed="false">Caja</button>
+  <button class="rol" type="button" data-rol="alistador" aria-pressed="false">Alistador</button>
+  <button class="rol" type="button" data-rol="coordinador" aria-pressed="false">Coordinador</button>
+  <button class="rol" type="button" data-rol="administrador" aria-pressed="false">Administrador</button>
+</div></div>
+
+<main class="contenedor">
+
+<!-- ======================================================= PORTADA / ELIGE -->
+<section id="elige" data-seccion="elige">
+  <h2>Empieza por aquí</h2>
+  <p class="lead">Esta guía se lee según tu trabajo. Toca tu cargo arriba.</p>
+  <div class="caja">
+    <h3>Cómo está armada</h3>
+    <ol class="pasos">
+      <li><b>“Tu día en pasos”</b><small>Una lista corta con todo lo que haces en el día, en orden.</small></li>
+      <li><b>“Cómo se hace”</b><small>Una tarjeta por cada tarea. Trae una pantalla dibujada con números rojos <i class="pin">1</i> que te dicen dónde tocar.</small></li>
+      <li><b>“Si algo sale mal”</b><small>Cada tarjeta dice qué hacer si te equivocas o si el sistema te avisa algo.</small></li>
+    </ol>
+    <div class="aviso ojo"><b>Las pantallas dibujadas son de ejemplo</b>Los nombres de clientes y los valores son inventados. Lo que cuenta son los botones y su lugar.</div>
+  </div>
+  <div class="caja">
+    <h3>Qué cubre</h3>
+    <p><span class="b verde">Entregador</span> <span class="b verde">Caja</span> <span class="b verde">Alistador</span> <span class="b verde">Coordinador</span> <span class="b verde">Administrador</span></p>
+    <p>Si necesitas más detalle de una pantalla, consulta el <a href="index.html">manual completo</a>.</p>
+  </div>
+</section>
+
+<!-- ======================================================= ENTREGADOR -->
+<section id="entregador" class="rol-seccion" data-seccion="entregador">
+  <h2>Entregador</h2>
+  <p class="lead">Tú llevas la mercancía al cliente y anotas qué pasó con cada pedido. Lo que anotas aquí es lo que caja revisa cuando llegas.</p>
+
+  <div class="caja">
+    <h3>Cinco palabras que vas a ver</h3>
+    <div class="palabras">
+      <div><b>Ruta</b><br>Una zona de reparto. Tus clientes están agrupados por ruta.</div>
+      <div><b>Cargue</b><br>El valor de toda la mercancía que llevas.</div>
+      <div><b>Fiado</b><br>El cliente recibió pero no pagó (todo o parte). Queda debiendo.</div>
+      <div><b>Cobro</b><br>Cuando un cliente que ya debía te paga esa deuda vieja.</div>
+      <div><b>Consignación</b><br>Plata que dejaste en el banco y tienes comprobante.</div>
+    </div>
+  </div>
+
+  <div class="caja dia">
+    <h3>Tu día en 7 pasos</h3>
+    <ol class="pasos">
+      <li><b>Entra al sistema</b> con tu correo y contraseña y mira “Mis Rutas”.<small>Si tu pantalla dice “No hay rutas activas”, todavía no te han asignado nada. Avisa al coordinador.</small></li>
+      <li><b>Mira cuánto llevas.</b><small>Arriba está el resumen. “Total Cargue” es el valor de lo que llevas.</small></li>
+      <li><b>En cada cliente, toca el botón que dice qué pasó:</b> <a href="#e-entregado">Entregado</a>, <a href="#e-fiado">Fiado</a>, <a href="#e-devolucion">Devolución</a>, <a href="#e-agotado">Agotado</a>, <a href="#e-agotado">Descuento</a> o <a href="#e-transferencia">Transferencia</a>.<small>Hazlo en el momento, cliente por cliente. No lo dejes para el final del día.</small></li>
+      <li><b>Si te asignaron cobros, regístralos</b> en la sección morada “Cobros CxC”.<small>Mira <a href="#e-cobro">Cobrar una deuda vieja</a>.</small></li>
+      <li><b>Si dejaste plata en el banco, anótalo.</b><small>Mira <a href="#e-consignacion">Registrar una consignación</a>.</small></li>
+      <li><b>Antes de ir a caja, revisa:</b> ningún cliente debe decir PENDIENTE y los números del resumen deben tener sentido.<small>Un cliente en PENDIENTE significa que no anotaste qué pasó con él.</small></li>
+      <li><b>Ve a caja</b> con el dinero y tus comprobantes.<small>Caja ya ve todo lo que anotaste: solo verifica y cuenta contigo.</small></li>
+    </ol>
+  </div>
+
+  <h2 style="font-size:1.4rem">Cómo se hace</h2>
+  <ul class="indice">
+    <li><a href="#e-entregado">1. Marcar un pedido como entregado<small>El cliente recibió y pagó todo</small></a></li>
+    <li><a href="#e-fiado">2. Dejar un pedido fiado<small>Pagó una parte o no pagó</small></a></li>
+    <li><a href="#e-devolucion">3. Registrar una devolución<small>El cliente devolvió mercancía</small></a></li>
+    <li><a href="#e-agotado">4. Agotado o descuento<small>Faltó un producto / se hizo un descuento</small></a></li>
+    <li><a href="#e-transferencia">5. El cliente pagó por transferencia<small>Nequi, Bancolombia…</small></a></li>
+    <li><a href="#e-todo">6. Marcar toda la ruta entregada<small>Cuando todo salió bien</small></a></li>
+    <li><a href="#e-cobro">7. Cobrar una deuda vieja<small>Sección morada “Cobros CxC”</small></a></li>
+    <li><a href="#e-consignacion">8. Registrar una consignación<small>Dejaste plata en el banco</small></a></li>
+    <li><a href="#e-error">9. Me equivoqué<small>Qué se puede corregir y cómo</small></a></li>
+  </ul>
+
+  <!-- E1 -->
+  <div class="caja" id="e-entregado">
+    <h3>1. Marcar un pedido como entregado</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> el cliente recibió todo y te pagó todo.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · Mis Rutas · un cliente</span>
+      <div class="fila">
+        <div><span class="nom">12 TIENDA LA ESPERANZA</span> <i class="pin">1</i> <span class="estado">PENDIENTE</span></div>
+        <div class="sub">$ 185.400</div>
+        <div class="btns"><span class="b verde">Entregado</span><i class="pin">2</i> <span class="b naranja">Fiado</span> <span class="b rojo">Devolución</span> <span class="b gris">Agotado</span> <span class="b morado">Descuento</span> <span class="b azul">Transferencia</span></div>
+      </div>
+    </div>
+    <ol class="pasos">
+      <li>Busca el nombre del cliente <i class="pin">1</i>. Si dice <span class="estado">PENDIENTE</span>, todavía no has anotado nada.</li>
+      <li>Toca el botón verde <span class="b verde">Entregado</span> <i class="pin">2</i>.<small>No pide confirmación. Aparece un mensaje “Entregado” y el cliente queda marcado ENTREGADO en verde.</small></li>
+    </ol>
+    <div class="aviso mal"><b>Cuidado</b>Toca <span class="b verde">Entregado</span> solo si el cliente <u>pagó todo</u>. Si debe aunque sea una parte, usa <a href="#e-fiado">Fiado</a>.</div>
+    <div class="aviso bien"><b>Si algo sale mal</b>Si tocaste Entregado por error, avisa a caja: ellos pueden devolverlo a pendiente.</div>
+  </div>
+
+  <!-- E2 -->
+  <div class="caja" id="e-fiado">
+    <h3>2. Dejar un pedido fiado</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> el cliente recibió la mercancía pero pagó solo una parte, o no pagó nada.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · ventana “Registrar Fiado”</span>
+      <div class="etiqueta">Registrar Fiado</div>
+      <div class="sub">12 TIENDA LA ESPERANZA — $ 185.400</div>
+      <div class="etiqueta" style="margin-top:8px">¿Cuánto abonó?</div>
+      <span class="campo lleno">80000 <i class="pin">2</i></span>
+      <div class="fila"><span class="sub">Saldo que queda fiado:</span><br><b style="color:var(--naranja)">$ 105.400</b> <i class="pin">3</i></div>
+      <div class="btns" style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Confirmar</span> <i class="pin">4</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En el cliente toca <span class="b naranja">Fiado</span> <i class="pin">1</i>. Se abre la ventana “Registrar Fiado”.</li>
+      <li>En <b>“¿Cuánto abonó?”</b> escribe lo que el cliente SÍ pagó <i class="pin">2</i>.<small>Si no pagó nada, escribe 0.</small></li>
+      <li>Mira el recuadro <b>“Saldo que queda fiado”</b> <i class="pin">3</i>: es lo que el cliente te debe. Debe coincidir con lo que tú calculaste.</li>
+      <li>Toca <span class="b azul">Confirmar</span> <i class="pin">4</i>.<small>El cliente queda marcado FIADO en naranja y debajo dice “Abonó $80.000 — Debe $105.400”.</small></li>
+    </ol>
+    <div class="aviso mal"><b>Cuidado</b>El valor que escribes es lo que <b>pagó</b>, no lo que debe. Escribir lo que debe es el error más común.</div>
+    <div class="aviso bien"><b>Si algo sale mal</b>Si el sistema dice que el monto no puede superar el total del pedido, revisaste mal el número. Corrígelo antes de confirmar.</div>
+  </div>
+
+  <!-- E3 -->
+  <div class="caja" id="e-devolucion">
+    <h3>3. Registrar una devolución</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> el cliente te devolvió mercancía y te la llevas de vuelta.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · ventana “Registrar Devolución”</span>
+      <div class="etiqueta">Registrar Devolución</div>
+      <div class="sub">12 TIENDA LA ESPERANZA — $ 185.400</div>
+      <div class="etiqueta" style="margin-top:8px">¿Cuánto devuelve?</div>
+      <span class="campo lleno">24500 <i class="pin">2</i></span>
+      <div class="btns" style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Confirmar</span> <i class="pin">3</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En el cliente toca <span class="b rojo">Devolución</span> <i class="pin">1</i>.</li>
+      <li>Escribe el <b>valor en pesos</b> de lo que devuelve <i class="pin">2</i>. Es el valor, no la cantidad de productos.</li>
+      <li>Toca <span class="b azul">Confirmar</span> <i class="pin">3</i>.<small>Ese valor se descuenta de lo que debes entregar en caja.</small></li>
+    </ol>
+    <div class="aviso ojo"><b>Importante</b>Lleva de vuelta la mercancía devuelta. Caja y bodega la van a esperar.</div>
+  </div>
+
+  <!-- E4 -->
+  <div class="caja" id="e-agotado">
+    <h3>4. Agotado o descuento</h3>
+    <div class="cuando"><b>Agotado:</b> un producto de la factura no había y no se entregó. <b>Descuento:</b> se acordó rebajar el precio al cliente.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · el mismo formato para los dos</span>
+      <div class="etiqueta">Confirmar Agotado &nbsp;·&nbsp; Registrar Descuento</div>
+      <div class="etiqueta" style="margin-top:8px">Monto agotado &nbsp;·&nbsp; Monto del descuento</div>
+      <span class="campo lleno">12000 <i class="pin">2</i></span>
+      <div class="btns" style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Confirmar</span> <i class="pin">3</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En el cliente toca <span class="b gris">Agotado</span> o <span class="b morado">Descuento</span> <i class="pin">1</i>.</li>
+      <li>Escribe el valor en pesos <i class="pin">2</i>.</li>
+      <li>Toca <span class="b azul">Confirmar</span> <i class="pin">3</i>.</li>
+    </ol>
+    <div class="aviso ojo"><b>Descuento solo si lo autorizaron</b>No hagas descuentos por tu cuenta. Caja puede preguntarte el motivo.</div>
+  </div>
+
+  <!-- E5 -->
+  <div class="caja" id="e-transferencia">
+    <h3>5. El cliente pagó por transferencia</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> el cliente te muestra un comprobante de Nequi, Bancolombia u otro banco.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · ventana “Registrar Transferencia”</span>
+      <div class="etiqueta">Registrar Transferencia</div>
+      <div class="sub">12 TIENDA LA ESPERANZA — $ 185.400</div>
+      <div class="etiqueta" style="margin-top:8px">Banco</div>
+      <span class="campo lleno">Nequi <i class="pin">2</i></span>
+      <div class="etiqueta">Número</div>
+      <span class="campo lleno">M31877042 <i class="pin">3</i></span>
+      <div class="etiqueta">Monto</div>
+      <span class="campo lleno">185400 <i class="pin">4</i></span>
+      <div class="btns" style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Confirmar</span> <i class="pin">5</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En el cliente toca <span class="b azul">Transferencia</span> <i class="pin">1</i>.</li>
+      <li>En <b>Banco</b> escribe el medio: Nequi, Bancolombia… <i class="pin">2</i></li>
+      <li>En <b>Número</b> copia la referencia del comprobante <i class="pin">3</i>.<small>Cópiala igual, sin cambiar letras ni números.</small></li>
+      <li>En <b>Monto</b> escribe lo que transfirió <i class="pin">4</i>.</li>
+      <li>Toca <span class="b azul">Confirmar</span> <i class="pin">5</i>.</li>
+    </ol>
+    <div class="aviso mal"><b>Cuidado</b>Cada número de referencia se puede usar <u>una sola vez</u> en todo el sistema. Si el sistema dice que ya fue registrado, revisa que lo copiaste bien. <b>Nunca</b> uses el comprobante de un cliente para otro.</div>
+    <div class="aviso ojo"><b>Además</b>Después de registrar la transferencia, el pedido igual debe quedar como <span class="b verde">Entregado</span> (si ya pagó todo).</div>
+  </div>
+
+  <!-- E6 -->
+  <div class="caja" id="e-todo">
+    <h3>6. Marcar toda la ruta entregada</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> todos los clientes de la ruta recibieron y pagaron todo, sin fiados ni devoluciones.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · tarjeta de una ruta</span>
+      <div class="fila"><div class="nom">RUTA 12</div><div class="sub">8 clientes</div>
+        <div class="btns"><span class="b borde" style="width:100%;text-align:center">Marcar todo el recorrido como Entregado</span><i class="pin">1</i></div></div>
+    </div>
+    <ol class="pasos">
+      <li>En la tarjeta de la ruta toca <b>“Marcar todo el recorrido como Entregado”</b> <i class="pin">1</i>.</li>
+      <li>El sistema pregunta: <b>“¿Marcar los N pedidos pendientes de la ruta como Entregado?”</b>. Si es correcto, acepta.</li>
+    </ol>
+    <div class="aviso mal"><b>Cuidado</b>Esto marca <u>todos</u> los pendientes de esa ruta. Si algún cliente quedó debiendo o devolvió algo, <b>márcalo antes</b> con su botón y luego usa este.</div>
+  </div>
+
+  <!-- E7 -->
+  <div class="caja" id="e-cobro">
+    <h3>7. Cobrar una deuda vieja</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> el administrador te asignó cobrar a un cliente que ya debía de antes. Los ves en la sección morada <b>“Cobros CxC”</b>, en el recuadro <b>“Asignados a ti”</b>.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · ventana “Cobro CxC”</span>
+      <div class="etiqueta">Cobro CxC</div>
+      <div class="sub">29 DISTRIBUCIONES EL PORTAL — Saldo: $ 240.000</div>
+      <div class="btns" style="display:flex;gap:6px;margin:8px 0"><span class="b verde">Cobrado total</span> <span class="b borde">Abono parcial</span> <span class="b borde">No pagó</span> <i class="pin">2</i></div>
+      <div class="etiqueta">Efectivo</div>
+      <span class="campo lleno">100000 <i class="pin">3</i></span>
+      <div class="etiqueta">Nequi / Transferencia</div>
+      <span class="campo">0 <i class="pin">4</i></span>
+    </div>
+    <ol class="pasos">
+      <li>En “Cobros CxC”, bajo <b>“Asignados a ti”</b>, toca <span class="b morado">Registrar</span> junto al cliente <i class="pin">1</i>. Se abre la ventana “Cobro CxC” y arriba ves cuánto debe (“Saldo”).<small>Si el cliente no está en tu lista, escribe su nombre en <b>“Buscar cualquier cliente con deuda pendiente”</b> y aparecerá abajo.</small></li>
+      <li>Escoge cómo terminó <i class="pin">2</i>: <b>Cobrado total</b> (pagó todo), <b>Abono parcial</b> (pagó una parte) o <b>No pagó</b>.</li>
+      <li>En <b>Efectivo</b> escribe lo que te dio en billetes <i class="pin">3</i>.</li>
+      <li>En <b>Nequi / Transferencia</b> escribe lo que pagó por banco <i class="pin">4</i> y la referencia del comprobante.</li>
+      <li>Revisa el <b>Total cobrado</b> y confirma.</li>
+    </ol>
+    <div class="aviso ojo"><b>Si no pagó</b>Toca <b>No pagó</b>. El cobro vuelve al administrador y queda pendiente. No lo dejes en blanco.</div>
+    <div class="aviso mal"><b>Cuidado</b>No puedes cobrar más de lo que el cliente debe. Si te pagó de más, avisa al administrador en vez de escribir un valor mayor.</div>
+  </div>
+
+  <!-- E8 -->
+  <div class="caja" id="e-consignacion">
+    <h3>8. Registrar una consignación</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> ya dejaste plata en el banco antes de llegar a caja y tienes el comprobante.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · ventana “Consignación Anticipada”</span>
+      <div class="etiqueta">Banco / Medio</div><span class="campo lleno">Bancolombia <i class="pin">2</i></span>
+      <div class="etiqueta">Número de serial / referencia</div><span class="campo lleno">4821907733 <i class="pin">3</i></span>
+      <div class="etiqueta">Monto</div><span class="campo lleno">1500000 <i class="pin">4</i></span>
+      <div class="etiqueta">Fecha</div><span class="campo lleno">2026-10-26</span>
+      <div class="btns" style="display:flex"><span class="b azul" style="width:100%;text-align:center">Guardar</span> <i class="pin">5</i></div>
+    </div>
+    <ol class="pasos">
+      <li>Arriba a la derecha toca <span class="b borde">Consignación Anticipada</span> (en el celular dice <b>Consignar</b>) <i class="pin">1</i>.</li>
+      <li>Escribe el <b>banco</b> <i class="pin">2</i>, el <b>número del comprobante</b> <i class="pin">3</i>, el <b>monto</b> <i class="pin">4</i> y la <b>fecha</b>.</li>
+      <li>Toca el botón para guardar <i class="pin">5</i>. Queda en la lista <b>“Pendientes de cuadre”</b>.</li>
+    </ol>
+    <div class="aviso bien"><b>Para qué sirve</b>Caja encuentra la consignación ya cargada cuando te cuadra y solo la verifica. Si no la registras, caja tendrá que digitarla con tu comprobante en la mano.</div>
+    <div class="aviso ojo"><b>Si te equivocas</b>En esa misma lista, toca la canasta de basura 🗑 para eliminarla. <u>Solo se puede mientras caja no la haya usado en un cuadre.</u></div>
+  </div>
+
+  <!-- E9 -->
+  <div class="caja" id="e-error">
+    <h3>9. Me equivoqué. ¿Qué hago?</h3>
+    <table>
+      <tr><th>Qué pasó</th><th>Qué hacer</th></tr>
+      <tr><td>Marqué <b>Entregado</b> en el cliente equivocado</td><td>Avisa a caja. Ellos lo devuelven a pendiente antes de cuadrar.</td></tr>
+      <tr><td>Anoté mal el valor de un fiado, devolución o agotado</td><td>Avisa a caja con el nombre del cliente y el valor correcto. Se corrige al cuadrar.</td></tr>
+      <tr><td>Registré una consignación que no era</td><td>Elimínala tú con la canasta 🗑, si caja aún no la ha usado.</td></tr>
+      <tr><td>El cliente pagó más de lo que debía</td><td>No escribas un valor mayor. Cuéntaselo al administrador.</td></tr>
+      <tr><td>Un cliente no aparece en mi lista</td><td>Si es una deuda vieja, usa el buscador <b>“Buscar cualquier cliente con deuda pendiente”</b> de la sección Cobros CxC. Si es un pedido de hoy, avisa al coordinador.</td></tr>
+    </table>
+    <div class="aviso mal"><b>Nunca</b>
+      • Uses el mismo comprobante de transferencia para dos clientes.<br>
+      • Marques todo como entregado sin haber entregado.<br>
+      • Dejes clientes en PENDIENTE al llegar a caja.</div>
+  </div>
+  <a class="arriba" href="#entregador">↑ Volver al inicio de Entregador</a>
+</section>
+
+<!-- ======================================================= CAJA -->
+<section id="caja" class="rol-seccion" data-seccion="caja">
+  <h2>Caja</h2>
+  <p class="lead">Tú cuentas el dinero que trae el entregador y compruebas que sea el que debía traer. Aquí se cierra la ruta.</p>
+
+  <div class="caja">
+    <h3>Siete palabras que vas a ver</h3>
+    <div class="palabras">
+      <div><b>Cargue</b><br>Valor de la mercancía que salió.</div>
+      <div><b>Esperado</b><br>La plata que el entregador <u>debe</u> traer.</div>
+      <div><b>Recibido</b><br>La plata que <u>realmente</u> trajo (billetes, monedas, consignaciones, cobros por banco).</div>
+      <div><b>Diferencia</b><br>Recibido menos Esperado. Si es 0, cuadró.</div>
+      <div><b>Novedades</b><br>Lo que baja lo esperado: fiados, devoluciones, agotados, descuentos…</div>
+      <div><b>Cobro CxC</b><br>Pago de una deuda vieja que el entregador cobró.</div>
+      <div><b>Consignación</b><br>Depósito en el banco con comprobante.</div>
+    </div>
+    <div class="aviso ojo"><b>Dos cosas que confunden (léelas una vez)</b>
+      1) Si un cliente pagó un cobro <u>en efectivo</u>, esa plata ya está dentro de los billetes: no la cuentes dos veces.<br>
+      2) Si <u>administración</u> ya recibió un pago en efectivo de un cliente, el entregador nunca tocó esa plata: no se le exige.</div>
+  </div>
+
+  <div class="caja dia">
+    <h3>Tu día en 7 pasos</h3>
+    <ol class="pasos">
+      <li><b>Abre “Cuadre de Caja”</b> y mira “Entregas Pendientes de Cuadrar”.<small>Son las rutas que ya salieron y esperan cuadre.</small></li>
+      <li><b>Cuando llegue un entregador, encuentra sus rutas.</b><small>Mira <a href="#c-encontrar">Encontrar las rutas y empezar</a>.</small></li>
+      <li><b>Revisa que los pedidos estén bien</b> antes de recibir plata.<small>Mira <a href="#c-revisar">Revisar y corregir antes de cuadrar</a>.</small></li>
+      <li><b>Abre el cuadre y cuenta el dinero.</b><small>Mira <a href="#c-dinero">Contar y anotar el dinero</a>.</small></li>
+      <li><b>Revisa los cobros</b> que el entregador hizo.<small>Mira <a href="#c-cobros">Revisar los cobros</a>.</small></li>
+      <li><b>Mira el resultado y confirma.</b><small>Mira <a href="#c-confirmar">Leer el resultado y confirmar</a>.</small></li>
+      <li><b>Cuando necesites ver un cuadre viejo,</b> usa el Historial.<small>Mira <a href="#c-historial">Consultar un cuadre anterior</a>.</small></li>
+    </ol>
+  </div>
+
+  <h2 style="font-size:1.4rem">Cómo se hace</h2>
+  <ul class="indice">
+    <li><a href="#c-encontrar">1. Encontrar las rutas y empezar<small>Filtrar, marcar, “Agrupar y Cuadrar”</small></a></li>
+    <li><a href="#c-revisar">2. Revisar y corregir antes de cuadrar<small>Ver clientes, ajustar valor, revertir</small></a></li>
+    <li><a href="#c-novedades">3. Revisar las novedades<small>Fiados, devoluciones, agotados, varios</small></a></li>
+    <li><a href="#c-cobros">4. Revisar los cobros<small>Los que trajo el entregador y los de administración</small></a></li>
+    <li><a href="#c-dinero">5. Contar y anotar el dinero<small>Billetes, monedas, consignaciones</small></a></li>
+    <li><a href="#c-confirmar">6. Leer el resultado y confirmar<small>Esperado, Recibido, Diferencia</small></a></li>
+    <li><a href="#c-duplicada">7. Sale “referencia duplicada”<small>Qué hacer y qué no</small></a></li>
+    <li><a href="#c-historial">8. Consultar un cuadre anterior<small>Historial y filtro por entregador</small></a></li>
+    <li><a href="#c-anticipada">9. Registrar una consignación anticipada<small>Plata que llegó antes del cuadre</small></a></li>
+  </ul>
+
+  <!-- C1 -->
+  <div class="caja" id="c-encontrar">
+    <h3>1. Encontrar las rutas y empezar el cuadre</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> llega un entregador a cuadrar.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · Entregas Pendientes de Cuadrar</span>
+      <div class="etiqueta">Entregador</div><span class="campo lleno">Mateo Entregador <i class="pin">1</i></span>
+      <div class="fila"><span class="estado v">☑</span> <b>Mateo Entregador - Ruta 29</b> <i class="pin">2</i><div class="sub">14 pedidos · 22/10/2026</div></div>
+      <div class="fila"><span class="estado v">☑</span> <b>Mateo Entregador - Ruta 31</b><div class="sub">9 pedidos · 22/10/2026</div></div>
+      <div class="btns" style="display:flex;gap:6px;margin-top:8px"><span class="b azul">Agrupar y Cuadrar (2)</span> <i class="pin">3</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En los filtros escoge el <b>Entregador</b> <i class="pin">1</i>. Si quieres, también las fechas.</li>
+      <li>Marca con ✔ <b>todas las rutas de ese entregador</b> <i class="pin">2</i>. Puedes usar “Seleccionar todas”.</li>
+      <li>Toca <span class="b azul">Agrupar y Cuadrar (N)</span> <i class="pin">3</i>. Se abre “Cuadre Agrupado - Manual”.</li>
+    </ol>
+    <div class="aviso mal"><b>Cuidado</b>Solo puedes agrupar rutas del <u>mismo entregador</u>. Si mezclas, el sistema avisa y no sigue.</div>
+    <div class="aviso bien"><b>Para una sola ruta</b>En la tarjeta de la ruta toca <span class="b azul">Recibir Efectivo</span>: abre el cuadre individual, que funciona igual pero con una sola ruta.</div>
+  </div>
+
+  <!-- C2 -->
+  <div class="caja" id="c-revisar">
+    <h3>2. Revisar y corregir antes de cuadrar</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> algo de la ruta no tiene sentido (un valor, un estado, un cliente que falta).</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · tarjeta de una ruta</span>
+      <div class="fila"><b>Mateo Entregador - Ruta 29</b>
+        <div class="btns"><span class="b borde">Ver Clientes</span><i class="pin">1</i> <span class="b borde">Nuevo Pedido</span><i class="pin">2</i> <span class="b azul">Recibir Efectivo</span> <span class="b borde">Cambiar Fecha</span><i class="pin">3</i> <span class="b rojo">Eliminar Ruta</span><i class="pin">4</i></div></div>
+      <div class="cifras"><div><small>Cargue</small><b>$ 2.410.000</b></div><div><small>Entregado</small><b>$ 1.760.000</b></div><div><small>Fiado</small><b>$ 380.000</b></div><div><small>Efectivo Esperado</small><b>$ 1.760.000</b></div></div>
+    </div>
+    <table>
+      <tr><th>Quiero…</th><th>Hago esto</th></tr>
+      <tr><td>Ver los pedidos de la ruta <i class="pin">1</i></td><td>Toca <b>Ver Clientes</b>. Cada cliente se abre y muestra sus productos y su estado.</td></tr>
+      <tr><td>Corregir el valor de una factura</td><td>Abre el cliente (Ver Clientes) y usa <b>“Ajustar valor factura”</b>. Escribe el valor correcto.</td></tr>
+      <tr><td>Devolver un pedido a “pendiente”</td><td>Abre el cliente y usa la opción de revertir. El sistema avisa “vuelve a pendiente”.</td></tr>
+      <tr><td>Agregar un pedido que faltó <i class="pin">2</i></td><td>Toca <b>Nuevo Pedido</b>, escribe el cliente y los productos (código, descripción, cantidad, precio) y guarda.</td></tr>
+      <tr><td>Cambiar la fecha de la ruta <i class="pin">3</i></td><td>Toca <b>Cambiar Fecha</b> y escoge la nueva.</td></tr>
+      <tr><td>Pasar la ruta a otro entregador</td><td>En la tarjeta usa la lista <b>“Reasignar a:”</b>.</td></tr>
+      <tr><td>Borrar toda la ruta <i class="pin">4</i></td><td><b>Eliminar Ruta</b> borra la ruta y todos sus pedidos. Úsalo solo si estás completamente seguro.</td></tr>
+    </table>
+    <div class="aviso mal"><b>Cuidado</b>“Eliminar Ruta” y “Eliminar Pedido” no se deshacen fácilmente. Si dudas, pregunta antes.</div>
+  </div>
+
+  <!-- C3 -->
+  <div class="caja" id="c-novedades">
+    <h3>3. Revisar las novedades</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> abriste el cuadre y ves la sección “📊 Novedades”.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · Cuadre Agrupado - Manual</span>
+      <div class="etiqueta">📊 Novedades</div>
+      <div class="cifras">
+        <div><small>Fiado</small><b>$ 380.000</b></div><div><small>Devoluciones</small><b>$ 24.500</b></div><div><small>Agotados</small><b>$ 12.000</b></div>
+        <div><small>Repasos</small><b>$ 0</b></div><div><small>Descuentos</small><b>$ 0</b></div><div><small>Errores Facturación</small><b>$ 0</b></div>
+      </div>
+      <div class="etiqueta" style="margin-top:8px">💵 Varios</div>
+      <span class="campo lleno">Monto: 15000</span><span class="campo">Nota (opcional): Combustible</span>
+    </div>
+    <ol class="pasos">
+      <li>Mira cada cuadro de <b>Novedades</b>. Los valores vienen de lo que el entregador anotó en ruta.</li>
+      <li>Pregúntale: “¿Fiado $380.000, devoluciones $24.500…?”. Si algo no coincide con lo que dice, corrígelo en el cuadro.</li>
+      <li>En <b>💵 Varios</b> anota gastos del día que se autorizaron (combustible, parqueadero) con su <b>nota</b>.</li>
+    </ol>
+    <div class="aviso ojo"><b>Por qué importa</b>Cada novedad baja lo que el entregador debe traer. Si una está de más, le estás perdonando plata; si está de menos, le cobras de más.</div>
+  </div>
+
+  <!-- C4 -->
+  <div class="caja" id="c-cobros">
+    <h3>4. Revisar los cobros</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> en el cuadre ves la sección “💳 Cobros CxC”.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · 💳 Cobros CxC</span>
+      <span class="campo">Buscar cliente en fiados…</span>
+      <div class="fila"><b>15 PANADERÍA SAN JOSÉ</b> · Saldo $ 90.000 <span class="b borde">+ Agregar</span> <i class="pin">1</i></div>
+      <div class="etiqueta" style="margin-top:8px">Cobros incluidos:</div>
+      <div class="fila"><b>29 DISTRIBUCIONES EL PORTAL</b> <span class="estado v">✓ Registrado en ruta</span> <i class="pin">2</i>
+        <div class="sub">Medio: Nequi · Monto: $ 100.000 · Ref: M1209844</div>
+        <div class="btns"><span class="b borde">Corregir</span><i class="pin">3</i> <span class="b rojo">✕</span><i class="pin">4</i></div></div>
+    </div>
+    <ol class="pasos">
+      <li>En <b>“Cobros incluidos”</b> están los cobros que el entregador registró <i class="pin">2</i> (marcados <span class="estado v">✓ Registrado en ruta</span>) y los pagos que administración ya le asignó.</li>
+      <li>Para cada uno revisa <b>Medio</b>, <b>Monto</b> y <b>Ref</b> (referencia) con el comprobante que trae el entregador.</li>
+      <li>Si el entregador cobró a alguien que no está en la lista, búscalo arriba <i class="pin">1</i> y toca <b>+ Agregar</b>. Luego llena el monto en efectivo y/o el monto electrónico.</li>
+      <li>Si un dato está mal toca <b>Corregir</b> <i class="pin">3</i>, arregla y guarda.</li>
+      <li>Si un cobro no corresponde, quítalo con la ✕ <i class="pin">4</i>.</li>
+    </ol>
+    <h4>Al agregar o corregir un cobro llenas</h4>
+    <table>
+      <tr><th>Campo</th><th>Qué es</th></tr>
+      <tr><td>Monto Efectivo</td><td>Lo que el cliente pagó en billetes (ya está dentro del dinero que cuentas).</td></tr>
+      <tr><td>Medio electrónico y Monto Electrónico</td><td>Nequi, Bancolombia, Daviplata, Datafono, Aval o Transferencia, y cuánto pagó por ahí.</td></tr>
+      <tr><td>N° Referencia *</td><td>El número del comprobante. <b>Obligatorio</b> si hubo pago electrónico.</td></tr>
+      <tr><td>N° Factura / Fecha</td><td>La factura a la que corresponde y el día del pago.</td></tr>
+    </table>
+    <div class="aviso mal"><b>Cuidado</b>Si un pago es de un cliente que debe, regístralo aquí como <b>cobro</b>, no como consignación. Si no, la deuda del cliente seguirá apareciendo viva.</div>
+    <div class="aviso bien"><b>Si el sistema avisa que un pago ya se contó</b>Si el comprobante ya está en otro cuadre cerrado y es del mismo cliente, aparece un botón <b>“Aplicar este pago al fiado”</b>: baja la deuda sin volver a contar el dinero.</div>
+  </div>
+
+  <!-- C5 -->
+  <div class="caja" id="c-dinero">
+    <h3>5. Contar y anotar el dinero</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> ya revisaste novedades y cobros y vas a contar lo que trae el entregador.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · 💰 Dinero Recibido</span>
+      <div class="etiqueta">Billetes</div><span class="campo lleno">1958000 <i class="pin">1</i></span>
+      <div class="etiqueta">Monedas</div><span class="campo lleno">14000 <i class="pin">2</i></span>
+      <div class="etiqueta">Consignaciones &nbsp; <span class="b borde">Agregar</span><i class="pin">3</i></div>
+      <div class="fila"><div class="sub">Banco</div><b>Bancolombia</b> · Número <b>4821907733</b> · Monto <b>$ 428.000</b> <i class="pin">4</i><div class="sub">Cliente (opcional) · N° Factura (opcional)</div></div>
+    </div>
+    <ol class="pasos">
+      <li>Cuenta los <b>billetes</b> y escribe el total <i class="pin">1</i>.</li>
+      <li>Cuenta las <b>monedas</b> y escribe el total <i class="pin">2</i>.</li>
+      <li>Por cada comprobante de banco que trae, toca <b>Agregar</b> <i class="pin">3</i> y llena <b>Banco</b>, <b>Número</b> (referencia), <b>Monto</b> y <b>Fecha</b> <i class="pin">4</i>.<small>“Cliente” y “N° Factura” son opcionales, pero escríbelos si los sabes: ayudan a entender después de quién fue el pago.</small></li>
+      <li>Las consignaciones que el entregador registró en ruta ya aparecen cargadas: solo <b>verifícalas</b> con el comprobante.</li>
+    </ol>
+    <div class="aviso mal"><b>Cuidado</b>Escribe el número de referencia exactamente como está en el comprobante. Un solo dígito distinto crea un problema difícil de encontrar después.</div>
+    <div class="aviso ojo"><b>No sumes los cobros en efectivo</b>Si un cliente pagó un cobro en efectivo, esa plata ya está en los billetes que contaste. No la anotes otra vez.</div>
+  </div>
+
+  <!-- C6 -->
+  <div class="caja" id="c-confirmar">
+    <h3>6. Leer el resultado y confirmar</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> terminaste de llenar el cuadre y quieres cerrarlo.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · 📋 Resultado</span>
+      <div class="cifras">
+        <div><small>Esperado</small><b>$ 3.111.547</b> <i class="pin">1</i></div>
+        <div><small>Total Recibido</small><b>$ 3.073.412</b> <i class="pin">2</i></div>
+        <div><small>Diferencia</small><b style="color:var(--rojo)">−$ 38.135</b> <i class="pin">3</i></div>
+      </div>
+      <div class="btns" style="display:flex;gap:6px;margin-top:6px"><span class="b borde">Cancelar</span> <span class="b azul">Confirmar Cuadre</span> <i class="pin">4</i></div>
+    </div>
+    <ol class="pasos">
+      <li><b>Esperado</b> <i class="pin">1</i> es lo que debía traer. <b>Total Recibido</b> <i class="pin">2</i> es lo que trajo.</li>
+      <li>Mira la <b>Diferencia</b> <i class="pin">3</i>. Si es 0, cuadró. Si es negativa, falta plata. Si es positiva, sobra.</li>
+      <li>Si hay diferencia, <b>antes de confirmar</b> revisa esto en orden:
+        <small>① ¿Contaste bien billetes y monedas? ② ¿Anotaste todas las consignaciones? ③ ¿Coinciden fiados, devoluciones y agotados con lo que dice el entregador? ④ ¿Hay algún cobro incluido de más?</small></li>
+      <li>Si sigue habiendo diferencia, escribe el motivo en <b>Observaciones</b> y toca <span class="b azul">Confirmar Cuadre</span> <i class="pin">4</i>. Queda marcado “Con Diferencia”.</li>
+    </ol>
+    <div class="aviso mal"><b>Una sola vez</b>Toca Confirmar <u>una sola vez</u> y espera el mensaje “Cuadre Registrado”. No lo toques dos veces seguidas: puede dar errores.</div>
+    <div class="aviso mal"><b>No se puede deshacer</b>Al confirmar, el sistema guarda el cuadre y <u>borra el detalle de los pedidos de esas rutas</u>. Revisa todo antes.</div>
+  </div>
+
+  <!-- C7 -->
+  <div class="caja" id="c-duplicada">
+    <h3>7. Sale “referencia duplicada”</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> aparece un recuadro rojo “HAY REFERENCIAS DUPLICADAS” y el botón Confirmar queda bloqueado.</div>
+    <ol class="pasos">
+      <li>Mira cuál número marca el aviso.</li>
+      <li>Compáralo con el comprobante en papel o en el celular del entregador.</li>
+      <li>Si lo digitaste mal, corrígelo: el aviso desaparece.</li>
+      <li>Si el número está bien, significa que <b>ese comprobante ya se usó antes</b> (en otro cuadre o en otro cobro). No sigas: avisa al administrador.</li>
+    </ol>
+    <div class="aviso bien"><b>Excepción válida</b>Un mismo cliente puede pagar varias facturas suyas con una sola transferencia. Eso no es duplicado y el sistema lo permite entre facturas del <u>mismo cliente</u>.</div>
+    <div class="aviso mal"><b>Nunca</b>Cambies un dígito para “hacer pasar” el aviso. El sistema bloquea para evitar que un mismo comprobante se cobre dos veces.</div>
+  </div>
+
+  <!-- C8 -->
+  <div class="caja" id="c-historial">
+    <h3>8. Consultar un cuadre anterior</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> necesitas ver cómo cuadró un entregador otro día.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · Historial de Recepciones</span>
+      <div class="etiqueta">Entregador</div><span class="campo lleno">Alfonso <i class="pin">2</i></span>
+      <div class="sub">12 cuadres · Entregó $ 75.808.078 · Esperado $ 75.862.574 · Diferencia −$ 54.496</div>
+      <div class="fila"><b>Alfonso 72 - 84</b> <span class="b gris">AGRUPADO</span> <span class="b rojo">Con Diferencia</span><div class="sub">Esperado · Recibido · Diferencia · “Cómo se calculó” · quién pagó</div></div>
+    </div>
+    <ol class="pasos">
+      <li>En el menú de arriba (Cuadre de Caja · <b>Historial</b> · Comisiones · Cuadre Administrativo) toca <b>Historial</b> <i class="pin">1</i>.</li>
+      <li>En <b>Entregador</b> escoge el nombre <i class="pin">2</i>. Alfonso y sus variantes aparecen como uno solo.<small>Debajo ves cuántos cuadres son y el total de lo que entregó, lo esperado y la diferencia.</small></li>
+      <li>Abre una tarjeta para ver el detalle: <b>Cómo se calculó</b>, la lista de <b>quién pagó</b> (cada cobro con cliente, medio y monto) y las consignaciones.</li>
+      <li>Para llevarlo a Excel elige las fechas y toca <span class="b verde">Exportar Excel</span>.</li>
+      <li>Para volver a ver todos toca <span class="b borde">Quitar filtro</span>.</li>
+    </ol>
+  </div>
+
+  <!-- C9 -->
+  <div class="caja" id="c-anticipada">
+    <h3>9. Registrar una consignación anticipada</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> llegó un comprobante de banco de un entregador antes de que cuadre.</div>
+    <ol class="pasos">
+      <li>Arriba a la derecha toca <span class="b borde">Consignación Anticipada</span> (en el celular, <b>Consignar</b>).</li>
+      <li>Escoge el <b>entregador</b> al que pertenece.</li>
+      <li>Escribe el <b>banco</b>, el <b>número</b> del comprobante y el <b>monto</b>. Guarda.</li>
+    </ol>
+    <div class="aviso bien"><b>Resultado</b>Cuando abras el cuadre de ese entregador, la consignación aparecerá cargada.</div>
+    <div class="aviso mal"><b>Cuidado</b>Si el sistema dice “Consignación duplicada”, ese número ya está registrado. No lo registres otra vez.</div>
+  </div>
+  <a class="arriba" href="#caja">↑ Volver al inicio de Caja</a>
+</section>
+
+<!-- ======================================================= ALISTADOR -->
+<section id="alistador" class="rol-seccion" data-seccion="alistador">
+  <h2>Alistador</h2>
+  <p class="lead">Tú preparas en bodega la mercancía que va a llevar cada entregador y anotas qué tal salió cada producto.</p>
+
+  <div class="caja">
+    <h3>Cinco palabras que vas a ver</h3>
+    <div class="palabras">
+      <div><b>Alistar</b><br>Sacar de la bodega los productos de un pedido y dejarlos listos.</div>
+      <div><b>Solicitado</b><br>Cuántas unidades de un producto hay que sacar en total.</div>
+      <div><b>Faltante</b><br>Lo que no pudiste sacar (en todo o en parte).</div>
+      <div><b>Reemplazo</b><br>Entregaste otro producto porque el original no había.</div>
+      <div><b>Cronómetro</b><br>Un reloj que mide cuánto tardas en alistar a un entregador.</div>
+    </div>
+  </div>
+
+  <div class="caja dia">
+    <h3>Tu día en 7 pasos</h3>
+    <ol class="pasos">
+      <li><b>Entra al sistema</b> y abre la pestaña <b>Alistamiento</b>.<small>Si dice “No hay rutas para alistar”, el coordinador aún no asigna entregadores. Espera.</small></li>
+      <li><b>Elige al entregador</b> que vas a preparar y toca <span class="b azul">Iniciar</span>.<small>Mira <a href="#a-iniciar">Empezar a alistar</a>.</small></li>
+      <li><b>Lee las notas</b> del recuadro amarillo antes de sacar nada.<small>Mira <a href="#a-notas">Leer las notas</a>.</small></li>
+      <li><b>Saca los productos y anótalos uno por uno.</b><small>Mira <a href="#a-producto">Anotar un producto</a>.</small></li>
+      <li><b>Si tienes que parar,</b> pausa el reloj.<small>Mira <a href="#a-pausa">Pausar, reanudar y terminar</a>.</small></li>
+      <li><b>Antes de terminar,</b> mira que ningún producto diga <span class="estado">⏳ Pendiente</span>.</li>
+      <li><b>Toca</b> <span class="b verde">Completar</span>.<small>La planilla pasa al coordinador.</small></li>
+    </ol>
+  </div>
+
+  <h2 style="font-size:1.4rem">Cómo se hace</h2>
+  <ul class="indice">
+    <li><a href="#a-iniciar">1. Empezar a alistar<small>Botón Iniciar y el cronómetro</small></a></li>
+    <li><a href="#a-notas">2. Leer las notas<small>Recuadro amarillo</small></a></li>
+    <li><a href="#a-producto">3. Anotar un producto<small>Completo, incompleto, no alistado, reemplazo</small></a></li>
+    <li><a href="#a-pausa">4. Pausar, reanudar y terminar<small>Pausar, Reanudar, Completar</small></a></li>
+    <li><a href="#a-programadas">5. Rutas programadas<small>Las que vienen otros días</small></a></li>
+    <li><a href="#a-novedades">6. Novedades: revisar y limpiar faltantes<small>Pendientes, selección y eliminar</small></a></li>
+    <li><a href="#a-error">7. Me equivoqué<small>Corregir un producto o una ruta</small></a></li>
+  </ul>
+
+  <div class="caja" id="a-iniciar">
+    <h3>1. Empezar a alistar</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> vas a preparar la mercancía de un entregador.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · pestaña Alistamiento</span>
+      <div class="fila"><b>Mateo Entregador</b> <span class="estado">Por alistar</span> <i class="pin">1</i>
+        <div class="sub">3 rutas · 41 pedidos · 126 productos</div>
+        <div class="btns"><span class="b azul">Iniciar</span><i class="pin">2</i></div></div>
+    </div>
+    <ol class="pasos">
+      <li>Busca la tarjeta del entregador <i class="pin">1</i>. Dice cuántas rutas tiene y su estado: <b>Por alistar</b>, <b>En proceso</b> o <b>Listo para completar</b>.</li>
+      <li>Toca <span class="b azul">Iniciar</span> <i class="pin">2</i>. Arranca el cronómetro ⏱ y la tarjeta pasa a “En proceso”.</li>
+      <li>Abre la tarjeta con la flechita ⌄ para ver la <b>Lista de Productos Consolidados</b>: la suma de lo que hay que sacar para todos sus clientes.</li>
+    </ol>
+    <div class="aviso ojo"><b>Si ya había otro reloj corriendo</b>Sale la ventana <b>“Ya hay un alistamiento en curso”</b>. Elige:
+      <br>• <span class="b naranja">Pausarlo e iniciar</span>: el anterior se detiene mientras alistas a este. <i>Es lo que debes elegir si trabajas solo.</i>
+      <br>• <span class="b borde">Dejarlo corriendo</span>: solo si otro compañero lo está atendiendo al mismo tiempo.
+      <br>• <span class="b borde">Cancelar</span>: no iniciar.</div>
+  </div>
+
+  <div class="caja" id="a-notas">
+    <h3>2. Leer las notas</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> abriste la tarjeta de un entregador.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo</span>
+      <div class="fila" style="background:var(--ambar-bg)"><b>📝 Notas de Alistamiento</b> <i class="pin">1</i>
+        <div class="sub">• 12 TIENDA LA ESPERANZA: entregar solo después de las 2 p. m.<br>• 15 PANADERÍA SAN JOSÉ: empacar aparte los frascos</div></div>
+    </div>
+    <ol class="pasos">
+      <li>Lee el recuadro amarillo <b>“📝 Notas de Alistamiento”</b> <i class="pin">1</i>. Cada línea es el cliente y lo que pidió especialmente.</li>
+      <li>Ten presente cada nota mientras sacas esos productos.</li>
+    </ol>
+    <div class="aviso bien"><b>Por qué importa</b>Las notas son instrucciones de los clientes. Ignorarlas genera reclamos.</div>
+  </div>
+
+  <div class="caja" id="a-producto">
+    <h3>3. Anotar un producto</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> sacaste (o intentaste sacar) un producto de la lista.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · lista de productos</span>
+      <div class="fila"><span class="sub">1016</span> <b>ALKA SELTZER BLISTER X2</b> · Solicitado <b>30</b> <span class="estado">⏳ Pendiente</span> <span class="b azul">Registrar</span><i class="pin">1</i></div>
+    </div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · ventana “Estado de Alistamiento”</span>
+      <div class="etiqueta">Estado del producto: <i class="pin">2</i></div>
+      <div class="fila">✅ Completo (todo OK)<br>⚠️ Incompleto (faltan piezas dentro de la unidad)<br>❌ No alistado (no hay stock)<br>🔄 Reemplazo (se entregó otro producto)</div>
+      <div class="etiqueta">¿Cuántas unidades hay disponibles? <i class="pin">3</i></div><span class="campo lleno">22</span>
+      <div class="etiqueta">Observaciones (requerido): <i class="pin">4</i></div><span class="campo">Describe la situación: ¿qué falta?, ¿por qué?, ¿cuándo estará disponible?</span>
+      <div style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Guardar Estado</span> <i class="pin">5</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En el producto toca <span class="b azul">Registrar</span> <i class="pin">1</i> (si ya lo habías anotado dice <b>Editar</b>).</li>
+      <li>Elige el <b>estado</b> <i class="pin">2</i> según lo que pasó (tabla de abajo).</li>
+      <li>En <b>“¿Cuántas unidades hay disponibles?”</b> <i class="pin">3</i> escribe cuántas sacaste.</li>
+      <li>Si algo falló, escribe la <b>observación</b> <i class="pin">4</i>: qué falta, por qué y cuándo llega.</li>
+      <li>Toca <span class="b azul">Guardar Estado</span> <i class="pin">5</i>.</li>
+    </ol>
+    <table>
+      <tr><th>Qué pasó</th><th>Qué eliges</th><th>Qué escribes</th></tr>
+      <tr><td>Saqué todas las unidades</td><td>✅ Completo</td><td>Las unidades disponibles = las solicitadas (ya viene así).</td></tr>
+      <tr><td>Saqué solo una parte (tengo 22 de 30)</td><td>⚠️ Incompleto</td><td>22 en unidades disponibles y la observación (obligatoria).</td></tr>
+      <tr><td>No hay nada del producto</td><td>❌ No alistado</td><td>0 en unidades disponibles y la observación (obligatoria).</td></tr>
+      <tr><td>Entregué otro producto en su lugar</td><td>🔄 Reemplazo</td><td>El nombre del producto que entregaste (obligatorio), por ejemplo “ACETAMINOFÉN 500MG x 10 SOB”.</td></tr>
+    </table>
+    <div class="aviso mal"><b>Cuidado</b>Si faltan unidades, <u>no</u> marques “Completo”: el sistema entendería que tienes todo y el faltante no quedaría registrado.</div>
+    <div class="aviso bien"><b>Lo bueno</b>Anotas el producto <u>una sola vez</u>, aunque lo pidan en varias rutas del mismo entregador: el sistema lo aplica en todas.</div>
+  </div>
+
+  <div class="caja" id="a-pausa">
+    <h3>4. Pausar, reanudar y terminar</h3>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · tarjeta del entregador en proceso</span>
+      <div class="fila"><b>Mateo Entregador</b> <span class="estado v">En proceso</span>
+        <div class="btns"><span class="b borde">⏱ 00:38:12</span> <span class="b naranja">Pausar</span><i class="pin">1</i> <span class="b verde">Completar</span><i class="pin">3</i></div></div>
+      <div class="etiqueta" style="margin-top:8px">Pausar alistamiento · motivo <i class="pin">2</i></div>
+      <div class="fila">◯ Esperando proveedor &nbsp; ◯ Producto en camino &nbsp; ◯ Otro</div>
+    </div>
+    <ol class="pasos">
+      <li><b>Para parar:</b> toca <span class="b naranja">Pausar</span> <i class="pin">1</i>.</li>
+      <li>Escoge el <b>motivo</b> <i class="pin">2</i>: <b>Esperando proveedor</b>, <b>Producto en camino</b> u <b>Otro</b> (en ese caso escribe cuál). Toca <b>Pausar</b>. El reloj se detiene.</li>
+      <li><b>Para seguir:</b> toca <span class="b verde">Reanudar</span>.</li>
+      <li><b>Para terminar:</b> cuando todos los productos tengan estado, toca <span class="b verde">Completar</span> <i class="pin">3</i>.<small>Ese botón aparece en las tarjetas que están “En proceso”.</small></li>
+    </ol>
+    <div class="aviso ojo"><b>Antes de Completar</b>Mira las etiquetas de la tarjeta: cuántos completos, incompletos, no alistados y <b>pendientes</b> hay. Si hay pendientes, falta anotarlos.</div>
+    <div class="aviso bien"><b>Si el sistema no guarda el reloj</b>Si sale “No se pudo guardar el cronómetro en el servidor”, revisa tu conexión y vuelve a intentar. El tiempo se guarda en el servidor, no en tu computador.</div>
+  </div>
+
+  <div class="caja" id="a-programadas">
+    <h3>5. Rutas programadas</h3>
+    <p>La pestaña <b>Programadas</b> muestra las rutas que el coordinador dejó para <b>otro día</b>, con la etiqueta <span class="estado v">Programada</span>. Solo sirve para saber qué viene: <b>no se pueden alistar todavía</b>. Si no hay, dice “No hay rutas programadas”.</p>
+  </div>
+
+  <div class="caja" id="a-novedades">
+    <h3>6. Novedades: revisar y limpiar faltantes</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> quieres ver qué faltantes siguen pendientes, o limpiar los que ya no se van a entregar.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · pestaña Novedades</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="b azul">⚠ Revisar todos los pendientes</span><i class="pin">1</i></div>
+      <div class="etiqueta" style="margin-top:8px">Entregador <i class="pin">2</i></div><span class="campo lleno">Miguel entregador</span>
+      <div class="fila"><span class="estado v">☑</span> ALKA SELTZER BLISTER X2 · Faltante <b style="color:var(--rojo)">8</b> <span class="estado">⏳ Pendiente</span></div>
+      <div class="fila" style="background:var(--naranja-bg)"><b>3</b> de 248 seleccionados <span class="b rojo">Eliminar seleccionados</span><i class="pin">3</i></div>
+    </div>
+    <ol class="pasos">
+      <li>Toca <b>Revisar todos los pendientes</b> <i class="pin">1</i>: muestra todos los faltantes sin resolver, sin importar qué tan viejos sean.</li>
+      <li>Para acotar, escoge un <b>Entregador</b> <i class="pin">2</i>, un rango de <b>fechas</b> o busca por <b>código</b>.</li>
+      <li>Marca las casillas de los que ya no se van a entregar, o toca <b>“Seleccionar los N que se ven”</b>.</li>
+      <li>Toca <span class="b rojo">Eliminar seleccionados</span> <i class="pin">3</i>, escribe el <b>motivo</b> (viene “No se pudo entregar”) y confirma.</li>
+    </ol>
+    <div class="aviso ojo"><b>“Eliminar” aquí no borra nada</b>Pasa el faltante a <span class="estado">🚫 No se entregó</span> con tu nombre, la fecha y el motivo. Si te equivocas, el coordinador puede devolverlo con <b>Revertir</b>.</div>
+    <div class="aviso mal"><b>Cuidado</b>Elimina solo lo que de verdad ya no se va a entregar. Mira bien el filtro antes de seleccionar todo.</div>
+  </div>
+
+  <div class="caja" id="a-error">
+    <h3>7. Me equivoqué</h3>
+    <table>
+      <tr><th>Qué pasó</th><th>Qué hacer</th></tr>
+      <tr><td>Anoté mal un producto</td><td>Toca <b>Editar</b> en ese producto, corrige el estado o las unidades y guarda de nuevo.</td></tr>
+      <tr><td>Toqué Completar sin terminar</td><td>Avisa al coordinador: él puede devolver la planilla a “Alistando” con el botón <b>Devolver</b>.</td></tr>
+      <tr><td>El coordinador me devolvió la planilla</td><td>Reaparece en Alistamiento como “En proceso”. Corrige lo que te indique y toca Completar de nuevo.</td></tr>
+      <tr><td>Hay rutas que no debían estar</td><td>En rutas sin empezar existe el botón <b>Eliminar</b>: borra esas rutas y el coordinador debe regenerarlas. Úsalo solo si el coordinador te lo pide.</td></tr>
+    </table>
+    <div class="aviso mal"><b>Nunca</b>
+      • Marques “Completo” si faltan unidades.<br>
+      • Completes la planilla con productos en pendiente.<br>
+      • Dejes el reloj corriendo cuando te vas: pausa siempre.</div>
+  </div>
+  <a class="arriba" href="#alistador">↑ Volver al inicio de Alistador</a>
+</section>
+
+<!-- ======================================================= COORDINADOR -->
+<section id="coordinador" class="rol-seccion" data-seccion="coordinador">
+  <h2>Coordinador</h2>
+  <p class="lead">Tú arrancas el día: creas las planillas, decides quién lleva cada ruta y vigilas que el alistamiento salga bien.</p>
+
+  <div class="caja">
+    <h3>Cinco palabras que vas a ver</h3>
+    <div class="palabras">
+      <div><b>Planilla</b><br>La hoja de reparto de una ruta en un día.</div>
+      <div><b>Ruta</b><br>Una zona de reparto (6C, 29, 72…).</div>
+      <div><b>Asignar</b><br>Decir qué entregador lleva una ruta.</div>
+      <div><b>Supervisión</b><br>Revisar cómo quedó lo que alistó la bodega.</div>
+      <div><b>Subsanar</b><br>Resolver un faltante: conseguirlo o decidir que no se entrega.</div>
+    </div>
+  </div>
+
+  <div class="caja dia">
+    <h3>Tu día en 7 pasos</h3>
+    <ol class="pasos">
+      <li><b>Abre “Generar Hoy”</b> y sube los dos archivos.<small>Mira <a href="#co-generar">Generar las planillas</a>.</small></li>
+      <li><b>Ve a “Asignar”</b> y pon un entregador a cada ruta.<small>Mira <a href="#co-asignar">Asignar un entregador</a>.</small></li>
+      <li><b>Si una ruta no sale hoy,</b> pospónla; si sobra, elimínala.<small>Mira <a href="#co-posponer">Posponer o eliminar</a>.</small></li>
+      <li><b>Cuando el alistador termine,</b> abre “Supervisión”.<small>Mira <a href="#co-supervisar">Supervisar una planilla</a>.</small></li>
+      <li><b>Resuelve los faltantes.</b><small>Mira <a href="#co-subsanar">Subsanar un faltante</a>.</small></li>
+      <li><b>Si algo quedó mal alistado,</b> devuélvelo.<small>Mira <a href="#co-devolver">Devolver o reportar un error</a>.</small></li>
+      <li><b>Para ver días anteriores</b> usa Historial; para recuperar algo borrado, Eliminados.<small>Mira <a href="#co-historial">Historial y Eliminados</a>.</small></li>
+    </ol>
+  </div>
+
+  <h2 style="font-size:1.4rem">Cómo se hace</h2>
+  <ul class="indice">
+    <li><a href="#co-generar">1. Generar las planillas<small>Pestaña Generar Hoy</small></a></li>
+    <li><a href="#co-asignar">2. Asignar un entregador<small>Pestaña Asignar</small></a></li>
+    <li><a href="#co-posponer">3. Posponer o eliminar una ruta<small>Pestaña Asignar</small></a></li>
+    <li><a href="#co-supervisar">4. Supervisar una planilla<small>Pestaña Supervisión</small></a></li>
+    <li><a href="#co-subsanar">5. Subsanar un faltante<small>Resuelto completo, parcial o no hay producto</small></a></li>
+    <li><a href="#co-devolver">6. Devolver o reportar un error<small>Cuando algo se alistó mal</small></a></li>
+    <li><a href="#co-historial">7. Historial y Eliminados<small>Buscar y recuperar</small></a></li>
+  </ul>
+
+  <div class="caja" id="co-generar">
+    <h3>1. Generar las planillas</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> empieza el día y tienes los archivos de ventas.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · pestaña Generar Hoy</span>
+      <div class="etiqueta">NURTURING - Ventas del Día Anterior (CSV) <i class="pin">1</i></div><span class="campo lleno">✓ ventas_26_oct.csv</span>
+      <div class="etiqueta">INVENTARIO GENERAL - Catálogo de Productos (CSV) <i class="pin">2</i></div><span class="campo lleno">✓ catalogo.csv</span>
+      <div style="display:flex"><span class="b azul" style="width:100%;text-align:center">Generar Planillas por Ruta</span> <i class="pin">3</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En <b>“NURTURING – Ventas del Día Anterior”</b> elige el archivo de ventas que exportaste del sistema de facturación <i class="pin">1</i>.</li>
+      <li>En <b>“INVENTARIO GENERAL – Catálogo de Productos”</b> elige el archivo del catálogo <i class="pin">2</i>.</li>
+      <li>Cuando los dos tienen la marca ✓, toca <span class="b azul">Generar Planillas por Ruta</span> <i class="pin">3</i>. Verás una barra azul avanzando.</li>
+      <li>Al terminar, las planillas aparecen en la pestaña <b>Asignar</b>.</li>
+    </ol>
+    <div class="aviso mal"><b>Cuidado</b>Genera <u>una sola vez</u> cada día. Antes de subir otra vez, mira la pestaña Asignar para no crear planillas repetidas.</div>
+    <div class="aviso ojo"><b>Si sale un mensaje rojo</b>Casi siempre es el archivo equivocado o está abierto en otro programa. Ciérralo, confirma que es el correcto y reintenta.</div>
+  </div>
+
+  <div class="caja" id="co-asignar">
+    <h3>2. Asignar un entregador</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> hay rutas en la pestaña <b>Asignar</b>. <u>Sin entregador, el alistador no puede empezar la ruta.</u></div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · ventana “Asignar Entregador - Ruta 29”</span>
+      <div class="etiqueta">Entregador <i class="pin">2</i></div><span class="campo lleno">Mateo Entregador</span>
+      <div class="fila">☐ Es planilla de asesor <i class="pin">3</i></div>
+      <div class="etiqueta">Fecha de Alistamiento <i class="pin">4</i></div><span class="campo lleno">2026-10-26</span>
+      <div class="sub">El alistador verá esta ruta en la fecha seleccionada</div>
+      <div style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Confirmar Asignación</span> <i class="pin">5</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En la lista “Asignación de Entregadores (N rutas)” busca la ruta. Lee sus <b>notas</b> si tiene la etiqueta <span class="estado">con nota</span>. Toca <span class="b azul">Asignar Entregador</span> <i class="pin">1</i>.</li>
+      <li>Elige el <b>Entregador</b> <i class="pin">2</i>.</li>
+      <li>Si la ruta la lleva un asesor, marca <b>“Es planilla de asesor”</b> <i class="pin">3</i> y escribe su nombre.</li>
+      <li>Revisa la <b>Fecha de Alistamiento</b> <i class="pin">4</i>: es el día en que el alistador verá la ruta (hoy, por defecto).</li>
+      <li>Toca <span class="b azul">Confirmar Asignación</span> <i class="pin">5</i>. La ruta sale de la lista.</li>
+    </ol>
+    <div class="aviso bien"><b>Práctica común</b>Puedes asignar primero a “Extra” u “Oficina” y luego volver a asignar la ruta al entregador definitivo. Si ya estaba alistada, <b>conserva su alistamiento</b>: no hay que repetirlo.</div>
+  </div>
+
+  <div class="caja" id="co-posponer">
+    <h3>3. Posponer o eliminar una ruta</h3>
+    <table>
+      <tr><th>Botón</th><th>Qué hace</th><th>Cuándo</th></tr>
+      <tr><td><span class="b borde">Posponer</span></td><td>Deja la ruta para otro día. Queda en estado “Pospuesto”.</td><td>La ruta no sale hoy pero sí más adelante.</td></tr>
+      <tr><td><span class="b rojo">Eliminar</span></td><td>Borra la planilla.</td><td>Se generó por error o está repetida.</td></tr>
+    </table>
+    <div class="aviso mal"><b>Cuidado</b>El sistema pregunta “¿Está seguro de eliminar esta planilla? Esta acción no se puede deshacer”. Léelo antes de aceptar.</div>
+  </div>
+
+  <div class="caja" id="co-supervisar">
+    <h3>4. Supervisar una planilla alistada</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> el alistador terminó y quieres revisar el resultado.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · pestaña Supervisión</span>
+      <div class="fila"><b>Mateo Entregador - 25 oct</b> <i class="pin">1</i>
+        <div class="sub">3 rutas (29, 31 y 72) · 41 pedidos · $ 6.420.000</div>
+        <div class="btns"><span class="estado">126 productos</span> <span class="estado v">✅ 110 completos</span> <span class="estado" style="background:var(--ambar-bg);color:var(--ambar)">⚠️ 12 incompletos</span> <span class="estado" style="background:var(--rojo-bg);color:var(--rojo)">❌ 4 no alistados</span> <i class="pin">2</i></div>
+        <div class="btns"><span class="b naranja">Devolver</span><i class="pin">3</i> <span class="b borde">⌄</span><i class="pin">4</i></div></div>
+    </div>
+    <ol class="pasos">
+      <li>En el filtro <b>“Filtrar por Entregador”</b> escoge uno, o deja “Todos”. Cada tarjeta <i class="pin">1</i> es un entregador en una fecha.</li>
+      <li>Mira las etiquetas <i class="pin">2</i>: cuántos productos están completos, incompletos, con reemplazo, no alistados o pendientes, y cuánto tardó el alistamiento (⏱).</li>
+      <li>Abre la tarjeta con la flecha ⌄ <i class="pin">4</i>.</li>
+      <li>Lee el recuadro amarillo <b>“📝 Notas de Alistamiento”</b>.</li>
+      <li>Lee el recuadro rojo <b>“⚠️ Faltantes pendientes”</b>: cada producto con <b>cuánto falta</b> (“faltan 6 de 10”), cuántas unidades se alistaron y la observación del alistador.</li>
+      <li>Más abajo, la tabla <b>“Lista de Productos Consolidados”</b> trae la columna <b>Acción</b> con los botones para resolver cada uno.</li>
+    </ol>
+  </div>
+
+  <div class="caja" id="co-subsanar">
+    <h3>5. Subsanar un faltante</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> un producto faltó y ya lo resolviste, o decidiste que no se entrega.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · ventana “Subsanar Faltante”</span>
+      <div class="sub">Producto: ALKA SELTZER BLISTER X2 · Entregador / Ruta: Mateo / 29 · Cantidad faltante: 8 unidades</div>
+      <div class="etiqueta">¿Cómo se va a resolver este faltante? <i class="pin">1</i></div>
+      <div class="fila">◉ Resuelto Completo<br>◯ Resuelto Parcial<br>◯ No Hay Producto</div>
+      <div class="etiqueta">Observaciones (opcional) <i class="pin">2</i></div><span class="campo">Explique cómo se resolvió o por qué no se pudo resolver</span>
+      <div style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Confirmar Subsanación</span> <i class="pin">3</i></div>
+    </div>
+    <ol class="pasos">
+      <li>En la tabla de productos, toca <span class="b azul">Subsanar</span> en el producto que faltó.</li>
+      <li>Escoge cómo se resolvió <i class="pin">1</i>:
+        <small><b>Resuelto Completo</b>: se consiguieron todas las unidades; el faltante desaparece.<br>
+        <b>Resuelto Parcial</b>: se consiguieron algunas; escribes cuántas. Queda lo que aún falta (si faltaban 10 y llegaron 4, queda “faltan 6”).<br>
+        <b>No Hay Producto</b>: no se pudo conseguir; queda como “No se entregó”.</small></li>
+      <li>Escribe una observación corta <i class="pin">2</i> y toca <span class="b azul">Confirmar Subsanación</span> <i class="pin">3</i>.</li>
+    </ol>
+    <div class="aviso ojo"><b>Si te equivocas</b>En los productos ya resueltos aparece <span class="b borde">Revertir</span>: devuelve el faltante a pendiente.</div>
+  </div>
+
+  <div class="caja" id="co-devolver">
+    <h3>6. Devolver una planilla o reportar un error</h3>
+    <table>
+      <tr><th>Botón</th><th>Cuándo</th><th>Qué pasa</th></tr>
+      <tr><td><span class="b naranja">Devolver</span> (en la tarjeta)</td><td>La planilla quedó mal alistada y hay que rehacerla.</td><td>Pregunta “¿Devolver la planilla de [entregador] a estado Alistando?”. Si aceptas, el alistador la ve de nuevo en proceso para corregirla.</td></tr>
+      <tr><td><span class="b borde">Reportar error</span> (en un producto)</td><td>El alistador marcó un producto como completo, pero en realidad faltaba.</td><td>Escribes la <b>cantidad real</b> (debe ser menor a la solicitada) y una <b>nota obligatoria</b>. El producto queda incompleto.</td></tr>
+    </table>
+  </div>
+
+  <div class="caja" id="co-historial">
+    <h3>7. Historial y Eliminados</h3>
+    <h4>Historial</h4>
+    <ol class="pasos">
+      <li>Toca un botón rápido: <span class="b borde">Hoy</span> o <span class="b borde">Últimos 7 días</span>.</li>
+      <li>O arma tu propio filtro con <b>Fecha</b>, <b>Entregador</b> y <b>Estado</b> (Pendiente, Alistando, Alistado, En Ruta, Completado, Pospuesto).</li>
+      <li>Para empezar de nuevo toca <span class="b borde">Limpiar</span>.</li>
+    </ol>
+    <p>Si no escoges nada, dice “Seleccione un filtro para ver el historial”: es normal.</p>
+    <h4>Eliminados</h4>
+    <p>Muestra planillas, pedidos, novedades y fiados eliminados, con quién y cuándo.</p>
+    <ul>
+      <li><span class="b borde">Restaurar</span>: lo devuelve a su lugar.</li>
+      <li><span class="b rojo">Eliminar definitivamente</span>: lo borra para siempre. Un fiado con abonos no se deja borrar.</li>
+    </ul>
+    <div class="aviso mal"><b>Cuidado</b>“Eliminar definitivamente” no se puede deshacer. Asegúrate de que no lo vas a necesitar.</div>
+  </div>
+  <a class="arriba" href="#coordinador">↑ Volver al inicio de Coordinador</a>
+</section>
+
+<!-- ======================================================= ADMINISTRADOR -->
+<section id="administrador" class="rol-seccion" data-seccion="administrador">
+  <h2>Administrador</h2>
+  <p class="lead">Tú ves todo el negocio: los fiados, los pagos que llegan al banco, las comisiones, el rendimiento y el inventario.</p>
+
+  <div class="caja">
+    <h3>Seis palabras que vas a ver</h3>
+    <div class="palabras">
+      <div><b>Fiado</b><br>Una factura que el cliente no pagó al recibir.</div>
+      <div><b>Abono</b><br>Un pago, parcial o total, de un fiado.</div>
+      <div><b>Cuadre Administrativo</b><br>Pagos que llegaron directo al banco o a ti, antes de que el entregador los cobrara.</div>
+      <div><b>Repaso</b><br>Un pedido que no se pudo entregar y hay que reprogramar.</div>
+      <div><b>Comisión</b><br>Lo que gana el entregador: un porcentaje de lo que entregó.</div>
+      <div><b>Inventario</b><br>Comparar lo que salió de bodega con lo que dice el sistema de facturación.</div>
+    </div>
+  </div>
+
+  <div class="caja dia">
+    <h3>Tu día y tu semana</h3>
+    <ol class="pasos">
+      <li><b>Cada día, mira el Dashboard.</b><small>Resumen de ayer, de hoy y de los entregadores.</small></li>
+      <li><b>Registra los pagos que llegaron al banco.</b><small>Mira <a href="#ad-pago">Registrar un pago que llegó al banco</a>.</small></li>
+      <li><b>Revisa los fiados</b> y asigna cobros.<small>Mira <a href="#ad-fiados">Fiados</a>.</small></li>
+      <li><b>Resuelve los repasos</b> pendientes.<small>Mira <a href="#ad-repasos">Repasos</a>.</small></li>
+      <li><b>Cada quincena o mes,</b> revisa y paga comisiones.<small>Mira <a href="#ad-comisiones">Comisiones</a>.</small></li>
+      <li><b>Mira el Rendimiento</b> de los entregadores.<small>Mira <a href="#ad-rendimiento">Rendimiento e incentivos</a>.</small></li>
+      <li><b>Cada semana, cruza el Inventario.</b><small>Mira <a href="#ad-inventario">Inventario</a>.</small></li>
+    </ol>
+  </div>
+
+  <h2 style="font-size:1.4rem">Cómo se hace</h2>
+  <ul class="indice">
+    <li><a href="#ad-pago">1. Registrar un pago que llegó al banco<small>Cuadre Administrativo</small></a></li>
+    <li><a href="#ad-identificar">2. Identificar un pago pendiente<small>Decir de qué deuda es</small></a></li>
+    <li><a href="#ad-fiados">3. Fiados: abonos, cobros y correcciones<small>Pantalla Cuentas por Cobrar</small></a></li>
+    <li><a href="#ad-repasos">4. Repasos<small>Asignar o eliminar</small></a></li>
+    <li><a href="#ad-comisiones">5. Comisiones<small>Ver, ajustar y pagar</small></a></li>
+    <li><a href="#ad-rendimiento">6. Rendimiento e incentivos<small>% de devolución</small></a></li>
+    <li><a href="#ad-usuarios">7. Usuarios<small>Crear, desactivar</small></a></li>
+    <li><a href="#ad-inventario">8. Inventario<small>Subir archivos y leer los cruces</small></a></li>
+  </ul>
+
+  <div class="caja" id="ad-pago">
+    <h3>1. Registrar un pago que llegó al banco</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> un cliente pagó por transferencia o consignó directo, sin pasar por el entregador. Entra por el botón <b>“Cuadre Administrativo”</b> del menú.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · Registrar pago</span>
+      <div class="etiqueta">Fecha del pago</div><span class="campo lleno">2026-10-24</span>
+      <div class="etiqueta">Líneas de pago <i class="pin">1</i></div>
+      <div class="fila">Medio: <b>Nequi</b> · Monto: <b>$ 120.000</b> · Referencia: <b>M31877042</b> <span class="b borde">Agregar otro medio</span><i class="pin">2</i></div>
+      <div class="etiqueta">¿A qué corresponde este pago? <i class="pin">3</i></div>
+      <div class="fila">¿Es abono de un fiado? · <span class="campo" style="display:inline-block;margin:0">Buscar cliente en fiados…</span> <span class="b borde">Elegir</span></div>
+      <div class="etiqueta">Entregador que cobra este pago <i class="pin">4</i></div><span class="campo lleno">Mateo Entregador</span>
+      <div style="display:flex"><span class="b azul" style="width:100%;text-align:center">Registrar pago</span><i class="pin">5</i></div>
+    </div>
+    <ol class="pasos">
+      <li>Escribe la <b>fecha del pago</b> y, si la sabes, el <b>N° de factura</b>.</li>
+      <li>En <b>Líneas de pago</b> <i class="pin">1</i> pon <b>medio</b>, <b>monto</b> y <b>referencia</b> del comprobante.</li>
+      <li>Si el cliente pagó el mismo saldo en varias partes (por ejemplo dos transferencias), toca <b>Agregar otro medio</b> <i class="pin">2</i>.</li>
+      <li>En <b>“¿A qué corresponde este pago?”</b> <i class="pin">3</i> busca al cliente: <b>“¿Es abono de un fiado?”</b> o <b>“¿Es pago de pedido de asesor?”</b>. En la coincidencia correcta toca <b>Elegir</b>.</li>
+      <li>Escoge el <b>entregador que cobra este pago</b> <i class="pin">4</i>. El sistema sugiere quien dejó esa deuda en ruta; cámbialo si hoy lo cuadra otra persona.</li>
+      <li>Toca <span class="b azul">Registrar pago</span> <i class="pin">5</i>.</li>
+    </ol>
+    <div class="aviso ojo"><b>Importante</b>Registrar el pago <u>no baja la deuda todavía</u>. La deuda baja cuando <b>caja confirma el cuadre de ese entregador</b>: el pago aparece cargado solo en su cuadre.</div>
+    <div class="aviso mal"><b>Cuidado</b>Una referencia se usa una sola vez. Si el sistema dice “La referencia ya fue registrada antes”, revisa el comprobante.</div>
+  </div>
+
+  <div class="caja" id="ad-identificar">
+    <h3>2. Identificar un pago pendiente</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> hay un pago en estado <span class="estado">Pendiente</span> y todavía no sabes de qué deuda es.</div>
+    <ol class="pasos">
+      <li>En la tabla “Registros de cuadre administrativo” escoge el filtro <b>Pendientes</b>.</li>
+      <li>Toca <span class="b borde">Identificar</span> en el pago.</li>
+      <li>Busca al cliente (nombre o parte del nombre). Aparecen las coincidencias de fiados o de pedidos de asesor. Toca <b>Elegir</b> en la correcta.</li>
+      <li>Escoge el <b>entregador</b> que lo cobrará y confirma. El pago pasa a <span class="estado">Identificado</span>.</li>
+    </ol>
+    <table>
+      <tr><th>Estado</th><th>Significa</th></tr>
+      <tr><td><span class="estado">Pendiente</span></td><td>Llegó el pago, aún no se sabe de qué deuda es.</td></tr>
+      <tr><td><span class="estado" style="background:var(--ambar-bg);color:var(--ambar)">Identificado</span></td><td>Ya tiene deuda y entregador. Espera el cuadre de caja.</td></tr>
+      <tr><td><span class="estado v">Vinculado</span></td><td>Caja lo confirmó: la deuda ya bajó.</td></tr>
+    </table>
+    <div class="aviso mal"><b>Nunca</b>borres un pago para “quitar una alerta”: es dinero real. Si el pago es mayor que la deuda, pide ayuda para partirlo entre dos deudas del mismo cliente.</div>
+  </div>
+
+  <div class="caja" id="ad-fiados">
+    <h3>3. Fiados: abonos, cobros y correcciones</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> necesitas ver o cambiar una deuda. Pantalla <b>“Cuentas por Cobrar (Fiados)”</b>.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · Detalle de Fiados</span>
+      <div class="etiqueta">Fecha Inicio · Fecha Fin · Entregador <i class="pin">1</i></div>
+      <div class="fila"><b>29 DISTRIBUCIONES EL PORTAL</b> · Saldo <b>$ 240.000</b>
+        <div class="btns"><span class="b azul">Registrar Abono</span><i class="pin">2</i> <span class="b borde">Asignar a Cobrar</span><i class="pin">3</i> <span class="b borde">Editar factura</span><i class="pin">4</i> <span class="b rojo">Eliminar</span></div></div>
+    </div>
+    <h4>Ver los fiados</h4>
+    <ol class="pasos">
+      <li>Escoge <b>Fecha Inicio</b>, <b>Fecha Fin</b> y, si quieres, un <b>Entregador</b> <i class="pin">1</i>.</li>
+      <li>Verás el <b>Total General</b> y el <b>Detalle</b>. Para incluir los ya pagados, activa la opción de mostrar pagados.</li>
+    </ol>
+    <div class="aviso ojo"><b>¿No encuentras un cliente?</b>La pantalla muestra por defecto solo el mes actual y solo lo pendiente. Amplía las fechas hacia atrás y activa “mostrar pagados”. Busca por el apellido: los nombres empiezan con el número de ruta.</div>
+    <table>
+      <tr><th>Quiero…</th><th>Hago esto</th></tr>
+      <tr><td>Anotar un pago del cliente <i class="pin">2</i></td><td>Toca <b>Registrar Abono</b>. Llena <b>Monto del Abono</b>, <b>Método de Pago</b> (Efectivo, Nequi, Transferencia o Consignación), la <b>referencia</b> si es electrónico y observaciones. Mira el <b>Nuevo saldo</b> y guarda. El abono no puede ser mayor que el saldo.</td></tr>
+      <tr><td>Encargar el cobro a un entregador <i class="pin">3</i></td><td>Toca <b>Asignar a Cobrar</b> y escoge la planilla / entregador. Le aparecerá en su sección “Cobros CxC”.</td></tr>
+      <tr><td>Corregir el valor de la factura <i class="pin">4</i></td><td>Toca <b>Editar factura</b> y escribe el <b>nuevo valor</b>.</td></tr>
+      <tr><td>Crear una deuda que nunca se registró</td><td>Toca <b>Nuevo Fiado Manual</b>. Llena cliente, entregador, ruta, monto y por qué se registra manualmente.</td></tr>
+      <tr><td>Marcar varios como pagados</td><td>Selecciónalos con las casillas y toca <b>“Marcar como Pagados (N)”</b>.</td></tr>
+      <tr><td>Ver quién cobró y cuánto</td><td>Abre el <b>Historial de cobros</b> del fiado: muestra quién llevó, quién cobró, efectivo, Nequi y referencia. Ahí se puede eliminar un abono hecho por error.</td></tr>
+    </table>
+    <div class="aviso bien"><b>Cuándo se cierra un fiado</b>Cuando el saldo llega a cero. Si queda en centavos (por ejemplo $0,09), el sistema lo cierra solo cuando es menos de $1.</div>
+  </div>
+
+  <div class="caja" id="ad-repasos">
+    <h3>4. Repasos</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> hay pedidos que no se pudieron entregar. Pantalla <b>“Gestión de Repasos”</b>.</div>
+    <ol class="pasos">
+      <li>Mira la lista: cliente, ruta de origen, entregador y fecha.</li>
+      <li>Si el pedido debe entregarse, toca <span class="b azul">Asignar a Ruta</span>, escoge la <b>Planilla de Destino</b> y confirma. El valor se suma al cargue de esa planilla.</li>
+      <li>Si el repaso se creó por error, toca <span class="b rojo">Eliminar</span> y confirma.</li>
+    </ol>
+    <div class="aviso mal"><b>Cuidado</b>Elimina solo repasos creados por error. Si el pedido aún debe entregarse, asígnalo a una ruta.</div>
+  </div>
+
+  <div class="caja" id="ad-comisiones">
+    <h3>5. Comisiones</h3>
+    <ol class="pasos">
+      <li>En <b>Comisiones</b> escoge <b>Fecha Inicio</b>, <b>Fecha Fin</b> y el <b>Entregador</b>. Verás el <b>Total General</b> y, por día: entregas, devoluciones, <b>base</b>, comisión y estado.<small>La base es lo que el entregador entregó (el “Recibido” del cuadre).</small></li>
+      <li>Para <b>pagar</b>: marca las comisiones y usa la opción de marcar como pagadas.</li>
+      <li>Para <b>ajustar</b> un día: toca el lápiz, escribe el nuevo porcentaje o el nuevo monto y una nota (“acuerdo especial, bonificación…”). Queda marcado ✏️ Ajustado.</li>
+      <li>Para cambiar el <b>porcentaje</b> de un entregador: botón <b>Configuración</b>.</li>
+      <li>Para llevarlo a Excel: <b>Exportar</b>.</li>
+    </ol>
+    <div class="aviso ojo"><b>Importante</b>Los cambios de porcentaje en Configuración solo afectan comisiones <u>futuras</u>. Las ya calculadas se editan a mano en el reporte.</div>
+  </div>
+
+  <div class="caja" id="ad-rendimiento">
+    <h3>6. Rendimiento e incentivos</h3>
+    <p>Compara a los entregadores en un periodo: rutas, cargue, entregado, devoluciones y <b>% de devolución</b> (devoluciones ÷ cargue × 100).</p>
+    <ol class="pasos">
+      <li>Escoge <b>Fecha Inicio</b> y <b>Fecha Fin</b>.</li>
+      <li>Fija el <b>Umbral Incentivo (%)</b>: quienes tengan devoluciones por debajo de ese porcentaje <span class="estado v">Califican</span>; los demás, <span class="estado" style="background:var(--rojo-bg);color:var(--rojo)">No califican</span>.</li>
+      <li>En quien califica, escribe el valor del incentivo y toca <b>Guardar</b>.</li>
+    </ol>
+  </div>
+
+  <div class="caja" id="ad-usuarios">
+    <h3>7. Usuarios</h3>
+    <ol class="pasos">
+      <li>Toca <span class="b azul">Crear Nuevo Usuario</span>.</li>
+      <li>Llena <b>Nombre Completo</b>, <b>Email</b>, <b>Contraseña</b> y escoge el <b>Cargo</b>: Administrador, Coordinador Logístico, Alistador, Entregador o Caja.</li>
+      <li>Toca <b>Crear Usuario</b>. Aparece en la lista; filtra por <b>Todos, Activos o Inactivos</b>.</li>
+    </ol>
+    <div class="aviso bien"><b>Cuando alguien se va de la empresa</b>Usa <b>Desactivar</b> en vez de eliminar: deja de poder entrar y se conserva todo lo que hizo. Puedes <b>Activar</b> de nuevo si vuelve.</div>
+    <div class="aviso mal"><b>Cuidado</b>El cargo decide qué pantallas ve la persona. Un entregador con cargo de Caja vería lo que no le toca.</div>
+  </div>
+
+  <div class="caja" id="ad-inventario">
+    <h3>8. Inventario</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> quieres saber si lo que salió de bodega coincide con lo que dice el sistema de facturación (POS). Botón <b>Inventario</b> del menú.</div>
+    <div class="pantalla">
+      <span class="etq">Pantalla de ejemplo · Inventario</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="b borde">Cruce de ventas</span> <span class="b borde">Cruce de inventario</span> <span class="b borde">Salidas</span> <span class="b borde">Ajustes</span> <span class="b azul">Subir archivos</span><i class="pin">1</i></div>
+      <div class="etiqueta" style="margin-top:8px">Desde · Hasta <i class="pin">2</i></div>
+    </div>
+    <ol class="pasos">
+      <li><b>Subir archivos</b> <i class="pin">1</i> (una vez por periodo): el <b>catálogo</b> de productos, las <b>ventas</b> del POS y el <b>inventario del POS con cantidades</b> (con su fecha).<small>Si una venta se sube dos veces para las mismas fechas, se reemplaza, no se duplica.</small></li>
+      <li><b>Salidas:</b> muestra lo que salió de bodega por producto. Si aparece un aviso amarillo de planillas sin cargar, toca <span class="b azul">Cargarlas ahora</span>. <u>Hazlo antes de que caja cuadre esas planillas.</u></li>
+      <li>Escoge el rango de fechas <i class="pin">2</i>.</li>
+      <li><b>Cruce de ventas:</b> por producto, lo que <b>salió</b> frente a lo <b>facturado</b> y <b>devuelto</b> en el POS. Si la diferencia es positiva, el POS cobró más de lo que salió; si es negativa, salió más de lo facturado. Abajo ves las <b>devoluciones en dinero</b> (lo que caja registró contra lo que devolvió el POS).</li>
+      <li><b>Cruce de inventario:</b> dice qué <b>ajuste</b> le falta al POS por producto y cuál sería el saldo real. Cuando ya hiciste ese ajuste en el POS, toca <span class="b borde">Ajustar</span> y registra la cantidad (positiva suma, negativa resta) y el motivo.</li>
+    </ol>
+    <div class="aviso bien"><b>La fórmula</b>Ajuste para el POS = (lo que el POS facturó − lo que devolvió) − lo que realmente salió. Positivo: se le devuelven unidades al POS; negativo: se le restan.</div>
+    <div class="aviso ojo"><b>Ejemplo</b>Facturaron 2 Balance Hombre pero salieron 1 Hombre y 1 Dama: ajuste <b>+1 en Hombre</b> y <b>−1 en Dama</b>.</div>
+    <div class="aviso ojo"><b>Importante</b>Solo se cargan planillas alistadas del <u>mes actual</u> que aún no se han cuadrado. Lo anterior se perdió antes de que existiera el respaldo y no se muestra.</div>
+  </div>
+  <a class="arriba" href="#administrador">↑ Volver al inicio de Administrador</a>
+</section>
+
+</main>
+
+<footer>Guía práctica de Distrilogística · Si algo de esta guía no coincide con lo que ves en pantalla, avisa para corregirla.</footer>
+
+<script>
+(function () {
+  var secciones = Array.prototype.slice.call(document.querySelectorAll('main > section'));
+  var botones = Array.prototype.slice.call(document.querySelectorAll('.barra button'));
+  var CLAVE = 'guia_rol';
+  function leer() { try { return localStorage.getItem(CLAVE) || 'elige'; } catch (e) { return 'elige'; } }
+  function guardar(v) { try { localStorage.setItem(CLAVE, v); } catch (e) {} }
+
+  function mostrar(rol) {
+    var existe = secciones.some(function (s) { return s.getAttribute('data-seccion') === rol; });
+    if (!existe) rol = 'elige';
+    secciones.forEach(function (s) { s.classList.toggle('oculto', s.getAttribute('data-seccion') !== rol); });
+    botones.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-rol') === rol ? 'true' : 'false'); });
+    guardar(rol);
+  }
+  botones.forEach(function (b) {
+    b.addEventListener('click', function () { mostrar(b.getAttribute('data-rol')); window.scrollTo(0, 0); });
+  });
+  // Enlaces internos (#e-fiado, #c-cobros…) se desplazan con JavaScript para que funcionen en cualquier visor.
+  Array.prototype.slice.call(document.querySelectorAll('a[href^="#"]')).forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var id = a.getAttribute('href').slice(1);
+      var destino = document.getElementById(id);
+      if (!destino) return;
+      e.preventDefault();
+      destino.scrollIntoView({ block: 'start' });
+    });
+  });
+  mostrar(leer());
+})();
+</script>
+</body>
+</html>

@@ -18,7 +18,7 @@
     }
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+  html { scroll-padding-top: 76px; }
   body { margin: 0; background: var(--fondo); color: var(--texto); font: 18px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   header.portada { background: linear-gradient(135deg, #1e3a8a, #1d4ed8 60%, #0e7490); color: #fff; padding: 44px 20px 36px; }
   header.portada .interior { max-width: 960px; margin: 0 auto; }
@@ -741,7 +741,7 @@
   botones.forEach(function (b) {
     b.addEventListener('click', function () {
       aplicar(b.getAttribute('data-rol'));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo(0, 0);
     });
   });
 
@@ -753,7 +753,7 @@
       var sec = document.getElementById(id);
       if (!sec) return;
       e.preventDefault();
-      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      sec.scrollIntoView({ block: 'start' });
     });
   });
 
