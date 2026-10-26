@@ -171,7 +171,7 @@
     <ol class="pasos">
       <li><b>Entra al sistema</b> con tu correo y contraseña y mira “Mis Rutas”.<small>Si tu pantalla dice “No hay rutas activas”, todavía no te han asignado nada. Avisa al coordinador.</small></li>
       <li><b>Mira cuánto llevas.</b><small>Arriba está el resumen. “Total Cargue” es el valor de lo que llevas.</small></li>
-      <li><b>En cada cliente, toca el botón que dice qué pasó:</b> <a href="#e-entregado">Entregado</a>, <a href="#e-fiado">Fiado</a>, <a href="#e-devolucion">Devolución</a>, <a href="#e-agotado">Agotado</a>, <a href="#e-agotado">Descuento</a> o <a href="#e-transferencia">Transferencia</a>.<small>Hazlo en el momento, cliente por cliente. No lo dejes para el final del día.</small></li>
+      <li><b>En cada cliente, toca el botón que dice qué pasó:</b> <a href="#e-entregado">Entregado</a>, <a href="#e-fiado">Fiado</a>, <a href="#e-devolucion">Devolución</a>, <a href="#e-agotado">Agotado</a> o <a href="#e-transferencia">Transferencia</a>.<small>Los descuentos NO los registras tú: los pone caja.</small><small>Hazlo en el momento, cliente por cliente. No lo dejes para el final del día.</small></li>
       <li><b>Si te asignaron cobros, regístralos</b> en la sección morada “Cobros CxC”.<small>Mira <a href="#e-cobro">Cobrar una deuda vieja</a>.</small></li>
       <li><b>Si dejaste plata en el banco, anótalo.</b><small>Mira <a href="#e-consignacion">Registrar una consignación</a>.</small></li>
       <li><b>Antes de ir a caja, revisa:</b> ningún cliente debe decir PENDIENTE y los números del resumen deben tener sentido.<small>Un cliente en PENDIENTE significa que no anotaste qué pasó con él.</small></li>
@@ -184,7 +184,7 @@
     <li><a href="#e-entregado">1. Marcar un pedido como entregado<small>El cliente recibió y pagó todo</small></a></li>
     <li><a href="#e-fiado">2. Dejar un pedido fiado<small>Pagó una parte o no pagó</small></a></li>
     <li><a href="#e-devolucion">3. Registrar una devolución<small>El cliente devolvió mercancía</small></a></li>
-    <li><a href="#e-agotado">4. Agotado o descuento<small>Faltó un producto / se hizo un descuento</small></a></li>
+    <li><a href="#e-agotado">4. Agotado<small>Un producto de la factura no había</small></a></li>
     <li><a href="#e-transferencia">5. El cliente pagó por transferencia<small>Nequi, Bancolombia…</small></a></li>
     <li><a href="#e-todo">6. Marcar toda la ruta entregada<small>Cuando todo salió bien</small></a></li>
     <li><a href="#e-cobro">7. Cobrar una deuda vieja<small>Sección morada “Cobros CxC”</small></a></li>
@@ -201,7 +201,7 @@
       <div class="fila">
         <div><span class="nom">12 TIENDA LA ESPERANZA</span> <i class="pin">1</i> <span class="estado">PENDIENTE</span></div>
         <div class="sub">$ 185.400</div>
-        <div class="btns"><span class="b verde">Entregado</span><i class="pin">2</i> <span class="b naranja">Fiado</span> <span class="b rojo">Devolución</span> <span class="b gris">Agotado</span> <span class="b morado">Descuento</span> <span class="b azul">Transferencia</span></div>
+        <div class="btns"><span class="b verde">Entregado</span><i class="pin">2</i> <span class="b naranja">Fiado</span> <span class="b rojo">Devolución</span> <span class="b gris">Agotado</span> <span class="b azul">Transferencia</span></div>
       </div>
     </div>
     <ol class="pasos">
@@ -257,21 +257,21 @@
 
   <!-- E4 -->
   <div class="caja" id="e-agotado">
-    <h3>4. Agotado o descuento</h3>
-    <div class="cuando"><b>Agotado:</b> un producto de la factura no había y no se entregó. <b>Descuento:</b> se acordó rebajar el precio al cliente.</div>
+    <h3>4. Agotado</h3>
+    <div class="cuando"><b>Úsalo cuando:</b> un producto de la factura no había y no se entregó.</div>
     <div class="pantalla">
-      <span class="etq">Pantalla de ejemplo · el mismo formato para los dos</span>
-      <div class="etiqueta">Confirmar Agotado &nbsp;·&nbsp; Registrar Descuento</div>
-      <div class="etiqueta" style="margin-top:8px">Monto agotado &nbsp;·&nbsp; Monto del descuento</div>
+      <span class="etq">Pantalla de ejemplo · ventana “Confirmar Agotado”</span>
+      <div class="etiqueta">Confirmar Agotado</div>
+      <div class="etiqueta" style="margin-top:8px">Monto agotado</div>
       <span class="campo lleno">12000 <i class="pin">2</i></span>
       <div class="btns" style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Confirmar</span> <i class="pin">3</i></div>
     </div>
     <ol class="pasos">
-      <li>En el cliente toca <span class="b gris">Agotado</span> o <span class="b morado">Descuento</span> <i class="pin">1</i>.</li>
-      <li>Escribe el valor en pesos <i class="pin">2</i>.</li>
+      <li>En el cliente toca <span class="b gris">Agotado</span> <i class="pin">1</i>.</li>
+      <li>Escribe el valor en pesos de lo que no se entregó <i class="pin">2</i>.</li>
       <li>Toca <span class="b azul">Confirmar</span> <i class="pin">3</i>.</li>
     </ol>
-    <div class="aviso ojo"><b>Descuento solo si lo autorizaron</b>No hagas descuentos por tu cuenta. Caja puede preguntarte el motivo.</div>
+    <div class="aviso ojo"><b>Los descuentos los pone caja</b>Si un cliente pide una rebaja de precio, <u>no la registres tú</u>. Dile que lo hable con caja: allá se anota al cuadrar.</div>
   </div>
 
   <!-- E5 -->
@@ -489,6 +489,7 @@
     <ol class="pasos">
       <li>Mira cada cuadro de <b>Novedades</b>. Los valores vienen de lo que el entregador anotó en ruta.</li>
       <li>Pregúntale: “¿Fiado $380.000, devoluciones $24.500…?”. Si algo no coincide con lo que dice, corrígelo en el cuadro.</li>
+      <li><b>Descuentos:</b> los pone solo caja. Si hubo una rebaja autorizada a un cliente, anótala aquí en <b>Descuentos</b> y escribe el motivo en <b>Observaciones</b>. El entregador no los registra.</li>
       <li>En <b>💵 Varios</b> anota gastos del día que se autorizaron (combustible, parqueadero) con su <b>nota</b>.</li>
     </ol>
     <div class="aviso ojo"><b>Por qué importa</b>Cada novedad baja lo que el entregador debe traer. Si una está de más, le estás perdonando plata; si está de menos, le cobras de más.</div>

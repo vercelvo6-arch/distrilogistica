@@ -1414,14 +1414,7 @@ export function EntregadorView({ onLogout, user }: EntregadorViewProps) {
                                           >
                                             Agotado
                                           </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-7 text-xs px-2 border-purple-300 text-purple-700"
-                                            onClick={() => handleAbrirNovedad(order, "descuento")}
-                                          >
-                                            Descuento
-                                          </Button>
+                                          {/* Los descuentos los registra solo caja: el entregador no tiene este botón. */}
                                           <Button
                                             size="sm"
                                             variant="outline"
