@@ -13,6 +13,32 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 - **Base de datos:** Neon. La conexión va en la variable `DATABASE_URL` (Vercel). **Nunca** pongas credenciales en el repo ni en archivos.
 - **Roles:** `administrador`, `coordinador`, `alistador`, `caja`, `entregador` (cada uno con su pantalla en `app/<rol>` y su vista en `components/<rol>-view.tsx`).
 
+### Glosario (las palabras del negocio)
+- **POS:** el sistema de facturación e inventario de la empresa. De ahí sale el CSV de ventas que se importa; es la fuente de verdad del inventario y las compras.
+- **Planilla:** la hoja de reparto de UNA ruta en un día; agrupa los pedidos (facturas) de esa ruta. Una ruta es una zona (6C, 29, 72…). Los clientes se nombran con el número de ruta al inicio.
+- **Pedido:** una factura de un cliente dentro de una planilla, con sus productos.
+- **Entregador:** quien lleva la mercancía. Un entregador puede llevar varias planillas el mismo día. "Extra", "Oficina" son entregadores comodín a los que se asigna una planilla mientras se decide quién la lleva.
+- **Alistador / alistamiento:** quien prepara la mercancía en bodega. Marca cada producto como completo, incompleto, no alistado o reemplazo (sustitución del asesor).
+- **Faltante:** producto que el alistador no pudo completar. Queda pendiente hasta que el coordinador lo subsana (completo, parcial o "no se entregó").
+- **Asesor:** el vendedor. Hay planillas y pedidos "de asesor" (ventas que el asesor entrega o gestiona directamente).
+- **Fiado / cuenta por cobrar (CxC):** factura que el cliente no pagó al recibir. Se cobra después con **abonos** (cada pago parcial o total).
+- **Cobro CxC:** el pago de un fiado que registra el entregador en ruta (efectivo o Nequi/banco). Caja lo concilia en el cuadre.
+- **Consignación:** depósito o transferencia bancaria. O es de un pedido, o es de un cobro, o es un depósito de efectivo del entregador.
+- **Cuadre de caja:** el cierre con el entregador: caja cuenta billetes, monedas y consignaciones y los compara con lo esperado. Puede ser individual (una planilla) o agrupado (varias del mismo entregador).
+- **Novedades del cuadre:** lo que reduce lo esperado: fiados nuevos, devoluciones (en dinero, no por producto), repasos, agotados, descuentos, varios y errores de facturación.
+- **Repaso:** pedido que no se pudo entregar y se vuelve a programar en otra planilla o día.
+- **Cuadre administrativo (pagos anticipados):** pagos de clientes que llegaron directo al banco o a administración antes de que el entregador los cobrara; se identifican contra un fiado y entran al cuadre del entregador asignado.
+- **Comisión:** lo que gana el entregador, un porcentaje de lo que entregó (el Recibido del cuadre).
+
+### Un día típico, de principio a fin
+1. **Importar:** el coordinador sube el CSV de ventas del POS; el sistema agrupa por ruta, cliente y factura y crea las planillas con sus pedidos.
+2. **Asignar:** el coordinador asigna cada planilla a un entregador y fija la fecha de alistamiento (a veces primero a "Extra" y luego la reasigna).
+3. **Alistar:** el alistador inicia el cronómetro de la tarjeta del entregador, marca cada producto y pulsa Completar (la planilla pasa a `alistado`; se guarda la salida de inventario).
+4. **Supervisar:** el coordinador revisa en Supervisión las notas del alistamiento y los faltantes pendientes, los subsana o devuelve la planilla al alistador.
+5. **Repartir:** el entregador marca cada pedido (entregado, fiado, devolución, repaso), cobra fiados y registra transferencias.
+6. **Cuadrar caja:** caja cuenta lo que trae el entregador, vincula cobros y pagos administrativos, registra consignaciones y novedades, y confirma. Al guardar el cuadre se archivan y **se borran los pedidos de esas planillas**, los fiados nuevos y los abonos quedan registrados, y se calcula la comisión.
+7. **Después:** historial de caja, fiados por cobrar (los cobra otro entregador asignado), faltantes pendientes, e inventario (cruce con el POS).
+
 ## 2. Cómo trabajar con el dueño (importante)
 - Responde **en español sencillo, sin jerga técnica**. Si algo no se entiende, explícalo con un ejemplo real (cliente, entregador, montos).
 - Cuando la intención es clara, **hazlo**; no pidas permiso por cada paso. Pregunta solo si hay dos lecturas con consecuencias distintas en dinero o datos.
