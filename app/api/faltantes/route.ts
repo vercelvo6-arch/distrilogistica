@@ -187,10 +187,10 @@ export async function GET(request: NextRequest) {
         AND (${planilla_id ? sql`f.planilla_id = ${planilla_id}` : sql`1=1`})
         AND (${entregador && entregador !== 'all' ? sql`f.entregador = ${entregador}` : sql`1=1`})
         AND (${codigo ? sql`f.codigo ILIKE ${`%${codigo}%`}` : sql`1=1`})
-        AND (${fecha_inicio ? sql`f.fecha_marcado >= ${fecha_inicio}::date` : sql`f.fecha_marcado >= CURRENT_DATE - INTERVAL '7 days'`})
+        AND (${fecha_inicio ? sql`f.fecha_marcado >= ${fecha_inicio}::date` : estadoFiltro === 'pendiente' ? sql`1=1` : sql`f.fecha_marcado >= CURRENT_DATE - INTERVAL '7 days'`})
         AND (${fecha_fin ? sql`f.fecha_marcado <= ${fecha_fin}::date + interval '1 day'` : sql`1=1`})
       ORDER BY f.fecha_marcado DESC 
-      LIMIT 500
+      LIMIT ${estadoFiltro === 'pendiente' ? 3000 : 500}
     `;
     
     console.log('[FALTANTES GET] ✅ Encontrados:', faltantes.length);

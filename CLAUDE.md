@@ -104,8 +104,6 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 ### 5.7 Alistador
 - Un cronómetro por tarjeta de entregador, guardado en el servidor (`timer_inicio`, `timer_fin`, `timer_pausa`, `timer_segundos_pausados`); la pantalla calcula contra la hora del servidor. Pausar pide motivo y queda en `audit_log`.
 
-- **Un producto puede estar en varias planillas del mismo entregador** (ej. una que venía de "Extra" reasignada a Mateo). El alistador lo marca una vez y `POST /api/faltantes` recibe `reparto` y lo marca en TODAS (reparte el faltante sin pasar de lo que pidió cada una). El estado consolidado de un producto es el MÁS pendiente de sus líneas (`lib/estado-alistamiento.ts`); no lo calcules de otra forma en las pantallas.
-- Reasignar una planilla que ya está `alistado` a otro entregador **conserva** su estado (solo cambia el entregador, también en `faltantes` e `inventario_salidas`).
 - **Faltantes (pestaña Novedades del alistador):** filtros por entregador/estado/fechas/código; "Eliminar seleccionados" (`POST /api/faltantes/baja-en-bloque`) los pasa de `pendiente` a `definitivo` ("No se entregó") con motivo; no borra nada y se revierte con "Revertir". La lista de pendientes no tiene tope de 7 días.
 
 ### 5.8 Inventario (pestaña "Inventario" del administrador; tablas `inventario_*`, script 027)

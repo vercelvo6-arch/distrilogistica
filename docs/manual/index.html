@@ -229,7 +229,7 @@
       <li><span class="boton claro">Posponer</span>: deja la ruta para otro día (queda en estado “Pospuesto”).</li>
       <li><span class="boton claro">Eliminar</span>: borra la planilla. <b>No se puede deshacer.</b></li>
     </ul>
-    <div class="aviso consejo"><b>Práctica común</b>A veces se asigna primero a “Extra” u “Oficina” mientras se decide quién la lleva. Más adelante se puede volver a asignar a la persona definitiva. Si la planilla ya estaba alistada, <b>conserva su alistamiento</b>: no hay que repetirlo.</div>
+    <div class="aviso consejo"><b>Práctica común</b>A veces se asigna primero a “Extra” u “Oficina” mientras se decide quién la lleva. Más adelante se puede volver a asignar a la persona definitiva. Al reasignar, la ruta queda pendiente de alistar para ese entregador.</div>
   </div>
 
   <div class="pantalla">
@@ -313,7 +313,6 @@
       <tr><td><span class="estado mal">No Alistado</span></td><td>No tengo nada del producto.</td><td>Observación obligatoria.</td></tr>
       <tr><td><span class="estado alerta">Reemplazo</span></td><td>El original no había y entregué otro en su lugar.</td><td>El nombre del producto entregado en su lugar.</td></tr>
     </table>
-    <div class="aviso consejo"><b>Lo importante</b>Marcas el producto <u>una sola vez</u> aunque el mismo producto esté en varias planillas del mismo entregador: el sistema lo aplica a todas. Un producto sigue “pendiente” mientras alguna de sus partes no esté marcada.</div>
     <div class="aviso ojo"><b>Antes de completar</b>Revisa que no queden productos en <span class="estado gris">⏳ Pendiente</span>. Las etiquetas de la tarjeta te dicen cuántos completos, incompletos y pendientes hay.</div>
     <div class="aviso cuidado"><b>Botón Eliminar</b>En rutas que aún no has empezado aparece <span class="boton rojo">Eliminar</span>: borra esas rutas y el coordinador tiene que volver a generarlas. Úsalo solo si el coordinador te lo pide.</div>
   </div>
@@ -634,10 +633,10 @@
   <p class="lead">Los problemas más comunes y cómo salir de ellos. Toca cada pregunta.</p>
 
   <details><summary>Me equivoqué y asigné una ruta al entregador equivocado</summary>
-    <p>El coordinador puede volver a asignarla desde <span class="pestana">Asignar</span> (o caja con “Reasignar a:”). Si ya estaba alistada, no hay que alistar de nuevo: solo cambia de entregador.</p></details>
+    <p>El coordinador puede volver a asignarla desde <span class="pestana">Asignar</span> (o caja con “Reasignar a:”). La ruta queda pendiente de alistar para el nuevo entregador.</p></details>
 
   <details><summary>En el alistador un producto aparece “pendiente” aunque ya lo alisté</summary>
-    <p>Ocurre cuando el mismo producto está en varias planillas del mismo entregador. Márcalo de nuevo una vez: el sistema lo aplica a todas las planillas. Si sigue igual, avisa al coordinador para que lo revise en Supervisión.</p></details>
+    <p>Toca <b>Registrar</b> (o <b>Editar</b>) en ese producto y anota su estado. Si sigue igual después de guardar, avisa al coordinador para que lo revise en Supervisión.</p></details>
 
   <details><summary>Un faltante ya no se puede entregar</summary>
     <p>Dos formas: el coordinador lo subsana en Supervisión con <b>“No Hay Producto”</b>, o desde <span class="pestana">Novedades</span> (alistador) se selecciona y se pulsa “Eliminar seleccionados” con el motivo. En ambos casos queda como “No se entregó” y se puede revertir.</p></details>
