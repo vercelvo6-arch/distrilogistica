@@ -67,5 +67,6 @@ eliminados) y que los cambios a la base se hacen con scripts SQL numerados que c
 
 ## 5. Qué leer primero
 1. `CLAUDE.md` — reglas del negocio, trampas técnicas, pendientes conocidos.
-2. `docs/inventario-gerencia.md` — diseño original del módulo de inventario.
-3. `scripts/` — historial de cambios a la base de datos (cada archivo explica qué hizo y por qué).
+2. `docs/manual/index.html` — manual de usuario, pantalla por pantalla (abrir en el navegador; se puede imprimir como PDF).
+3. `docs/inventario-gerencia.md` — diseño original del módulo de inventario.
+4. `scripts/` — historial de cambios a la base de datos (cada archivo explica qué hizo y por qué).

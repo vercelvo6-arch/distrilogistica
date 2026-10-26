@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual de Distrilogística</title>
+<style>
+  :root {
+    --fondo: #f6f7f9; --tarjeta: #ffffff; --texto: #1d2733; --suave: #5b6776; --borde: #dfe3e8;
+    --azul: #1d4ed8; --azul-bg: #eaf0ff; --verde: #15803d; --verde-bg: #e8f6ec;
+    --ambar: #b45309; --ambar-bg: #fff4dc; --rojo: #b91c1c; --rojo-bg: #fdecec; --morado: #6d28d9; --morado-bg: #f1ecff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #0f141a; --tarjeta: #17202a; --texto: #e8edf2; --suave: #9aa7b5; --borde: #2a3643;
+      --azul: #8ab0ff; --azul-bg: #16253f; --verde: #6ee7a0; --verde-bg: #12301f;
+      --ambar: #fbbf6a; --ambar-bg: #3a2a10; --rojo: #ff9a9a; --rojo-bg: #3b1818; --morado: #c4b0ff; --morado-bg: #2a2147;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+  body { margin: 0; background: var(--fondo); color: var(--texto); font: 18px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header.portada { background: linear-gradient(135deg, #1e3a8a, #1d4ed8 60%, #0e7490); color: #fff; padding: 44px 20px 36px; }
+  header.portada .interior { max-width: 960px; margin: 0 auto; }
+  header.portada h1 { margin: 0 0 8px; font-size: 2.1rem; line-height: 1.2; }
+  header.portada p { margin: 0; opacity: .92; max-width: 640px; }
+  nav.menu { position: sticky; top: 0; z-index: 10; background: var(--tarjeta); border-bottom: 1px solid var(--borde); }
+  nav.menu .interior { max-width: 960px; margin: 0 auto; display: flex; gap: 6px; overflow-x: auto; padding: 10px 16px; }
+  nav.menu a { white-space: nowrap; text-decoration: none; color: var(--texto); font-size: .86rem; font-weight: 600;
+    padding: 7px 12px; border-radius: 999px; border: 1px solid var(--borde); background: var(--fondo); }
+  nav.menu a:hover { border-color: var(--azul); color: var(--azul); }
+  main { max-width: 960px; margin: 0 auto; padding: 8px 16px 80px; }
+  section { margin-top: 44px; }
+  h2 { font-size: 1.7rem; margin: 0 0 6px; padding-top: 6px; }
+  h2 .rol { display: inline-block; font-size: .7rem; vertical-align: middle; margin-left: 8px; padding: 3px 10px; border-radius: 999px;
+    background: var(--azul-bg); color: var(--azul); font-weight: 700; letter-spacing: .02em; }
+  h3 { font-size: 1.3rem; margin: 30px 0 4px; }
+  h4 { font-size: 1.02rem; margin: 18px 0 4px; color: var(--suave); text-transform: uppercase; letter-spacing: .05em; }
+  p { margin: 8px 0; }
+  .lead { color: var(--suave); font-size: 1.05rem; margin-top: 0; }
+  .pantalla { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px; padding: 6px 22px 20px; margin-top: 16px; }
+  .para { background: var(--azul-bg); border-radius: 10px; padding: 10px 14px; margin: 14px 0; }
+  .para b { color: var(--azul); }
+  ol.pasos { counter-reset: paso; list-style: none; padding: 0; margin: 12px 0; }
+  ol.pasos > li { counter-increment: paso; position: relative; padding: 4px 0 10px 46px; }
+  ol.pasos > li::before { content: counter(paso); position: absolute; left: 0; top: 2px; width: 32px; height: 32px; border-radius: 50%;
+    background: var(--azul); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: .95rem; }
+  ul { padding-left: 22px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  .boton, .pestana, .estado { display: inline-block; padding: 1px 10px; border-radius: 8px; font-size: .88em; font-weight: 700; white-space: nowrap; }
+  .boton { background: var(--azul); color: #fff; }
+  .boton.claro { background: var(--tarjeta); color: var(--texto); border: 1px solid var(--borde); }
+  .boton.rojo { background: var(--rojo); color: #fff; }
+  .boton.verde { background: var(--verde); color: #fff; }
+  .pestana { background: var(--morado-bg); color: var(--morado); }
+  .estado.ok { background: var(--verde-bg); color: var(--verde); }
+  .estado.alerta { background: var(--ambar-bg); color: var(--ambar); }
+  .estado.mal { background: var(--rojo-bg); color: var(--rojo); }
+  .estado.gris { background: var(--borde); color: var(--suave); }
+  .aviso { border-left: 5px solid; border-radius: 8px; padding: 10px 14px; margin: 14px 0; }
+  .aviso b:first-child { display: block; margin-bottom: 2px; }
+  .aviso.cuidado { background: var(--rojo-bg); border-color: var(--rojo); }
+  .aviso.consejo { background: var(--verde-bg); border-color: var(--verde); }
+  .aviso.ojo { background: var(--ambar-bg); border-color: var(--ambar); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: .95rem; }
+  th, td { text-align: left; border: 1px solid var(--borde); padding: 8px 10px; vertical-align: top; }
+  th { background: var(--fondo); }
+  .flujo { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 18px 0; }
+  .flujo > div { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 12px 14px; }
+  .flujo .n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--azul); color: #fff; font-weight: 700; font-size: .85rem; margin-right: 6px; }
+  .flujo .quien { color: var(--suave); font-size: .85rem; display: block; margin-top: 2px; }
+  details { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 4px 16px; margin: 10px 0; }
+  summary { cursor: pointer; font-weight: 700; padding: 10px 0; }
+  details[open] summary { border-bottom: 1px solid var(--borde); margin-bottom: 8px; }
+  .cuenta { background: var(--fondo); border: 1px dashed var(--borde); border-radius: 10px; padding: 10px 14px; margin: 12px 0; font-size: 1rem; }
+  .selector { background: var(--tarjeta); border-bottom: 1px solid var(--borde); }
+  .selector .interior { max-width: 960px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .selector .titulo { font-weight: 700; margin-right: 6px; }
+  .selector button { font: inherit; font-size: .92rem; font-weight: 700; cursor: pointer; padding: 8px 16px; border-radius: 999px;
+    border: 2px solid var(--borde); background: var(--fondo); color: var(--texto); }
+  .selector button:hover { border-color: var(--azul); }
+  .selector button[aria-pressed="true"] { background: var(--azul); border-color: var(--azul); color: #fff; }
+  .selector .ayuda { flex-basis: 100%; color: var(--suave); font-size: .85rem; margin: 2px 0 0; }
+  .oculto { display: none !important; }
+  h2 .rol { cursor: default; }
+  footer { text-align: center; color: var(--suave); font-size: .85rem; padding: 30px 16px 50px; }
+  @media print {
+    nav.menu, .selector { display: none; }
+    .oculto { display: block !important; }
+    body { font-size: 14px; background: #fff; color: #000; }
+    header.portada { background: #fff; color: #000; padding: 0 0 12px; }
+    section { page-break-before: always; margin-top: 0; }
+    section#inicio { page-break-before: auto; }
+    .pantalla, details, .flujo > div { break-inside: avoid; }
+    details { display: block; } details > * { display: block; }
+  }
+</style>
+</head>
+<body>
+
+<header class="portada">
+  <div class="interior">
+    <h1>Manual de Distrilogística</h1>
+    <p>Cómo se usa el sistema, pantalla por pantalla, desde que se crean las planillas hasta que se cuadra la caja. Escrito para que cualquier persona, aunque nunca haya usado un sistema, pueda seguirlo paso a paso.</p>
+  </div>
+</header>
+
+<nav class="menu"><div class="interior">
+  <a href="#inicio">Empezar</a>
+  <a href="#ingreso">Ingresar</a>
+  <a href="#coordinador">Coordinador</a>
+  <a href="#alistador">Alistador</a>
+  <a href="#entregador">Entregador</a>
+  <a href="#caja">Caja</a>
+  <a href="#administrativo">Cuadre administrativo</a>
+  <a href="#fiados">Fiados</a>
+  <a href="#administrador">Administrador</a>
+  <a href="#casos">¿Qué hago si…?</a>
+  <a href="#reglas">Reglas de oro</a>
+  <a href="#glosario">Palabras</a>
+</div></nav>
+
+<div class="selector"><div class="interior">
+  <span class="titulo">¿Cuál es tu trabajo?</span>
+  <button type="button" data-rol="todos" aria-pressed="true">Ver todo</button>
+  <button type="button" data-rol="coordinador" aria-pressed="false">Coordinador</button>
+  <button type="button" data-rol="alistador" aria-pressed="false">Alistador</button>
+  <button type="button" data-rol="entregador" aria-pressed="false">Entregador</button>
+  <button type="button" data-rol="caja" aria-pressed="false">Caja</button>
+  <button type="button" data-rol="administrador" aria-pressed="false">Administrador</button>
+  <p class="ayuda">Toca tu cargo y el manual te muestra solo lo que necesitas. “Ver todo” lo muestra completo.</p>
+</div></div>
+
+<main>
+
+<!-- ============================================================ INICIO -->
+<section id="inicio" data-roles="*">
+  <h2>Empezar aquí</h2>
+  <p class="lead">Si es la primera vez, lee solo esta parte. Después ve directo a la sección de tu trabajo.</p>
+
+  <h3>Cómo leer este manual</h3>
+  <ul>
+    <li>Los nombres de <span class="boton">botones</span> aparecen en azul, tal cual salen en la pantalla.</li>
+    <li>Los nombres de <span class="pestana">pestañas</span> aparecen en morado.</li>
+    <li>Los recuadros <b>verdes</b> son consejos, los <b>amarillos</b> son para fijarse bien y los <b>rojos</b> son para tener cuidado: lo que se hace ahí no se puede deshacer o cuesta dinero.</li>
+    <li>Cada pantalla se explica igual: <b>para qué sirve</b>, <b>qué veo</b>, <b>qué hago paso a paso</b> y <b>qué cuidado tener</b>.</li>
+  </ul>
+
+  <h3>Qué hace el sistema, en una frase</h3>
+  <p>Recibe las ventas del día, las convierte en <b>planillas</b> (una hoja de reparto por ruta), guía a la bodega para <b>alistar</b> la mercancía, controla lo que el entregador <b>entrega, cobra y deja fiado</b>, y al final ayuda a <b>caja</b> a verificar que el dinero que trae cada entregador es el que debe traer.</p>
+
+  <h3>El recorrido completo de un día</h3>
+  <div class="flujo">
+    <div><span class="n">1</span><b>Generar</b><span class="quien">Coordinador sube los archivos de ventas y el sistema crea las planillas.</span></div>
+    <div><span class="n">2</span><b>Asignar</b><span class="quien">Coordinador decide qué entregador lleva cada ruta.</span></div>
+    <div><span class="n">3</span><b>Alistar</b><span class="quien">Alistador prepara la mercancía en bodega y marca lo que falta.</span></div>
+    <div><span class="n">4</span><b>Supervisar</b><span class="quien">Coordinador revisa notas y faltantes y los resuelve.</span></div>
+    <div><span class="n">5</span><b>Repartir</b><span class="quien">Entregador entrega, deja fiados, recibe devoluciones y cobra.</span></div>
+    <div><span class="n">6</span><b>Cuadrar caja</b><span class="quien">Caja cuenta el dinero del entregador y lo compara con lo esperado.</span></div>
+    <div><span class="n">7</span><b>Revisar</b><span class="quien">Administrador mira fiados, comisiones, rendimiento e inventario.</span></div>
+  </div>
+
+  <h3>Quién ve qué</h3>
+  <table>
+    <tr><th>Si trabajas como…</th><th>Tu pantalla se llama</th><th>Lo que haces ahí</th></tr>
+    <tr><td><b>Coordinador</b></td><td>Coordinador Logístico</td><td>Genera y asigna planillas, supervisa el alistamiento, resuelve faltantes</td></tr>
+    <tr><td><b>Alistador</b></td><td>Alistador de Bodega</td><td>Prepara la mercancía de cada entregador y marca lo que falta</td></tr>
+    <tr><td><b>Entregador</b></td><td>Mis Rutas de Entrega</td><td>Marca entregas, fiados, devoluciones y cobros; registra transferencias</td></tr>
+    <tr><td><b>Caja</b></td><td>Caja – Cuadre de Cuentas</td><td>Recibe el dinero, cuadra, mira el historial y las comisiones</td></tr>
+    <tr><td><b>Administrador</b></td><td>Administrador Maestro</td><td>Ve todo: dashboard, usuarios, fiados, comisiones, rendimiento, inventario</td></tr>
+  </table>
+</section>
+
+<!-- ============================================================ INGRESO -->
+<section id="ingreso" data-roles="*">
+  <h2>1. Ingresar al sistema</h2>
+  <p class="lead">Todo el mundo entra por la misma pantalla. El sistema te lleva solo a la que te corresponde.</p>
+  <div class="pantalla">
+    <h3>Pantalla “Distrisanty Logística – Sistema de gestión de entregas”</h3>
+    <div class="para"><b>Para qué sirve:</b> identificarte con tu correo y contraseña.</div>
+    <h4>Paso a paso</h4>
+    <ol class="pasos">
+      <li>Escribe tu <b>Correo Electrónico</b> en el primer cuadro.</li>
+      <li>Escribe tu <b>Contraseña</b> en el segundo.</li>
+      <li>Pulsa el botón de ingresar. El sistema abre la pantalla de tu cargo.</li>
+      <li>Cuando termines, pulsa <span class="boton claro">Salir</span> (arriba a la derecha) para cerrar tu sesión, sobre todo si el computador lo usan varias personas.</li>
+    </ol>
+    <div class="aviso ojo"><b>Si no tienes usuario</b>Pide al administrador que te cree uno en <span class="pestana">Usuarios</span>. Él escoge tu cargo (Administrador, Coordinador Logístico, Alistador, Entregador o Caja). Tu cargo decide qué pantallas ves.</div>
+    <div class="aviso consejo"><b>Consejo</b>Si no puedes entrar, revisa que el correo esté bien escrito y que no estés usando mayúsculas por error en la contraseña. Si sigue sin funcionar, el administrador puede verificar que tu usuario esté <span class="estado ok">Activo</span>.</div>
+  </div>
+</section>
+
+<!-- ============================================================ COORDINADOR -->
+<section id="coordinador" data-roles="coordinador">
+  <h2>2. Coordinador <span class="rol">COORDINADOR LOGÍSTICO</span></h2>
+  <p class="lead">Es quien arranca el día: crea las planillas, las asigna y vigila que el alistamiento salga bien. Tiene cinco pestañas arriba: <span class="pestana">Generar Hoy</span> · <span class="pestana">Asignar</span> · <span class="pestana">Supervisión</span> · <span class="pestana">Historial</span> · <span class="pestana">Eliminados</span>.</p>
+
+  <div class="pantalla">
+    <h3>2.1 Generar Hoy — crear las planillas</h3>
+    <div class="para"><b>Para qué sirve:</b> convertir las ventas del día anterior en planillas de reparto, una por cada ruta.</div>
+    <h4>Qué veo</h4>
+    <p>Un recuadro llamado <b>“Carga de Archivos Diarios”</b> con dos lugares para subir archivos y un botón grande al final.</p>
+    <h4>Paso a paso</h4>
+    <ol class="pasos">
+      <li>En <b>“NURTURING – Ventas del Día Anterior (CSV)”</b> elige el archivo de ventas que sale del sistema de facturación (POS).</li>
+      <li>En <b>“INVENTARIO GENERAL – Catálogo de Productos (CSV)”</b> elige el archivo del catálogo de productos.</li>
+      <li>Cuando los dos archivos están elegidos, aparece una marca ✓ con el nombre de cada uno y el botón se activa.</li>
+      <li>Pulsa <span class="boton">Generar Planillas por Ruta</span>. Verás una barra azul que avanza y un texto con lo que está haciendo.</li>
+      <li>Al terminar, las planillas aparecen en la pestaña <span class="pestana">Asignar</span>.</li>
+    </ol>
+    <div class="aviso cuidado"><b>Cuidado</b>Genera <u>una sola vez</u> cada archivo. Si ya generaste el día, revisa primero la pestaña Asignar antes de subir otra vez, para no crear planillas repetidas.</div>
+    <div class="aviso ojo"><b>Si sale un mensaje rojo</b>Casi siempre es el archivo equivocado o abierto en otro programa. Cierra el archivo, verifica que sea el correcto y vuelve a intentar.</div>
+  </div>
+
+  <div class="pantalla">
+    <h3>2.2 Asignar — decidir quién lleva cada ruta</h3>
+    <div class="para"><b>Para qué sirve:</b> poner un entregador a cada planilla. <b>El alistador no puede empezar una ruta que no tenga entregador.</b></div>
+    <h4>Qué veo</h4>
+    <p>El título <b>“Asignación de Entregadores (N rutas)”</b> y una tarjeta por ruta con el número de ruta, los pedidos, el valor total y, si algún cliente trae una indicación especial, una etiqueta amarilla <span class="estado alerta">N con nota</span> y las notas debajo.</p>
+    <h4>Paso a paso</h4>
+    <ol class="pasos">
+      <li>Lee las notas de la ruta (si tiene). Ahí vienen cosas como “entregar solo en la tarde”.</li>
+      <li>Pulsa <span class="boton">Asignar Entregador</span>.</li>
+      <li>En la ventana que se abre escoge el <b>entregador</b> y la <b>fecha de alistamiento</b> (la propone el día de hoy). Si la ruta la lleva un asesor, marca esa opción y escribe su nombre.</li>
+      <li>Confirma. La ruta sale de esta lista y pasa al alistador.</li>
+    </ol>
+    <h4>Los otros dos botones de cada ruta</h4>
+    <ul>
+      <li><span class="boton claro">Posponer</span>: deja la ruta para otro día (queda en estado “Pospuesto”).</li>
+      <li><span class="boton claro">Eliminar</span>: borra la planilla. <b>No se puede deshacer.</b></li>
+    </ul>
+    <div class="aviso consejo"><b>Práctica común</b>A veces se asigna primero a “Extra” u “Oficina” mientras se decide quién la lleva. Más adelante se puede volver a asignar a la persona definitiva. Si la planilla ya estaba alistada, <b>conserva su alistamiento</b>: no hay que repetirlo.</div>
+  </div>
+
+  <div class="pantalla">
+    <h3>2.3 Supervisión — revisar lo que alistó la bodega</h3>
+    <div class="para"><b>Para qué sirve:</b> ver cómo quedó cada planilla alistada, leer las notas, resolver lo que faltó y devolver al alistador lo que esté mal.</div>
+    <h4>Qué veo</h4>
+    <p>Arriba, el filtro <b>“Filtrar por Entregador”</b>. Luego una tarjeta grande por entregador y fecha, con el resumen: cuántas rutas, pedidos, valor y el tiempo que tardó el alistamiento. Debajo, unas etiquetas de colores:</p>
+    <p><span class="estado ok">✅ completos</span> <span class="estado alerta">⚠️ incompletos</span> <span class="estado alerta">🔄 reemplazos</span> <span class="estado mal">❌ no alistados</span> <span class="estado gris">⏳ pendientes</span></p>
+    <h4>Paso a paso</h4>
+    <ol class="pasos">
+      <li>Pulsa la flecha ⌄ de la derecha para abrir la tarjeta del entregador.</li>
+      <li>Lee primero el recuadro amarillo <b>“📝 Notas de Alistamiento”</b>: son las indicaciones de los clientes.</li>
+      <li>Luego mira el recuadro rojo <b>“⚠️ Faltantes pendientes”</b>: lista cada producto que faltó con <b>cuántas unidades faltan</b> (“faltan 6 de 10”), cuántas se alistaron y la observación del alistador.</li>
+      <li>Abajo está la tabla <b>“Lista de Productos Consolidados”</b>, con el estado de cada producto y la columna <b>Acción</b>.</li>
+      <li>Si una planilla no está bien alistada y hay que rehacerla, pulsa <span class="boton rojo">Devolver</span>: vuelve al alistador en estado “Alistando”.</li>
+    </ol>
+    <h4>Los botones de la columna Acción</h4>
+    <table>
+      <tr><th>Botón</th><th>Cuándo se usa</th></tr>
+      <tr><td><span class="boton">Subsanar</span></td><td>Un producto faltaba y ya se resolvió, o se decidió que no se va a entregar. Se abre la ventana <b>“Subsanar Faltante”</b>.</td></tr>
+      <tr><td><span class="boton claro">Revertir</span></td><td>Te equivocaste al subsanar. Devuelve el faltante a pendiente.</td></tr>
+      <tr><td><span class="boton claro">Reportar error</span></td><td>El alistador marcó un producto como completo, pero en realidad faltaba. Escribes la cantidad real y una nota obligatoria.</td></tr>
+    </table>
+    <h4>La ventana “Subsanar Faltante”: tres opciones</h4>
+    <ul>
+      <li><b>Resuelto Completo</b>: se consiguieron todas las unidades. El faltante desaparece de la lista.</li>
+      <li><b>Resuelto Parcial</b>: se consiguieron algunas. Escribes cuántas. El faltante <u>se queda</u> con lo que aún falta (si faltaban 10 y llegaron 4, queda “faltan 6”).</li>
+      <li><b>No Hay Producto</b>: no se pudo conseguir. Queda como “No se entregó”.</li>
+    </ul>
+    <p>Escribe siempre una observación corta: cómo se resolvió o por qué no se pudo.</p>
+  </div>
+
+  <div class="pantalla">
+    <h3>2.4 Historial</h3>
+    <div class="para"><b>Para qué sirve:</b> buscar planillas de días anteriores.</div>
+    <ol class="pasos">
+      <li>Pulsa un botón rápido: <span class="boton claro">Hoy</span> o <span class="boton claro">Últimos 7 días</span>.</li>
+      <li>O arma tu propio filtro con <b>Fecha</b>, <b>Entregador</b> y <b>Estado</b> (Pendiente, Alistando, Alistado, En Ruta, Completado, Pospuesto).</li>
+      <li>Para empezar de nuevo pulsa <span class="boton claro">Limpiar</span>.</li>
+    </ol>
+    <p>Si no escoges ningún filtro, la pantalla te dice “Seleccione un filtro para ver el historial”: es normal.</p>
+  </div>
+
+  <div class="pantalla">
+    <h3>2.5 Eliminados</h3>
+    <div class="para"><b>Para qué sirve:</b> recuperar algo que se eliminó por error, o sacarlo definitivamente.</div>
+    <p>Muestra planillas, pedidos, novedades y fiados eliminados, con quién lo eliminó y cuándo.</p>
+    <ul>
+      <li><span class="boton claro">Restaurar</span>: lo devuelve a su lugar.</li>
+      <li><span class="boton rojo">Eliminar definitivamente</span>: lo borra para siempre, ya no se podrá restaurar. Un fiado que tiene abonos no se deja borrar.</li>
+    </ul>
+    <div class="aviso cuidado"><b>Cuidado</b>Antes de pulsar “Eliminar definitivamente”, asegúrate de que de verdad no lo vas a necesitar.</div>
+  </div>
+</section>
+
+<!-- ============================================================ ALISTADOR -->
+<section id="alistador" data-roles="alistador">
+  <h2>3. Alistador <span class="rol">ALISTADOR DE BODEGA</span></h2>
+  <p class="lead">Prepara en bodega la mercancía de cada entregador. Pantalla: <b>“Alistador de Bodega – Preparación optimizada por entregador”</b>, con tres pestañas: <span class="pestana">Alistamiento</span> · <span class="pestana">Programadas</span> · <span class="pestana">Novedades</span>.</p>
+
+  <div class="pantalla">
+    <h3>3.1 Alistamiento</h3>
+    <div class="para"><b>Para qué sirve:</b> ver la lista de productos que hay que sacar para cada entregador y anotar qué tal salió cada uno.</div>
+    <h4>Qué veo</h4>
+    <p>Una tarjeta por entregador (agrupa todas sus rutas). Dice cuántas rutas lleva y su estado: <span class="estado gris">Por alistar</span>, <span class="estado alerta">En proceso</span> o <span class="estado ok">Listo para completar</span>. Si no hay nada, dice “No hay rutas para alistar. Espere a que el coordinador genere las planillas y asigne los entregadores”.</p>
+    <h4>Paso a paso</h4>
+    <ol class="pasos">
+      <li>Pulsa <span class="boton">Iniciar</span> en la tarjeta del entregador que vas a preparar. Arranca un <b>cronómetro</b> ⏱ que mide el tiempo del alistamiento.</li>
+      <li>Si ya había otro cronómetro corriendo, el sistema pregunta qué hacer: <span class="boton">Pausarlo e iniciar</span> (lo recomendado si trabajas solo) o <span class="boton claro">Dejarlo corriendo</span> (si otro compañero lo está atendiendo).</li>
+      <li>Abre la tarjeta (flecha ⌄). Arriba verás en amarillo <b>“📝 Notas de Alistamiento”</b>: léelas antes de empezar.</li>
+      <li>Verás la <b>“Lista de Productos Consolidados”</b>: código, descripción, categoría, precio y la cantidad total <b>Solicitado</b> sumando todos los clientes.</li>
+      <li>Toca cada producto y registra su estado (explicado abajo).</li>
+      <li>Si necesitas parar un momento, pulsa <b>Pausar</b> y escoge el motivo (“Esperando proveedor”, “Producto en camino” u “Otro”). Para seguir, pulsa <b>Reanudar</b>.</li>
+      <li>Cuando termines, pulsa <span class="boton verde">Completar</span>. El cronómetro se detiene y la planilla pasa al coordinador.</li>
+    </ol>
+    <h4>La ventana “Estado de Alistamiento” (cuando tocas un producto)</h4>
+    <table>
+      <tr><th>Estado</th><th>Cuándo lo uso</th><th>Qué me pide</th></tr>
+      <tr><td><span class="estado ok">Completo</span></td><td>Tengo todas las unidades.</td><td>Nada más.</td></tr>
+      <tr><td><span class="estado alerta">Incompleto</span></td><td>Tengo solo una parte.</td><td>Cuántas unidades hay disponibles y una observación (obligatoria): qué falta, por qué, cuándo llega.</td></tr>
+      <tr><td><span class="estado mal">No Alistado</span></td><td>No tengo nada del producto.</td><td>Observación obligatoria.</td></tr>
+      <tr><td><span class="estado alerta">Reemplazo</span></td><td>El original no había y entregué otro en su lugar.</td><td>El nombre del producto entregado en su lugar.</td></tr>
+    </table>
+    <div class="aviso consejo"><b>Lo importante</b>Marcas el producto <u>una sola vez</u> aunque el mismo producto esté en varias planillas del mismo entregador: el sistema lo aplica a todas. Un producto sigue “pendiente” mientras alguna de sus partes no esté marcada.</div>
+    <div class="aviso ojo"><b>Antes de completar</b>Revisa que no queden productos en <span class="estado gris">⏳ Pendiente</span>. Las etiquetas de la tarjeta te dicen cuántos completos, incompletos y pendientes hay.</div>
+    <div class="aviso cuidado"><b>Botón Eliminar</b>En rutas que aún no has empezado aparece <span class="boton rojo">Eliminar</span>: borra esas rutas y el coordinador tiene que volver a generarlas. Úsalo solo si el coordinador te lo pide.</div>
+  </div>
+
+  <div class="pantalla">
+    <h3>3.2 Programadas</h3>
+    <p>Aquí aparecen las rutas con fecha de alistamiento <b>futura</b>, marcadas como <span class="estado ok">Programada</span>. No se pueden alistar todavía: solo te sirven para ir sabiendo qué viene. Si no hay, dice “No hay rutas programadas”.</p>
+  </div>
+
+  <div class="pantalla">
+    <h3>3.3 Novedades — la lista de faltantes</h3>
+    <div class="para"><b>Para qué sirve:</b> ver todos los faltantes registrados, buscar los que siguen pendientes y limpiar los que ya no tienen solución.</div>
+    <h4>Qué veo</h4>
+    <p>Cuatro tarjetas con totales (registros, pendientes, resueltos / no entregados y unidades faltantes), un panel de <b>Filtros</b> y una tabla.</p>
+    <h4>Paso a paso para revisar</h4>
+    <ol class="pasos">
+      <li>Pulsa <span class="boton">Revisar todos los pendientes</span>: muestra todos los faltantes que siguen sin resolver, sin importar qué tan viejos sean.</li>
+      <li>Si quieres acotar, escoge un <b>Entregador</b>, un rango de fechas o busca por <b>código</b>.</li>
+      <li>Puedes bajar la lista con <span class="boton claro">Exportar CSV</span>.</li>
+    </ol>
+    <h4>Paso a paso para eliminar en bloque</h4>
+    <ol class="pasos">
+      <li>Filtra lo que quieres limpiar (por ejemplo un entregador y un rango de fechas).</li>
+      <li>Marca las casillas de las filas, o pulsa <span class="boton claro">Seleccionar los N que se ven</span>.</li>
+      <li>Pulsa <span class="boton rojo">Eliminar seleccionados</span>.</li>
+      <li>Escribe el <b>motivo</b> (viene “No se pudo entregar”) y confirma.</li>
+    </ol>
+    <div class="aviso ojo"><b>Qué significa “eliminar” aquí</b>No borra el registro: lo pasa a “<span class="estado gris">🚫 No se entregó</span>”, guarda el motivo, quién lo hizo y cuándo, y deja de aparecer como pendiente. Si te equivocaste, el coordinador puede devolverlo con <span class="boton claro">Revertir</span> en Supervisión.</div>
+  </div>
+</section>
+
+<!-- ============================================================ ENTREGADOR -->
+<section id="entregador" data-roles="entregador">
+  <h2>4. Entregador <span class="rol">ENTREGADOR</span></h2>
+  <p class="lead">Pantalla <b>“Mis Rutas de Entrega”</b>. Aquí marcas, cliente por cliente, qué pasó con cada pedido y registras los cobros. Lo que anotes aquí es lo que caja encontrará ya cargado cuando cuadre contigo.</p>
+
+  <div class="pantalla">
+    <h3>4.1 La pantalla principal</h3>
+    <h4>Qué veo</h4>
+    <ul>
+      <li>Arriba, el botón <span class="boton claro">Consignación Anticipada</span> (en el celular dice “Consignar”).</li>
+      <li>Un filtro de fechas <b>Desde / Hasta</b>.</li>
+      <li>Un resumen con: <b>Total Cargue</b> (lo que llevas), <b>Entregado</b>, <b>Fiado (CxC)</b>, <b>Devoluciones</b>, <b>Repasos</b>, <b>Agotados</b>, <b>Errores Fact.</b>, <b>Descuentos</b> y <b>Cobros CxC</b>.</li>
+      <li>Pestañas <span class="pestana">Mis Rutas</span> · <span class="pestana">Todos los Clientes</span> · <span class="pestana">Por Rutas</span> para ver tu trabajo ordenado como te convenga.</li>
+      <li>Un buscador <b>“Buscar cualquier cliente con deuda pendiente”</b> para cobrarle a alguien que no está en tu lista.</li>
+    </ul>
+  </div>
+
+  <div class="pantalla">
+    <h3>4.2 Marcar qué pasó con cada pedido</h3>
+    <div class="para"><b>Para qué sirve:</b> dejar registrado, por cada cliente, cómo terminó su pedido.</div>
+    <p>Cada cliente tiene estos botones:</p>
+    <table>
+      <tr><th>Botón</th><th>Cuándo</th><th>Qué pasa</th></tr>
+      <tr><td><span class="boton verde">Entregado</span></td><td>El cliente recibió y pagó todo.</td><td>El pedido queda en verde, listo para caja.</td></tr>
+      <tr><td><span class="boton claro">Fiado</span></td><td>Recibió pero no pagó (todo o parte).</td><td>Escribes cuánto pagó; el sistema muestra “Saldo que queda fiado” y crea la deuda.</td></tr>
+      <tr><td><span class="boton claro">Devolución</span></td><td>El cliente devolvió mercancía.</td><td>Escribes el valor devuelto. Se descuenta de lo que debes entregar.</td></tr>
+      <tr><td><span class="boton claro">Agotado</span></td><td>Faltó un producto y no se entregó.</td><td>Se descuenta ese valor de la factura.</td></tr>
+      <tr><td><span class="boton claro">Descuento</span></td><td>Se hizo un descuento autorizado.</td><td>Escribes el valor del descuento.</td></tr>
+      <tr><td><span class="boton claro">Transferencia</span></td><td>El cliente pagó por transferencia (Nequi, Bancolombia…).</td><td>Se abre “Registrar Transferencia”: <b>Banco, Número de referencia y Monto</b>.</td></tr>
+    </table>
+    <div class="aviso consejo"><b>Atajo</b>Si todos los pedidos de una ruta se entregaron bien, usa el botón de la ruta para marcarlos de una vez como Entregados. El sistema te pregunta: “¿Marcar los N pedidos pendientes de la ruta como Entregado?”.</div>
+    <div class="aviso ojo"><b>Si una cantidad o un valor está mal</b>Puedes corregir la cantidad de un producto (debe estar entre 0 y la cantidad original) o el valor de la factura. Queda registrado como ajuste manual.</div>
+    <div class="aviso cuidado"><b>Cuidado con las transferencias</b>El número de referencia es único: no se puede usar dos veces. Si el sistema dice que ya existe, revisa que estés copiando el número correcto del comprobante.</div>
+  </div>
+
+  <div class="pantalla">
+    <h3>4.3 Cobrar fiados (“Cobros CxC”)</h3>
+    <div class="para"><b>Para qué sirve:</b> cobrar deudas viejas de clientes que el administrador te asignó.</div>
+    <p>En la sección <b>“Cobrar hoy”</b> ves los clientes que debes visitar, su <b>saldo pendiente</b> y el <b>total a cobrar hoy</b>.</p>
+    <ol class="pasos">
+      <li>Elige el cliente al que le cobraste.</li>
+      <li>Escribe cuánto te pagó en <b>Efectivo</b> y cuánto en <b>Nequi / Transferencia</b> (con su número de referencia). El sistema muestra el <b>Total cobrado</b>.</li>
+      <li>Escoge cómo terminó: <b>Cobrado total</b>, <b>Abono parcial</b> o <b>No pagó</b>.</li>
+    </ol>
+    <p>Si marcas <b>No pagó</b>, el cobro “volverá al admin pendiente de gestión” y queda otra vez en la lista del administrador.</p>
+    <div class="aviso cuidado"><b>No puedes cobrar más de lo que el cliente debe.</b> El sistema te avisa si el abono supera el saldo.</div>
+  </div>
+
+  <div class="pantalla">
+    <h3>4.4 Consignación Anticipada</h3>
+    <div class="para"><b>Para qué sirve:</b> registrar un depósito que ya hiciste en el banco antes de pasar por caja.</div>
+    <ol class="pasos">
+      <li>Pulsa <span class="boton claro">Consignación Anticipada</span>.</li>
+      <li>Llena <b>Banco / Medio</b>, <b>Número de serial / referencia</b>, <b>Monto</b> y <b>Fecha</b>.</li>
+      <li>Guarda. Aparece en la lista “Pendientes de cuadre”.</li>
+    </ol>
+    <p>Caja la encontrará ya cargada cuando abra tu cuadre; solo la verifica. Si te equivocas, puedes eliminarla <b>mientras ningún cuadre la haya usado</b>.</p>
+  </div>
+</section>
+
+<!-- ============================================================ CAJA -->
+<section id="caja" data-roles="caja">
+  <h2>5. Caja <span class="rol">CAJA</span></h2>
+  <p class="lead">Pantalla <b>“Caja – Cuadre de Cuentas”</b>. Aquí se cuenta el dinero que trae cada entregador y se compara con lo que debía traer. Menú de arriba: <span class="pestana">Cuadre de Caja</span> · <span class="pestana">Historial</span> · <span class="pestana">Comisiones</span> · <span class="pestana">Cuadre Administrativo</span>.</p>
+
+  <div class="cuenta">
+    <b>La cuenta que hay que entender (una sola vez):</b><br>
+    <b>Esperado</b> = lo que se cargó − lo que no se cobró (fiados, devoluciones, repasos, agotados, descuentos, varios, errores) + los cobros de deudas viejas.<br>
+    <b>Recibido</b> = billetes + monedas + consignaciones + cobros que llegaron por Nequi o banco.<br>
+    <b>Diferencia</b> = Recibido − Esperado. Si es 0, el entregador está al día.
+  </div>
+  <div class="aviso ojo"><b>Dos detalles que confunden</b>
+    1) Los cobros que el cliente pagó <u>en efectivo</u> ya van dentro de los billetes y monedas: <u>no se suman otra vez</u>.<br>
+    2) Si administración ya recibió un pago <u>en efectivo</u> de un cliente, ese dinero no lo tocó el entregador, así que <u>no se le exige</u> en el cuadre (aunque sí rebaja la deuda del cliente).</div>
+
+  <div class="pantalla">
+    <h3>5.1 Entregas Pendientes de Cuadrar</h3>
+    <div class="para"><b>Para qué sirve:</b> ver todas las rutas que ya salieron y todavía no se han cuadrado.</div>
+    <h4>Qué veo</h4>
+    <ul>
+      <li>Filtros: <b>Desde, Hasta, Entregador, Ruta</b>, y el botón <span class="boton claro">Limpiar</span>.</li>
+      <li>Un resumen con <b>Total Cargue, Entregado, Cobros CxC</b> y las <b>novedades por tipo</b> (puedes tocarlas para ver el detalle).</li>
+      <li>Una tarjeta por ruta: “Entregador – Ruta N”, pedidos, fecha y los totales de colores: Cargue, Entregado, Fiado, Devoluciones, Repasos, Agotados, Cobros CxC y <b>Efectivo Esperado</b>.</li>
+    </ul>
+    <h4>Botones de cada ruta</h4>
+    <table>
+      <tr><th>Botón</th><th>Para qué</th></tr>
+      <tr><td><span class="boton claro">Ver Clientes</span> / <span class="boton claro">Ocultar Clientes</span></td><td>Despliega los pedidos de la ruta y, en cada uno, sus productos con estado (Dev = devuelto, Agot = agotado). Ahí puedes corregir el <b>valor de una factura</b> con “Ajustar valor factura” o <b>revertir</b> un pedido que se marcó mal.</td></tr>
+      <tr><td><span class="boton claro">Nuevo Pedido</span></td><td>Agrega un pedido de último momento a esa ruta.</td></tr>
+      <tr><td><span class="boton">Recibir Efectivo</span></td><td>Abre el <b>cuadre individual</b> de esa ruta.</td></tr>
+      <tr><td><span class="boton claro">Cambiar Fecha</span></td><td>Mueve la ruta a otra fecha.</td></tr>
+      <tr><td><span class="boton rojo">Eliminar Ruta</span></td><td>Borra la ruta completa y todos sus pedidos.</td></tr>
+      <tr><td>“Reasignar a:”</td><td>Pasa la ruta a otro entregador.</td></tr>
+    </table>
+  </div>
+
+  <div class="pantalla">
+    <h3>5.2 Cuadre agrupado (el que más se usa)</h3>
+    <div class="para"><b>Para qué sirve:</b> cuadrar de una sola vez varias rutas del <u>mismo entregador</u>.</div>
+    <ol class="pasos">
+      <li>Marca con ✔ las rutas del entregador (o pulsa “Seleccionar todas”). Solo puedes agrupar rutas de <u>un mismo entregador</u>.</li>
+      <li>Pulsa <span class="boton">Agrupar y Cuadrar (N)</span>. Se abre <b>“Cuadre Agrupado – Manual”</b>.</li>
+      <li><b>📊 Novedades:</b> revisa fiados, repasos, devoluciones, agotados, errores de facturación y descuentos. Vienen calculados; corrígelos si hace falta.</li>
+      <li><b>💵 Varios:</b> gastos o ajustes del día (combustible, parqueadero…) con su nota.</li>
+      <li><b>💳 Cobros CxC:</b> aquí aparecen solos los cobros que el entregador registró en ruta (con la marca “✓ Registrado en ruta”) y los pagos del cuadre administrativo que le corresponden. Revisa medio, monto y referencia de cada uno. Con la X quitas el que no corresponda.</li>
+      <li><b>💰 Dinero Recibido:</b> escribe los <b>Billetes</b> y las <b>Monedas</b> que cuentas, y cada <b>consignación</b> (banco, número de referencia, monto, fecha; cliente y factura son opcionales).</li>
+      <li>Mira <b>📋 Resultado</b>: <b>Esperado</b>, <b>Total Recibido</b> y <b>Diferencia</b>.</li>
+      <li>Si todo está bien, pulsa <span class="boton">Confirmar Cuadre</span>.</li>
+    </ol>
+    <h4>Medios de pago electrónicos que puedes elegir</h4>
+    <p>Nequi, Bancolombia, Daviplata, Datáfono, Aval y Transferencia. <b>Todo pago electrónico necesita número de referencia.</b></p>
+    <div class="aviso cuidado"><b>Referencia duplicada</b>Si aparece el aviso rojo “HAY REFERENCIAS DUPLICADAS”, el botón Confirmar se bloquea. Significa que ese comprobante ya se usó antes. Revisa el número: casi siempre es un error de digitación. <u>Nunca</u> repitas un comprobante para cobrar dos veces.</div>
+    <div class="aviso cuidado"><b>Al confirmar</b>El sistema guarda el cuadre, deja registrados fiados y abonos, calcula la comisión y <b>borra el detalle de los pedidos de esas planillas</b> (el respaldo queda guardado). Por eso: revisa bien <u>antes</u> de confirmar.</div>
+  </div>
+
+  <div class="pantalla">
+    <h3>5.3 Cuadre individual (“Recibir Efectivo”)</h3>
+    <p>Es lo mismo que el agrupado pero para una sola ruta. La ventana se llama <b>“Cuadre de Caja”</b> y tiene: <b>💳 Cobros CxC</b> (los que puedes vincular o ya están incluidos), <b>Efectivo físico</b> (billetes y monedas), <b>Consignaciones</b>, <b>Descuento Aplicado</b> (con su motivo), <b>Observaciones</b> y un <b>Resumen</b> (fiados nuevos, cobros en efectivo, cobros Nequi).</p>
+  </div>
+
+  <div class="pantalla">
+    <h3>5.4 Historial de Recepciones</h3>
+    <div class="para"><b>Para qué sirve:</b> consultar cuadres anteriores y entender cómo se calculó cada uno.</div>
+    <ol class="pasos">
+      <li>Escoge el <b>Entregador</b> (Alfonso y sus variantes aparecen como uno solo). Debajo verás el total de cuadres, lo que entregó, lo esperado y la diferencia de ese filtro. Pulsa <span class="boton claro">Quitar filtro</span> para ver todos.</li>
+      <li>Cada cuadre es una tarjeta: nombre del entregador, rutas, fecha y una etiqueta <span class="estado ok">Cuadrado</span> o <span class="estado mal">Con Diferencia</span>.</li>
+      <li>Dentro de la tarjeta: el <b>Detalle de Novedades</b>, <b>Esperado / Recibido / Diferencia</b>, el recuadro <b>“Cómo se calculó”</b>, y la lista de <b>quién pagó</b> (cada cobro con su cliente, medio y monto) y las <b>consignaciones</b>.</li>
+      <li>Para sacar un archivo, elige las fechas y pulsa <span class="boton">Exportar Excel</span>.</li>
+      <li>En los cuadres agrupados aparece <span class="boton claro">Editar</span> para corregirlos.</li>
+    </ol>
+  </div>
+
+  <div class="pantalla">
+    <h3>5.5 Comisiones</h3>
+    <p>Muestra lo que ganó cada entregador por fecha: entregas, devoluciones, <b>base</b> sobre la que se calcula, el porcentaje y la <b>comisión</b>. La base es lo que el entregador <b>entregó</b> (el “Recibido” del cuadre).</p>
+  </div>
+
+  <div class="pantalla">
+    <h3>5.6 Consignación Anticipada (desde caja)</h3>
+    <p>Botón de arriba a la derecha. Sirve para registrar a nombre de un entregador una consignación que llegó antes de cuadrar: eliges al <b>entregador</b>, el banco, el número y el monto.</p>
+  </div>
+</section>
+
+<!-- ============================================================ ADMINISTRATIVO -->
+<section id="administrativo" data-roles="administrador caja">
+  <h2>6. Cuadre Administrativo <span class="rol">ADMINISTRADOR Y CAJA</span></h2>
+  <p class="lead">Se llega desde el botón <b>“Cuadre Administrativo”</b> del menú. Subtítulo de la pantalla: <i>“Vouchers y transferencias recibidos antes del cuadre de caja”</i>.</p>
+
+  <div class="pantalla">
+    <div class="para"><b>Para qué sirve:</b> registrar los pagos que los clientes hicieron directamente al banco o a administración (sin pasar por el entregador) y decir a qué deuda y a qué entregador corresponden.</div>
+
+    <h3>6.1 Registrar un pago</h3>
+    <ol class="pasos">
+      <li>En <b>Registrar pago</b> escribe la <b>fecha del pago</b> y, si la sabes, el <b>N° de factura</b>.</li>
+      <li>En <b>Líneas de pago</b> pon el <b>medio</b>, el <b>monto</b> y la <b>referencia</b> del comprobante. Si el cliente pagó el mismo saldo en varias partes (por ejemplo dos transferencias), pulsa <b>Agregar otro medio</b>.</li>
+      <li>En <b>“¿A qué corresponde este pago?”</b> busca el cliente: <b>“¿Es abono de un fiado?”</b> o <b>“¿Es pago de pedido de asesor?”</b>. Pulsa <span class="boton claro">Elegir</span> en la coincidencia correcta.</li>
+      <li>Escoge el <b>entregador que cobra este pago</b>: el sistema sugiere quien dejó esa deuda en ruta; cámbialo si hoy lo cuadra otra persona.</li>
+      <li>Guarda.</li>
+    </ol>
+    <div class="aviso ojo"><b>Importante</b>Registrar el pago <u>no rebaja la deuda todavía</u>. Solo queda listo para que caja lo confirme dentro del cuadre del entregador. La deuda baja cuando caja confirma ese cuadre.</div>
+
+    <h3>6.2 Los estados de un pago</h3>
+    <table>
+      <tr><th>Estado</th><th>Qué significa</th></tr>
+      <tr><td><span class="estado gris">Pendiente</span></td><td>El pago llegó pero aún no sabemos a qué deuda corresponde. Usa <span class="boton claro">Identificar</span>.</td></tr>
+      <tr><td><span class="estado alerta">Identificado</span></td><td>Ya tiene deuda y entregador. Espera el cuadre de caja. Se carga solo en el cuadre de ese entregador.</td></tr>
+      <tr><td><span class="estado ok">Vinculado</span></td><td>Caja lo confirmó. La deuda ya bajó. Queda en el historial.</td></tr>
+    </table>
+    <p>Arriba de la tabla puedes cambiar entre <b>Pendientes, Identificados, Vinculados y Todos</b>. Si te equivocaste de deuda, un pago <u>Identificado</u> se puede volver a identificar con otro destino.</p>
+
+    <h3>6.3 Otros recuadros de esta pantalla</h3>
+    <ul>
+      <li><b>“Pedidos de Asesores Pendientes por Cuadrar”</b>: facturas que un asesor se llevó, agrupadas por asesor, con el total que debe responder.</li>
+      <li><span class="boton claro">Registrar pedido histórico de asesor</span>: para facturas que un asesor se llevó y nunca tuvieron planilla en el sistema.</li>
+      <li><span class="boton claro">Registrar fiado histórico</span>: para fiados que un entregador dejó pendientes y nunca quedaron registrados.</li>
+    </ul>
+    <div class="aviso cuidado"><b>No borres un pago para “quitar una alerta”.</b> Es dinero real que se perdería de la contabilidad. Si algo no cuadra (por ejemplo el pago es mayor que la deuda), pide ayuda para partirlo entre dos deudas del mismo cliente.</div>
+  </div>
+</section>
+
+<!-- ============================================================ FIADOS -->
+<section id="fiados" data-roles="administrador">
+  <h2>7. Fiados (cuentas por cobrar) <span class="rol">ADMINISTRADOR</span></h2>
+  <p class="lead">Pantalla <b>“Cuentas por Cobrar (Fiados)”</b> – <i>Gestión de créditos y asignación de cobros</i>. Un <b>fiado</b> es una factura que el cliente no pagó al recibir. Se va pagando con <b>abonos</b>.</p>
+
+  <div class="pantalla">
+    <h3>7.1 Ver los fiados</h3>
+    <ol class="pasos">
+      <li>Escoge <b>Fecha Inicio</b>, <b>Fecha Fin</b> y, si quieres, un <b>Entregador</b>.</li>
+      <li>Verás el <b>Total General</b> y el <b>Detalle de Fiados</b>: cliente, saldo, abonos.</li>
+      <li>Para ver también los ya pagados, activa la opción de mostrar pagados.</li>
+    </ol>
+    <div class="aviso ojo"><b>Si no encuentras un cliente</b>Por defecto la pantalla muestra solo el mes actual y solo lo pendiente. Amplía las fechas hacia atrás y activa “mostrar pagados”. Recuerda que el nombre empieza con el número de ruta (por ejemplo “29 LUIS FERNANDO…”): busca por el apellido.</div>
+
+    <h3>7.2 Qué se puede hacer con cada fiado</h3>
+    <table>
+      <tr><th>Botón</th><th>Para qué</th></tr>
+      <tr><td><span class="boton">Registrar Abono</span></td><td>Anotar un pago del cliente: <b>monto, método</b> (Efectivo, Nequi, Transferencia, Consignación), referencia y observaciones. Muestra el <b>nuevo saldo</b>. No puede ser mayor que el saldo.</td></tr>
+      <tr><td><span class="boton claro">Asignar a Cobrar</span></td><td>Le encarga el cobro a un entregador / planilla. Le aparecerá en su sección “Cobrar hoy”.</td></tr>
+      <tr><td><span class="boton claro">Editar factura</span></td><td>Corrige el valor total de la factura.</td></tr>
+      <tr><td><span class="boton rojo">Eliminar</span></td><td>Elimina el fiado (se puede recuperar desde <span class="pestana">Eliminados</span>).</td></tr>
+      <tr><td>Historial de cobros</td><td>Muestra quién llevó, quién cobró, cuánto en efectivo, cuánto por Nequi y la referencia. Desde ahí se puede eliminar un abono hecho por error.</td></tr>
+    </table>
+    <h3>7.3 Otras acciones</h3>
+    <ul>
+      <li><b>Nuevo Fiado Manual</b>: para una deuda que nunca se registró. Pide cliente, entregador, ruta, monto, fecha y por qué se registra manualmente.</li>
+      <li><b>Marcar como pagados</b>: selecciona varios fiados y márcalos de una vez.</li>
+      <li><b>Exportar</b>: descarga el reporte de fiados.</li>
+    </ul>
+    <div class="aviso consejo"><b>Cuándo se cierra un fiado</b>Cuando el saldo llega a cero. Si el saldo queda en centavos (porque la factura tenía decimales y el cliente pagó pesos enteros), el sistema lo cierra solo cuando es menos de $1.</div>
+  </div>
+</section>
+
+<!-- ============================================================ ADMINISTRADOR -->
+<section id="administrador" data-roles="administrador">
+  <h2>8. Administrador <span class="rol">ADMINISTRADOR MAESTRO</span></h2>
+  <p class="lead">Ve todo el sistema. Botones del menú: <span class="pestana">Dashboard</span> · <span class="pestana">Usuarios</span> · <span class="pestana">Comisiones</span> · <span class="pestana">Fiados</span> · <span class="pestana">Repasos</span> · <span class="pestana">Rendimiento</span> · <span class="pestana">Cuadre Administrativo</span> · <span class="pestana">Eliminados</span> · <span class="pestana">Inventario</span>.</p>
+
+  <div class="pantalla">
+    <h3>8.1 Dashboard — “Centro de Comando”</h3>
+    <p>Es el resumen del día en tres bloques. Pulsa <span class="boton claro">ACTUALIZAR</span> para refrescar.</p>
+    <ul>
+      <li><b>Ayer (cierre):</b> cuánto se cargó, cuánto se cuadró en caja, fiados generados, repasos y devoluciones.</li>
+      <li><b>Hoy (en vivo):</b> planillas generadas, cargue en calle, lo que ya cuadró y lo que <b>falta por cuadrar</b>.</li>
+      <li><b>Entregadores hoy:</b> quién está <span class="estado ok">CUADRADO</span> y quién sigue <span class="estado alerta">EN RUTA</span>.</li>
+    </ul>
+  </div>
+
+  <div class="pantalla">
+    <h3>8.2 Usuarios</h3>
+    <ol class="pasos">
+      <li>Pulsa <span class="boton">Crear Nuevo Usuario</span>.</li>
+      <li>Llena <b>Nombre Completo, Email, Contraseña</b> y escoge el <b>Cargo</b> (Administrador, Coordinador Logístico, Alistador, Entregador o Caja).</li>
+      <li>Guarda. Aparece en la lista; puedes filtrar por <b>Todos, Activos o Inactivos</b>.</li>
+    </ol>
+    <p>A cada usuario se le puede <b>Desactivar</b> (deja de poder entrar, sin borrarlo), <b>Activar</b> de nuevo, o eliminar.</p>
+    <div class="aviso consejo"><b>Cuando alguien se va de la empresa</b>Desactívalo en lugar de eliminarlo: así se conserva todo lo que hizo.</div>
+  </div>
+
+  <div class="pantalla">
+    <h3>8.3 Comisiones</h3>
+    <ul>
+      <li><b>Reporte:</b> elige fechas y entregador. Verás el <b>Total General</b> y, por día: entregas, devoluciones, base, comisión y estado. Puedes marcar varias como <b>pagadas</b> y exportar.</li>
+      <li><b>Editar una comisión:</b> permite cambiar el porcentaje o el monto de un día (queda marcada ✏️ Ajustado), con una nota (“acuerdo especial, bonificación…”).</li>
+      <li><b>Configuración de Porcentajes:</b> el porcentaje de cada entregador. <b>Solo afecta comisiones futuras</b>; las ya calculadas se editan a mano.</li>
+    </ul>
+  </div>
+
+  <div class="pantalla">
+    <h3>8.4 Repasos</h3>
+    <p>Un <b>repaso</b> es un pedido que no se pudo entregar y hay que volver a programar. Esta pantalla (<b>“Gestión de Repasos”</b>) los lista con ruta de origen, entregador y fecha.</p>
+    <ul>
+      <li><span class="boton">Asignar a Ruta</span>: eliges la <b>planilla de destino</b> y el valor se suma al cargue de esa planilla.</li>
+      <li><span class="boton rojo">Eliminar</span>: úsalo solo si el repaso se creó por error. Si el pedido debe entregarse, asígnalo a una ruta.</li>
+    </ul>
+  </div>
+
+  <div class="pantalla">
+    <h3>8.5 Rendimiento</h3>
+    <p><b>“Rendimiento e Incentivos”</b> compara a los entregadores por periodo: rutas, cargue, entregado, devoluciones y <b>% de devolución</b> (devoluciones ÷ cargue × 100). Con el <b>Umbral Incentivo (%)</b> el sistema marca quién <span class="estado ok">Califica</span> (devoluciones menores a ese porcentaje) y quién <span class="estado mal">No califica</span>, y permite <b>guardar un incentivo</b> en pesos para quien califica.</p>
+  </div>
+
+  <div class="pantalla">
+    <h3>8.6 Eliminados</h3>
+    <p>Igual que en el coordinador: restaurar o eliminar definitivamente (ver sección 2.5).</p>
+  </div>
+
+  <div class="pantalla">
+    <h3>8.7 Inventario</h3>
+    <div class="para"><b>Para qué sirve:</b> comparar lo que <u>realmente salió</u> de bodega con lo que el sistema de facturación (POS) dice que salió y que tiene en inventario.</div>
+    <p>Cinco pestañas: <span class="pestana">Cruce de ventas</span> · <span class="pestana">Cruce de inventario</span> · <span class="pestana">Salidas</span> · <span class="pestana">Ajustes</span> · <span class="pestana">Subir archivos</span>. Arriba hay un rango de fechas, un buscador de producto o código y el botón “Solo con diferencia / Mostrar todo”.</p>
+    <h4>Paso a paso</h4>
+    <ol class="pasos">
+      <li><b>Subir archivos</b> (una vez): el <b>catálogo</b> de productos del POS, las <b>ventas</b> del POS y, cuando lo tengas, el <b>inventario del POS con cantidades</b> (con su fecha).</li>
+      <li><b>Salidas:</b> muestra lo que salió por producto cada vez que un alistador completa una planilla. Si ves un aviso amarillo de planillas sin cargar, pulsa <span class="boton">Cargarlas ahora</span>.</li>
+      <li><b>Cruce de ventas:</b> por producto compara lo que <b>salió</b> con lo <b>facturado</b> y <b>devuelto</b> en el POS. La diferencia se pinta en color: positiva (el POS cobró más de lo que salió), negativa (salió más de lo facturado). Abajo ves las <b>devoluciones en dinero</b>: lo que caja registró contra lo que el POS devolvió.</li>
+      <li><b>Cruce de inventario:</b> te dice qué <b>ajuste</b> le falta al POS por producto y cuál sería el saldo real. Con el botón <span class="boton claro">Ajustar</span> registras el ajuste que ya hiciste en el POS (cantidad positiva suma, negativa resta).</li>
+      <li><b>Ajustes:</b> lista de los ajustes hechos. Ejemplo: facturaron 2 Balance Hombre pero salieron 1 Hombre y 1 Dama → <b>+1 en Hombre y −1 en Dama</b>.</li>
+    </ol>
+    <div class="aviso consejo"><b>Descargas</b>Los cruces se pueden bajar a Excel con el botón <span class="boton claro">Descargar</span>.</div>
+  </div>
+</section>
+
+<!-- ============================================================ CASOS -->
+<section id="casos" data-roles="*">
+  <h2>9. ¿Qué hago si…?</h2>
+  <p class="lead">Los problemas más comunes y cómo salir de ellos. Toca cada pregunta.</p>
+
+  <details><summary>Me equivoqué y asigné una ruta al entregador equivocado</summary>
+    <p>El coordinador puede volver a asignarla desde <span class="pestana">Asignar</span> (o caja con “Reasignar a:”). Si ya estaba alistada, no hay que alistar de nuevo: solo cambia de entregador.</p></details>
+
+  <details><summary>En el alistador un producto aparece “pendiente” aunque ya lo alisté</summary>
+    <p>Ocurre cuando el mismo producto está en varias planillas del mismo entregador. Márcalo de nuevo una vez: el sistema lo aplica a todas las planillas. Si sigue igual, avisa al coordinador para que lo revise en Supervisión.</p></details>
+
+  <details><summary>Un faltante ya no se puede entregar</summary>
+    <p>Dos formas: el coordinador lo subsana en Supervisión con <b>“No Hay Producto”</b>, o desde <span class="pestana">Novedades</span> (alistador) se selecciona y se pulsa “Eliminar seleccionados” con el motivo. En ambos casos queda como “No se entregó” y se puede revertir.</p></details>
+
+  <details><summary>El cliente pagó parte y quedó debiendo</summary>
+    <p>El entregador marca <span class="boton claro">Fiado</span> y escribe cuánto pagó; el sistema calcula el saldo que queda fiado. Después se cobra con <b>Registrar Abono</b> o asignando el cobro a un entregador.</p></details>
+
+  <details><summary>Caja dice “referencia duplicada”</summary>
+    <p>Ese número de comprobante ya se usó. Revisa que lo hayas copiado bien. Si es el mismo cliente pagando varias deudas con una sola transferencia, es válido: pídele al administrador que ayude a repartir el pago entre sus facturas. <u>Nunca</u> uses el mismo comprobante para otro cliente.</p></details>
+
+  <details><summary>El cliente ya pagó pero el fiado sigue “vivo”</summary>
+    <p>Puede ser que el pago se contó en un cuadre como consignación. En el cuadre, cuando salga el aviso de que ese pago ya se contó, usa <b>“Aplicar este pago al fiado”</b>: baja la deuda sin volver a contar el dinero. Si el saldo es de centavos, se cierra solo.</p></details>
+
+  <details><summary>El cuadre tiene una diferencia (faltante o sobrante)</summary>
+    <p>Antes de confirmar revisa: 1) que los billetes y monedas estén bien contados; 2) que todas las consignaciones estén anotadas; 3) que las novedades (devoluciones, agotados, fiados) coincidan con lo que dice el entregador; 4) que ningún cobro esté incluido de más. Si aun así hay diferencia, escríbela en <b>Observaciones</b> y confirma: queda registrada como “Con Diferencia”.</p></details>
+
+  <details><summary>Una factura está mal en el valor</summary>
+    <p>En caja, dentro de la ruta, abre <b>Ver Clientes</b> y usa <b>“Ajustar valor factura”</b>. Si es un fiado ya creado, en la pantalla de Fiados usa <b>Editar factura</b>.</p></details>
+
+  <details><summary>Eliminé algo por error</summary>
+    <p>Mira en la pestaña <span class="pestana">Eliminados</span>: planillas, pedidos, novedades y fiados eliminados aparecen ahí y se pueden <b>Restaurar</b>. Un fiado eliminado hace tiempo puede no aparecer en esa lista: pide ayuda al administrador.</p></details>
+
+  <details><summary>No encuentro a un cliente</summary>
+    <p>Los nombres empiezan con el número de ruta. Busca por el apellido o una parte del nombre, amplía las fechas hacia atrás y activa “mostrar pagados”. Si el pedido se cuadró hace tiempo, el detalle de lo que pidió ya no existe, pero el fiado y los pagos sí quedan.</p></details>
+
+  <details><summary>Se cayó la conexión mientras cuadraba</summary>
+    <p>Los datos del cuadre se guardan como borrador en el navegador por un tiempo. Vuelve a abrir el mismo cuadre desde el mismo computador. <b>No pulses Confirmar dos veces</b>: espera siempre la confirmación en pantalla.</p></details>
+</section>
+
+<!-- ============================================================ REGLAS -->
+<section id="reglas" data-roles="*">
+  <h2>10. Reglas de oro</h2>
+  <ul>
+    <li><b>Lo que se anota en el sistema es lo que vale.</b> Si no está registrado, para el sistema no ocurrió.</li>
+    <li><b>Un comprobante de pago se usa una sola vez.</b> Nunca repitas una referencia.</li>
+    <li><b>Antes de “Confirmar Cuadre”, revisa.</b> Al confirmar se cierra la planilla y se borra su detalle.</li>
+    <li><b>Pulsa los botones una sola vez</b> y espera el mensaje de confirmación.</li>
+    <li><b>El cobro en efectivo ya está en los billetes.</b> No se cuenta dos veces.</li>
+    <li><b>Marca cada producto en el alistamiento</b> antes de completar.</li>
+    <li><b>Escribe siempre el motivo</b> cuando el sistema lo pida: es lo que permite entender qué pasó semanas después.</li>
+    <li><b>Desactiva, no elimines</b> a las personas que salen de la empresa.</li>
+    <li><b>Cierra tu sesión</b> con “Salir” en computadores compartidos.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ GLOSARIO -->
+<section id="glosario" data-roles="*">
+  <h2>11. Palabras del negocio</h2>
+  <table>
+    <tr><th>Palabra</th><th>Qué significa</th></tr>
+    <tr><td><b>POS</b></td><td>El sistema de facturación e inventario de la empresa. De ahí salen los archivos de ventas.</td></tr>
+    <tr><td><b>Planilla</b></td><td>La hoja de reparto de una ruta en un día.</td></tr>
+    <tr><td><b>Ruta</b></td><td>Una zona de reparto (6C, 29, 72…). Los clientes llevan el número de su ruta al inicio del nombre.</td></tr>
+    <tr><td><b>Pedido</b></td><td>La factura de un cliente dentro de una planilla.</td></tr>
+    <tr><td><b>Cargue</b></td><td>El valor total de la mercancía que lleva el entregador.</td></tr>
+    <tr><td><b>Alistar</b></td><td>Preparar en bodega la mercancía de los pedidos.</td></tr>
+    <tr><td><b>Faltante</b></td><td>Producto que no se pudo alistar completo.</td></tr>
+    <tr><td><b>Subsanar</b></td><td>Resolver un faltante: conseguirlo (total o parcial) o decidir que no se entrega.</td></tr>
+    <tr><td><b>Fiado / CxC</b></td><td>Factura que el cliente no pagó al recibir (cuenta por cobrar).</td></tr>
+    <tr><td><b>Abono</b></td><td>Un pago, parcial o total, de un fiado.</td></tr>
+    <tr><td><b>Consignación</b></td><td>Depósito o transferencia bancaria. Puede ser de un pedido, de un cobro o un depósito de efectivo del entregador.</td></tr>
+    <tr><td><b>Cuadre de caja</b></td><td>El cierre donde caja cuenta el dinero del entregador y lo compara con lo esperado.</td></tr>
+    <tr><td><b>Novedades</b></td><td>Lo que reduce lo que el entregador debe traer: fiados, devoluciones, repasos, agotados, descuentos, varios y errores de facturación.</td></tr>
+    <tr><td><b>Repaso</b></td><td>Pedido que no se pudo entregar y se vuelve a programar.</td></tr>
+    <tr><td><b>Agotado</b></td><td>Producto que no había y se descontó de la factura.</td></tr>
+    <tr><td><b>Asesor</b></td><td>El vendedor. Hay planillas y pedidos “de asesor”.</td></tr>
+    <tr><td><b>Comisión</b></td><td>Lo que gana el entregador: un porcentaje de lo que entregó.</td></tr>
+    <tr><td><b>Incentivo</b></td><td>Bono en pesos para el entregador que mantiene sus devoluciones por debajo del umbral.</td></tr>
+  </table>
+</section>
+
+</main>
+
+<footer>Manual de Distrilogística · Si algo de este manual no coincide con lo que ves en pantalla, avisa para corregirlo.</footer>
+<script>
+(function () {
+  var secciones = Array.prototype.slice.call(document.querySelectorAll('main > section'));
+  var botones = Array.prototype.slice.call(document.querySelectorAll('.selector button'));
+  var enlaces = Array.prototype.slice.call(document.querySelectorAll('nav.menu a'));
+  var CLAVE = 'manual_rol';
+
+  function guardar(rol) { try { localStorage.setItem(CLAVE, rol); } catch (e) {} }
+  function leer() { try { return localStorage.getItem(CLAVE) || 'todos'; } catch (e) { return 'todos'; } }
+
+  function visible(el, rol) {
+    var roles = (el.getAttribute('data-roles') || '*').split(' ');
+    return rol === 'todos' || roles.indexOf('*') >= 0 || roles.indexOf(rol) >= 0;
+  }
+
+  function aplicar(rol) {
+    secciones.forEach(function (s) { s.classList.toggle('oculto', !visible(s, rol)); });
+    enlaces.forEach(function (a) {
+      var id = (a.getAttribute('href') || '').replace('#', '');
+      var sec = document.getElementById(id);
+      a.classList.toggle('oculto', !!sec && !visible(sec, rol));
+    });
+    botones.forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-rol') === rol ? 'true' : 'false'); });
+    guardar(rol);
+  }
+
+  botones.forEach(function (b) {
+    b.addEventListener('click', function () {
+      aplicar(b.getAttribute('data-rol'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // Los botones del menú se desplazan con JavaScript: así funcionan igual abriendo el archivo
+  // desde el disco, desde una página web o desde una vista previa.
+  enlaces.forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var id = (a.getAttribute('href') || '').replace('#', '');
+      var sec = document.getElementById(id);
+      if (!sec) return;
+      e.preventDefault();
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  aplicar(leer());
+})();
+</script>
+</body>
+</html>

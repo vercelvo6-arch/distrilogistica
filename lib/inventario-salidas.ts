@@ -89,7 +89,9 @@ export async function registrarSalidaPlanilla(planillaId: string, userId?: strin
 }
 
 // Para planillas que ya estaban alistadas antes de que existiera el módulo y todavía conservan su
-// detalle (aún no se cuadró caja): carga su salida una sola vez. No toca las que ya tienen filas.
+// detalle (aún no se cuadró caja): carga su salida una sola vez. Solo las del MES ACTUAL y que no estén
+// en ningún cuadre: lo anterior no se carga a propósito (planillas viejas que quedaron sin cuadrar o ya
+// cuadradas no son inventario real y harían creer que hay datos que no existen). No toca las que ya tienen filas.
 export async function registrarSalidasPendientes() {
   const sql = getDB()
   const planillas = (await sql`
@@ -97,6 +99,8 @@ export async function registrarSalidasPendientes() {
     FROM planillas pl
     JOIN pedidos p ON COALESCE(p.planilla_mercancia_id, p.planilla_id) = pl.id
     WHERE pl.estado = 'alistado'
+      AND pl.fecha >= date_trunc('month', now() AT TIME ZONE 'America/Bogota')::date
+      AND NOT EXISTS (SELECT 1 FROM cuadres_caja cc WHERE pl.id = ANY(cc.planillas_ids))
       AND NOT EXISTS (SELECT 1 FROM inventario_salidas s WHERE s.planilla_id = pl.id)
     ORDER BY pl.id
   `) as any[]

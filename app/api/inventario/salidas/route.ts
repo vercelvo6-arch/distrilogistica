@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
       FROM planillas pl
       JOIN pedidos p ON COALESCE(p.planilla_mercancia_id, p.planilla_id) = pl.id
       WHERE pl.estado = 'alistado'
+        AND pl.fecha >= date_trunc('month', now() AT TIME ZONE 'America/Bogota')::date
+        AND NOT EXISTS (SELECT 1 FROM cuadres_caja cc WHERE pl.id = ANY(cc.planillas_ids))
         AND NOT EXISTS (SELECT 1 FROM inventario_salidas s WHERE s.planilla_id = pl.id)
     `) as any[]
 

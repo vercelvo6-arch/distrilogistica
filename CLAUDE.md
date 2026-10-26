@@ -110,6 +110,7 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 
 ### 5.8 Inventario (pestaña "Inventario" del administrador; tablas `inventario_*`, script 027)
 - **Salida por producto:** cuando el alistador termina una planilla (`updatePlanillaEstado(..., "alistado")`) se guarda en `inventario_salidas` lo que salió, agrupado por código (pedido − faltante). No se borra al cuadrar caja. Solo cuentan pedidos `pendiente`; la mercancía es de `COALESCE(planilla_mercancia_id, planilla_id)`. El reemplazo del asesor queda en las observaciones como `REEMPLAZO POR: …`.
+- **Carga de lo ya alistado:** el botón "Cargarlas ahora" (Inventario → Salidas) solo carga planillas alistadas del MES ACTUAL que no estén en ningún cuadre; lo anterior no se carga a propósito (el detalle de las ya cuadradas se perdió antes del script 020 y no debe simularse). El inventario base es la pestaña Salidas hasta que se sube el inventario del POS.
 - **Códigos:** se guardan normalizados (mayúsculas, sin espacios, sin ceros a la izquierda en códigos numéricos). Misma regla en `lib/inventario.ts` y en el SQL de `lib/inventario-salidas.ts`; si cambias una, cambia la otra.
 - **Archivos que sube el administrador** (se leen en UTF-8 o Windows-1252): catálogo/inventario del POS (11 columnas con ";": ubicación, código, nombre, categoría, cantidad, descripción del combo, precio, valor…), y CSV de ventas del POS (16 columnas). Los kits (códigos con letras o nombre con LLEVA/INCLUYE/PROMO) se identifican, pero su composición sigue siendo texto libre: el cruce es por el código facturado, no por componente.
 - **Cruce de ventas:** diferencia = (facturado − devuelto en POS) − salió, por producto, y devoluciones en dinero (caja vs POS). Las devoluciones del POS se reconocen por cantidad/valor negativos (formato aún no confirmado con un archivo real).
@@ -120,6 +121,7 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 - `components/*-view.tsx`: una vista por rol; `caja-view.tsx` es la más grande y delicada (cuadre individual y agrupado, historial).
 - `lib/db.ts` (cliente Neon), `lib/session.ts` (sesión por cookie), `lib/validar-referencia.ts`, `lib/eliminaciones-historial.ts`.
 - `scripts/*.sql`: migraciones y correcciones manuales numeradas (registro de lo que se corrió en Neon).
+- `docs/manual/index.html`: manual de usuario pantalla por pantalla (para personal no técnico). **Si cambias una pantalla o un flujo, actualiza también el manual.**
 - `docs/inventario-gerencia.md`: diseño original del inventario (se decidió construirlo DENTRO de este proyecto, ver 5.8).
 - `lib/inventario.ts`, `lib/inventario-salidas.ts`, `lib/inventario-api.ts`, `app/api/inventario/*`, `components/inventario-view.tsx`: módulo de inventario.
 

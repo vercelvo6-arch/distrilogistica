@@ -426,7 +426,7 @@ export function InventarioView() {
             {num(salidas?.planillasSinCargar) > 0 && (
               <div className="flex flex-wrap items-center gap-3 bg-amber-50 rounded p-2">
                 <span className="text-xs text-amber-800">
-                  Hay <strong>{salidas.planillasSinCargar}</strong> planillas alistadas, todavía sin cuadrar, cuya salida no está guardada.
+                  Hay <strong>{salidas.planillasSinCargar}</strong> planillas alistadas de este mes, todavía sin cuadrar, cuya salida no está guardada.
                 </span>
                 <Button size="sm" onClick={cargarSalidasPendientes} disabled={cargandoSalidas}>
                   {cargandoSalidas ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cargarlas ahora"}
