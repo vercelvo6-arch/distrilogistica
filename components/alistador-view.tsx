@@ -383,9 +383,16 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     try {
       setSaving(true)
 
-      const sheetForEntregador = routeSheets.find(s => 
+      // Misma regla que getConsolidatedProducts: solo los pedidos 'pendiente' tienen
+      // mercancía por alistar. Si se escogía una planilla donde el código solo estaba
+      // en un repaso o en un pedido ya resuelto, el estado se guardaba allí y el
+      // producto que se ve volvía a "Pendiente" (gris) al refrescar.
+      const sheetForEntregador = routeSheets.find(s =>
         s.entregador === editingProduct.entregador &&
-        [...s.orders.filter(order => !order.mercanciaEnOtraPlanilla), ...(s.mercanciaReasignada || [])].some(order =>
+        [
+          ...s.orders.filter(order => order.estado === 'pendiente' && !order.mercanciaEnOtraPlanilla),
+          ...(s.mercanciaReasignada || []).filter(order => order.estado === 'pendiente'),
+        ].some(order =>
           order.items.some(item => item.codigo === editingProduct.product.codigo)
         )
       )
@@ -423,13 +430,11 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       }
 
       let yaActualizado = false
-      const updatedSheets = routeSheets.map(sheet => {
-        if (sheet.entregador === editingProduct.entregador) {
-          return {
-            ...sheet,
-            orders: sheet.orders.map(order => order.mercanciaEnOtraPlanilla ? order : ({
+      // La mercancía de pedidos reasignados (mercanciaReasignada) también se pinta;
+      // si no, el producto seguía en gris hasta refrescar aunque ya estuviera guardado.
+      const marcarPedido = (order: any) => order.mercanciaEnOtraPlanilla ? order : ({
               ...order,
-              items: order.items.map(item => {
+              items: order.items.map((item: any) => {
                 if (item.codigo === editingProduct.product.codigo) {
                   const obs = !yaActualizado ? observaciones.trim() || null : null
                   if (!yaActualizado) yaActualizado = true
@@ -445,7 +450,13 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                 }
                 return item
               })
-            }))
+            })
+      const updatedSheets = routeSheets.map(sheet => {
+        if (sheet.entregador === editingProduct.entregador) {
+          return {
+            ...sheet,
+            orders: sheet.orders.map(marcarPedido),
+            mercanciaReasignada: (sheet.mercanciaReasignada || []).map(marcarPedido),
           }
         }
         return sheet
