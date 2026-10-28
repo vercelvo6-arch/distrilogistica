@@ -48,12 +48,12 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 
 ## 3. Cómo se cambia la base de datos de producción
 - Las escrituras en producción las corre **el dueño a mano en el editor SQL de Neon**. Tú dejas el script en `scripts/NNN_nombre.sql`
-  (el siguiente número libre es el **030**; el 025 no existe a propósito) y explicas qué hace.
+  (el siguiente número libre es el **032**; el 025 no existe a propósito) y explicas qué hace.
 - Consultas de **solo lectura** para investigar sí están bien (usa `@neondatabase/serverless` desde un `.mjs` temporal y bórralo después).
 - Todo script que cambie datos debe ser: **una sola sentencia** (CTEs) → todo o nada; **idempotente** (si se corre dos veces, la segunda no hace nada);
   con guardas en el `WHERE`; y dejar copia de lo borrado en `audit_log`. Valídalo con `EXPLAIN` (sin ejecutar) antes de entregarlo.
 - Antes de borrar o modificar datos del dinero, mira primero el registro (qué es, de quién, qué lo referencia).
-- Revisa en la base si un script ya se aplicó antes de asumirlo (`scripts/` es solo el registro). Aplicados y verificados: 020 (respaldo antes de borrar cuadres) y 027 (tablas de inventario). Verificar si se aplicó: 026 (ajuste Yeimy/Leder).
+- Revisa en la base si un script ya se aplicó antes de asumirlo (`scripts/` es solo el registro). Aplicados y verificados: 020 (respaldo antes de borrar cuadres), 026 (ajuste Yeimy/Leder) y 027 (tablas de inventario). Pendiente de correr: 031 (borra los fiados eliminados 733 y 2087 de Yeimy y sus pagos; solo queda su fiado vivo 1926).
 
 ## 4. Trampas técnicas (te van a ahorrar horas)
 - **El driver `neon()` HTTP NO hace transacciones reales.** `BEGIN/COMMIT` en llamadas separadas no hacen nada. Para atomicidad usa `sql.transaction([...])` o una sola sentencia con CTEs. `app/api/cuadres-caja/route.ts` todavía tiene `BEGIN/COMMIT` falsos (deuda conocida; por eso se hicieron idempotentes las operaciones).
