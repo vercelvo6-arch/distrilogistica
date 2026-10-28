@@ -37,6 +37,9 @@ const formatDescuadre = (n: number) => (n > 0 ? `+${formatCOP(n)}` : n < 0 ? `�
 // Pestaña "Resumen" del Historial: por día, cuatro datos de cada entregador —Entregado,
 // Cobros, Descuadre y Devoluciones— solo a título de información: no se suman ni se
 // restan entre sí. Debajo de cada día, cada cobro (de él o administrativo).
+// Igual que en /api/cuadres-caja/resumen: el Resumen no muestra nada antes de octubre de 2026.
+const RESUMEN_DESDE_MINIMO = "2026-10-01"
+
 export function ResumenEntregadorView() {
   const hoy = getFechaHoyBogota()
   const [desde, setDesde] = useState(`${hoy.slice(0, 7)}-01`)
@@ -129,11 +132,11 @@ export function ResumenEntregadorView() {
         </div>
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Desde</label>
-          <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="w-[150px]" />
+          <Input type="date" min={RESUMEN_DESDE_MINIMO} value={desde} onChange={(e) => setDesde(e.target.value && e.target.value < RESUMEN_DESDE_MINIMO ? RESUMEN_DESDE_MINIMO : e.target.value)} className="w-[150px]" />
         </div>
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Hasta</label>
-          <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-[150px]" />
+          <Input type="date" min={RESUMEN_DESDE_MINIMO} value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-[150px]" />
         </div>
         <Button size="sm" onClick={cargar} disabled={cargando || !desde || !hasta}>
           {cargando ? "Cargando..." : "Ver"}

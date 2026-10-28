@@ -13,7 +13,7 @@ const ROLES_PERMITIDOS = ['caja', 'administrador']
 // este cambio, cuando se confirmaban dentro del cuadre del entregador.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -31,9 +31,15 @@ export async function POST(
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
 
-    const r = await confirmarPagoAdministrativo(pagoId, { id: session.user.id, nombre: session.user.nombre })
-    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
-    return NextResponse.json({ success: true, mensaje: r.mensaje })
+    // forzarDuplicado: caja revisó el aviso de "posible pago repetido" y declara que es otro pago.
+    const body = await request.json().catch(() => ({}))
+    const r = await confirmarPagoAdministrativo(
+      pagoId,
+      { id: session.user.id, nombre: session.user.nombre },
+      { forzarDuplicado: body?.forzarDuplicado === true }
+    )
+    if (!r.ok) return NextResponse.json({ error: r.error, codigo: r.codigo }, { status: r.status })
+    return NextResponse.json({ success: true, mensaje: r.mensaje, aviso: r.aviso })
   } catch (error) {
     return handleDBError(error, 'PAGOS_ANTICIPADOS_CONFIRMAR')
   }

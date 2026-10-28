@@ -43,9 +43,6 @@ export async function PATCH(
     if (!destinoId) {
       return NextResponse.json({ error: 'destinoId es requerido' }, { status: 400 })
     }
-    if (!entregadorVinculado) {
-      return NextResponse.json({ error: 'entregadorVinculado es requerido' }, { status: 400 })
-    }
 
     const sql = getDB()
 
@@ -62,7 +59,7 @@ export async function PATCH(
         tipo                 = ${destinoTipo},
         fiado_id             = ${destinoTipo === 'fiado' ? String(destinoId) : null},
         pedido_id            = ${destinoTipo === 'pedido_asesor' ? String(destinoId) : null},
-        entregador_vinculado = ${String(entregadorVinculado)},
+        entregador_vinculado = ${entregadorVinculado ? String(entregadorVinculado).trim() : null},
         estado               = 'identificado'
       WHERE id = ${pagoId} AND estado <> 'vinculado'
     `
@@ -70,11 +67,11 @@ export async function PATCH(
     const r = await confirmarPagoAdministrativo(pagoId, { id: session.user.id, nombre: session.user.nombre })
     if (!r.ok) {
       return NextResponse.json(
-        { error: `Quedó identificado, pero no se confirmó: ${r.error}` },
+        { error: `Quedó identificado, pero no se confirmó: ${r.error}`, codigo: r.codigo },
         { status: r.status }
       )
     }
-    return NextResponse.json({ success: true, mensaje: r.mensaje })
+    return NextResponse.json({ success: true, mensaje: r.mensaje, aviso: r.aviso })
   } catch (error) {
     return handleDBError(error, 'PAGOS_ANTICIPADOS_IDENTIFICAR')
   }

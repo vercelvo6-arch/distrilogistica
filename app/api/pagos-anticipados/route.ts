@@ -63,8 +63,10 @@ export async function POST(request: NextRequest) {
     // Si caja ya identificó el destino en el propio formulario de registro
     // (búsqueda de fiado o de pedido de asesor), el pago nace directamente
     // en estado 'identificado' — sin destino, nace 'pendiente' como antes.
+    // Basta con el destino: a quién le suma el cobro, si no viene, lo completa
+    // confirmarPagoAdministrativo (quien tiene el fiado o el asesor del pedido).
     const destinoTipoLimpio = destinoTipo === 'fiado' || destinoTipo === 'pedido_asesor' ? destinoTipo : null
-    const tieneDestino = destinoTipoLimpio && destinoId && entregadorVinculado
+    const tieneDestino = destinoTipoLimpio && destinoId
 
     const [pago] = tieneDestino
       ? await sql`
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
             ${destinoTipoLimpio},
             ${destinoTipoLimpio === 'fiado' ? String(destinoId) : null},
             ${destinoTipoLimpio === 'pedido_asesor' ? String(destinoId) : null},
-            ${String(entregadorVinculado)},
+            ${entregadorVinculado ? String(entregadorVinculado) : null},
             'identificado',
             ${fechaPagoLimpia}, ${numeroFacturaLimpio}
           )
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
         pago,
         coincidencias: [],
         mensaje: r.ok ? r.mensaje : undefined,
-        aviso: r.ok ? undefined : `Quedó identificado, pero no se confirmó: ${r.error}`,
+        aviso: r.ok ? r.aviso : `Quedó identificado, pero no se confirmó: ${r.error}`,
       })
     }
 

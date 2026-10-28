@@ -4,6 +4,9 @@ import { getDB } from '@/lib/db'
 import { OBSERVACION_PAGO_ADMINISTRATIVO } from '@/lib/comision-cuadre'
 import { OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO } from '@/lib/pago-administrativo'
 
+// El Resumen arranca en octubre de 2026: antes de eso no se muestra nada aunque se pida.
+const RESUMEN_DESDE_MINIMO = '2026-10-01'
+
 // GET - Pestaña "Resumen" del Historial: por día, cuatro datos informativos de cada
 // entregador (sin sumarlos ni restarlos entre sí) y el detalle de cada cobro. Solo lectura.
 //
@@ -24,8 +27,9 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url)
-    const desde = searchParams.get('desde')
+    const desdePedido = searchParams.get('desde')
     const hasta = searchParams.get('hasta')
+    const desde = desdePedido && desdePedido < RESUMEN_DESDE_MINIMO ? RESUMEN_DESDE_MINIMO : desdePedido
     // familia: primera palabra del nombre ("Alfonso" reúne "Alfonso 72 - 84", "Alfonso 6C-7B-93"…).
     const familia = searchParams.get('familia')?.trim() || ''
     if (!desde || !hasta) {
@@ -140,7 +144,7 @@ export async function GET(request: Request) {
     }
 
     const resultado = Array.from(dias.values()).sort((a, b) => b.fecha.localeCompare(a.fecha))
-    return NextResponse.json({ dias: resultado })
+    return NextResponse.json({ dias: resultado, desde })
   } catch (error) {
     console.error('[CUADRES RESUMEN GET] ERROR:', error)
     return NextResponse.json(

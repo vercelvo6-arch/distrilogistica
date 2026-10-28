@@ -538,13 +538,26 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
   // se confirman aquí, ya no en el cuadre de caja.
   const [confirmandoId, setConfirmandoId] = useState<number | null>(null)
   const handleConfirmar = async (pago: PagoAnticipado) => {
-    if (!window.confirm(`¿Confirmar ${pago.medio_pago} ${formatCOP(Number(pago.monto))} de ${pago.cliente || "este cliente"} como cobro de ${pago.entregador_vinculado}?\n\nSe baja el fiado y le cuenta como cobro y comisión al entregador. No pasa por el cuadre de caja.`)) return
+    if (!window.confirm(`¿Confirmar ${pago.medio_pago} ${formatCOP(Number(pago.monto))} de ${pago.cliente || "este cliente"} como cobro de ${pago.entregador_vinculado || "quien tiene el fiado"}?\n\nSe baja el fiado y le cuenta como cobro (y comisión, si es entregador). No pasa por el cuadre de caja.`)) return
     setConfirmandoId(pago.id)
     try {
-      const res = await fetch(`/api/pagos-anticipados/${pago.id}/confirmar`, { method: "POST" })
-      const data = await res.json()
+      const confirmar = (forzarDuplicado: boolean) =>
+        fetch(`/api/pagos-anticipados/${pago.id}/confirmar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ forzarDuplicado }),
+        })
+      let res = await confirmar(false)
+      let data = await res.json()
+      // Posible pago repetido: solo se aplica si quien confirma declara que es un pago distinto.
+      if (!res.ok && data.codigo === "posible_duplicado") {
+        if (!window.confirm(`${data.error}\n\n¿Es un pago DISTINTO y quieres aplicarlo de todas formas? Quedará anotado a tu nombre.`)) return
+        res = await confirmar(true)
+        data = await res.json()
+      }
       if (!res.ok) throw new Error(data.error || "No se pudo confirmar el pago")
       toast({ title: "Confirmado", description: data.mensaje })
+      if (data.aviso) toast({ title: "Atención", description: data.aviso, variant: "destructive" })
       loadPagos()
     } catch (error) {
       toast({ title: "No se confirmó", description: error instanceof Error ? error.message : "No se pudo confirmar el pago", variant: "destructive" })
@@ -571,9 +584,18 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Error al identificar el pago")
+      if (!res.ok) {
+        // Quedó identificado pero sin aplicar (p. ej. posible pago repetido): se revisa y se
+        // confirma luego con el botón Confirmar de la lista.
+        if (res.status === 409 && String(data.error || "").startsWith("Quedó identificado")) {
+          cerrarIdentificar()
+          loadPagos()
+        }
+        throw new Error(data.error || "Error al identificar el pago")
+      }
 
       toast({ title: "Confirmado", description: data.mensaje })
+      if (data.aviso) toast({ title: "Atención", description: data.aviso, variant: "destructive" })
       cerrarIdentificar()
       loadPagos()
     } catch (error) {

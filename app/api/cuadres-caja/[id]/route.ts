@@ -1,7 +1,6 @@
 import { neon } from '@neondatabase/serverless'
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
-import { efectivoPagosAdministrativosDelCuadre } from '@/lib/comision-cuadre'
 
 const sql = neon(process.env.DATABASE_URL!)
 
@@ -190,14 +189,12 @@ export async function PATCH(
     `
     if (comision.length > 0) {
       const porcentaje   = Number(comision[0].porcentaje_aplicado)
-      // Misma base que al crear el cuadre: lo recibido + efectivo de pagos administrativos.
-      const baseComision  = Math.round((totalEfectivo + await efectivoPagosAdministrativosDelCuadre(Number(cuadreId))) * 100) / 100
-      const montoComision = Math.round(baseComision * (porcentaje / 100) * 100) / 100
+      const montoComision = Math.round(totalEfectivo * (porcentaje / 100) * 100) / 100
       await sql`
         UPDATE comisiones SET
           total_entregas_efectivas = ${totalEfectivo},
           total_devoluciones       = ${devolucionesNum},
-          base_comisionable        = ${baseComision},
+          base_comisionable        = ${totalEfectivo},
           monto_comision           = ${montoComision},
           updated_at               = NOW()
         WHERE id = ${comision[0].id}
