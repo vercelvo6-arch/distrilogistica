@@ -448,7 +448,7 @@
       <li>Pulsa <span class="boton">Agrupar y Cuadrar (N)</span>. Se abre <b>“Cuadre Agrupado – Manual”</b>.</li>
       <li><b>📊 Novedades:</b> revisa fiados, repasos, devoluciones, agotados, errores de facturación y descuentos. Vienen calculados; corrígelos si hace falta.</li>
       <li><b>💵 Varios:</b> gastos o ajustes del día (combustible, parqueadero…) con su nota.</li>
-      <li><b>💳 Cobros CxC:</b> aquí aparecen solos los cobros que el entregador registró en ruta (con la marca “✓ Registrado en ruta”) y los pagos del cuadre administrativo que le corresponden. Revisa medio, monto y referencia de cada uno. Con la X quitas el que no corresponda.</li>
+      <li><b>💳 Cobros CxC:</b> aquí aparecen solos los cobros que el entregador registró en ruta (con la marca “✓ Registrado en ruta”) (los pagos del Cuadre Administrativo ya no llegan aquí: se confirman allá). Revisa medio, monto y referencia de cada uno. Con la X quitas el que no corresponda.</li>
       <li><b>💰 Dinero Recibido:</b> escribe los <b>Billetes</b> y las <b>Monedas</b> que cuentas, y cada <b>consignación</b> (banco, número de referencia, monto, fecha; cliente y factura son opcionales).</li>
       <li>Mira <b>📋 Resultado</b>: <b>Esperado</b>, <b>Total Recibido</b> y <b>Diferencia</b>.</li>
       <li>Si todo está bien, pulsa <span class="boton">Confirmar Cuadre</span>.</li>
@@ -473,13 +473,13 @@
       <li>Dentro de la tarjeta: el <b>Detalle de Novedades</b>, <b>Esperado / Recibido / Diferencia</b>, el recuadro <b>“Cómo se calculó”</b>, y la lista de <b>quién pagó</b> (cada cobro con su cliente, medio y monto) y las <b>consignaciones</b>.</li>
       <li>Para sacar un archivo, elige las fechas y pulsa <span class="boton">Exportar Excel</span>.</li>
       <li>En los cuadres agrupados aparece <span class="boton claro">Editar</span> para corregirlos.</li>
-      <li>Arriba hay dos pestañas: <span class="boton claro">Cuadres</span> (esta lista) y <span class="boton claro">Cobros por entregador</span>: escoge <b>Desde</b> y <b>Hasta</b>, pulsa <span class="boton">Ver cobros</span> y verás, por entregador, lo <b>cobrado por él</b> y los <b>pagos administrativos</b> (efectivo y Nequi/banco) con su total. Pulsa un entregador para ver cada cobro.</li>
+      <li>Arriba hay dos pestañas: <span class="boton claro">Cuadres</span> (esta lista) y <span class="boton claro">Resumen</span>: escoge el <b>Entregador</b> (o Todos), <b>Desde</b> y <b>Hasta</b> y pulsa <span class="boton">Ver</span>. Por cada día salen cuatro datos informativos —<b>Entregado</b> (lo que entregó: cargue menos novedades), <b>Cobros</b> (los que él trajo a su cuadre y los pagos administrativos), <b>Descuadre</b> (− es faltante) y <b>Devoluciones</b>— y abajo el total de cada columna. Pulsa un día para ver cada cobro, marcado como <b>de él</b> o <b>administrativo</b>.</li>
     </ol>
   </div>
 
   <div class="pantalla">
     <h3>5.5 Comisiones</h3>
-    <p>Muestra lo que ganó cada entregador por fecha: entregas, devoluciones, <b>base</b> sobre la que se calcula, el porcentaje y la <b>comisión</b>. La base es lo que el entregador <b>entregó</b> (el “Recibido” del cuadre) <b>más el efectivo de los pagos administrativos</b> que entraron a su cuadre: ese dinero no lo trae él, pero el cobro es suyo.</p>
+    <p>Muestra lo que ganó cada entregador por fecha: entregas, devoluciones, <b>base</b> sobre la que se calcula, el porcentaje y la <b>comisión</b>. La base es lo que el entregador <b>entregó</b> (el “Recibido” del cuadre) Cada pago administrativo confirmado en Cuadre Administrativo le deja además una comisión propia ese día (sin cuadre).</p>
   </div>
 
   <div class="pantalla">
@@ -504,16 +504,16 @@
       <li>Escoge el <b>entregador que cobra este pago</b>: el sistema sugiere quien dejó esa deuda en ruta; cámbialo si hoy lo cuadra otra persona.</li>
       <li>Guarda.</li>
     </ol>
-    <div class="aviso ojo"><b>Importante</b>Registrar el pago <u>no rebaja la deuda todavía</u>. Solo queda listo para que caja lo confirme dentro del cuadre del entregador. La deuda baja cuando caja confirma ese cuadre.</div>
+    <div class="aviso ojo"><b>Importante</b>Si al guardar ya elegiste la deuda y el entregador, el pago <u>se confirma de una vez</u>: la deuda baja y el pago cuenta como cobro (y comisión) de ese entregador. <b>Ya no pasa por el cuadre de caja.</b> Si no se puede aplicar (fiado ya pagado, excede la deuda, o el entregador ya registró en ruta un cobro igual), queda Identificado y el sistema avisa por qué.</div>
 
     <h3>6.2 Los estados de un pago</h3>
     <table>
       <tr><th>Estado</th><th>Qué significa</th></tr>
       <tr><td><span class="estado gris">Pendiente</span></td><td>El pago llegó pero aún no sabemos a qué deuda corresponde. Usa <span class="boton claro">Identificar</span>.</td></tr>
-      <tr><td><span class="estado alerta">Identificado</span></td><td>Ya tiene deuda y entregador. Espera el cuadre de caja. Se carga solo en el cuadre de ese entregador.</td></tr>
-      <tr><td><span class="estado ok">Vinculado</span></td><td>Caja lo confirmó. La deuda ya bajó. Queda en el historial.</td></tr>
+      <tr><td><span class="estado alerta">Identificado</span></td><td>Ya tiene deuda y entregador, pero falta confirmarlo: pulsa <span class="boton">Confirmar</span> en su fila.</td></tr>
+      <tr><td><span class="estado ok">Confirmado</span></td><td>La deuda ya bajó y el cobro es del entregador. Aparece en Historial → Resumen.</td></tr>
     </table>
-    <p>Arriba de la tabla puedes cambiar entre <b>Pendientes, Identificados, Vinculados y Todos</b>. Si te equivocaste de deuda, un pago <u>Identificado</u> se puede volver a identificar con otro destino.</p>
+    <p>Arriba de la tabla puedes cambiar entre <b>Pendientes, Identificados, Confirmados y Todos</b>. Si te equivocaste de deuda, un pago <u>Identificado</u> se puede volver a identificar con otro destino.</p>
 
     <h3>6.3 Otros recuadros de esta pantalla</h3>
     <ul>

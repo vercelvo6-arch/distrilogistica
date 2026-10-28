@@ -69,11 +69,11 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 - **Esperado** = Cargue − Novedades (fiado, devoluciones, repasos, agotados, descuentos, varios, errores de facturación) + Cobros CxC.
 - **Recibido (lo que "entregó")** = Billetes + Monedas + Consignaciones + Cobros por Nequi/banco. **La comisión del entregador se calcula sobre este total.**
 - Los **cobros en efectivo ya van dentro de billetes/monedas**: no se suman aparte al Recibido.
-- Un **pago administrativo en efectivo** (módulo Cuadre Administrativo) baja el fiado y deja su abono, pero **NO suma al Esperado ni a los cobros en efectivo**: el entregador nunca manipuló ese dinero. **Sí suma a la base de su comisión** (el cobro es suyo).
-- **Base de la comisión** = Recibido + efectivo de pagos administrativos del cuadre (`lib/comision-cuadre.ts`, que lo lee de `abonos_fiados` por la observación del abono). La misma fórmula al crear el cuadre, al editarlo y en `/api/comisiones/recalcular`. Hasta oct-2026 el cuadre agrupado usaba lo Entregado (sin cobros): las comisiones agrupadas anteriores quedaron con esa base.
+- **Pagos administrativos (Cuadre Administrativo) ya NO pasan por el cuadre de caja** (desde oct-2026): se confirman en Cuadre Administrativo (ver 5.4). El cuadre de caja solo tiene la plata que trae el entregador; si un borrador viejo trae una línea de pago administrativo, el servidor la ignora.
+- **Base de la comisión del cuadre** = Recibido. Para cuadres viejos que sí tenían pagos administrativos, se suma su efectivo (`lib/comision-cuadre.ts`, leído de `abonos_fiados`), igual al crear, editar y en `/api/comisiones/recalcular`. Hasta oct-2026 el cuadre agrupado usaba lo Entregado (sin cobros): las comisiones agrupadas anteriores quedaron con esa base. Cada pago administrativo confirmado deja su **propia fila de comisión** (sin cuadre, base = monto del pago); recalcular no la toca.
 - Hay un trigger (`after_cuadre_eliminar_planillas`) que **borra los pedidos (y sus productos) al insertar el cuadre**. El detalle de qué pidió cada cliente solo existe mientras caja no cuadra. Desde el script `020` (aplicado) ese detalle se copia a `pedidos_archivo` / `pedido_productos_archivo` justo antes de borrarse.
 - Al cerrar, un saldo de fiado **menor a $1 se cierra en 0** (los pagos son en pesos enteros y las facturas traen centavos).
-- El cuadre agrupado carga solo los cobros que el entregador registró en ruta y los **pagos administrativos identificados** de ese entregador.
+- El cuadre agrupado carga solo los cobros que el entregador registró en ruta.
 
 ### 5.2 Fiados y abonos (`fiados`, `abonos_fiados`)
 - Un abono apunta al fiado con `abonos_fiados.pedido_id = fiados.id` (como texto). `planilla_cobro_id IS NULL` = abono aún sin conciliar en un cuadre.
@@ -91,8 +91,8 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 - Si una consignación ya contada en un cuadre cerrado pertenece al mismo cliente, el botón "Aplicar este pago al fiado" (`/api/fiados/aplicar-pago-contado`) baja el fiado **sin volver a contar el efectivo**.
 
 ### 5.4 Cuadre Administrativo (`pagos_anticipados`, `components/pagos-anticipados-view.tsx`)
-- Estados: `pendiente` → `identificado` (se le asigna fiado/pedido de asesor y entregador) → `vinculado` (caja lo confirma dentro de un cuadre; recién ahí baja el fiado y se crea el abono).
-- Los `identificado` se **cargan solos** al abrir el cuadre agrupado de ese entregador, hasta que uno se confirme. No se cargan (y avisan) los que apuntan a un fiado ya pagado o que exceden su saldo en más de $1.000.
+- Estados: `pendiente` → `identificado` (tiene fiado/pedido de asesor y entregador) → `vinculado` (en pantalla "Confirmado"). Al identificar (o al registrar con destino) se **confirma de una vez** (`lib/pago-administrativo.ts`): baja el fiado y crea el abono con la observación `OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO` a nombre del entregador, o marca entregado el pedido de asesor, y registra la comisión. Quien confirma está autorizado por quien cuadra caja.
+- Si no se puede aplicar queda `identificado` con aviso y se confirma luego con el botón **Confirmar** (`/api/pagos-anticipados/[id]/confirmar`). No se aplica si el fiado ya está pagado, si excede el saldo en más de $1.000, o si el entregador ya registró en ruta un cobro igual (misma deuda y montos, sin cuadrar): puede ser el mismo pago anotado dos veces. Esos abonos directos nunca cuentan como "duplicado coherente" ni se precargan en el cuadre de caja.
 - Nunca borres un pago administrativo "para quitar la alerta": se perdería un pago real. Se ajusta o se parte.
 
 ### 5.5 Consignaciones
@@ -134,7 +134,7 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 
 ## 8. Pendientes conocidos
 - **Inventario:** conseguir un CSV de ventas del POS que contenga una devolución para confirmar cómo las marca; subir el inventario real del POS (con cantidades) para el cruce de saldos; interpretar la composición de los kits.
-- **Historial de cuadres:** ya existen el filtro por entregador y la pestaña **Cobros por entregador** (`components/cobros-entregador-view.tsx`, `/api/cuadres-caja/cobros`: cobros de fiados en cuadres cerrados, separando lo cobrado por él y los pagos administrativos). Falta: desglose de billetes, monedas y consignaciones (pedido / cobro / depósito) y descarga a Excel de esa pestaña.
+- **Historial de cuadres:** ya existen el filtro por entregador y la pestaña **Resumen** (`components/resumen-entregador-view.tsx`, `/api/cuadres-caja/resumen`): por día Entregado (Esperado − cobros del cuadre), Cobros (del cuadre + pagos administrativos por fecha de confirmación), Descuadre y Devoluciones, solo informativos (no se suman entre sí), con total por columna y detalle de cada cobro. Falta: desglose de billetes, monedas y consignaciones (pedido / cobro / depósito) y descarga a Excel.
 - Casilla "Pedido / Cobro / Depósito" por consignación en el cuadre (y reparto con sufijo `-#`).
 - Revisar ~60 abonos registrados directo por administración (sin entregador y sin cuadre; algunos de montos grandes) que no entran a ningún cuadre.
 - Revisar los ~28 fiados históricos pagados de más (necesita verificación caso por caso con el dueño).

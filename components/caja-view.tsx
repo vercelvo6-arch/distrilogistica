@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast"
 import { CardNovedadesInteractivo } from "@/components/novedades/card-novedades-interactivo-caja"
 import { BadgeNovedades } from "@/components/novedades/badge-novedades-lista"
 import { ComisionesView } from "@/components/comisiones-view"
-import { CobrosEntregadorView } from "@/components/cobros-entregador-view"
+import { ResumenEntregadorView } from "@/components/resumen-entregador-view"
 import { CuadreEditModal } from "@/components/cuadre-edit-modal"
 
 interface CajaViewProps {
@@ -75,7 +75,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [filterFechaDesde, setFilterFechaDesde] = useState(getDateDaysAgo(7))
   const [filterFechaHasta, setFilterFechaHasta] = useState(new Date().toISOString().split("T")[0])
   const [selectedView, setSelectedView] = useState<"caja" | "historial" | "comisiones">("caja")
-  const [historialPestana, setHistorialPestana] = useState<"cuadres" | "cobros">("cuadres")
+  const [historialPestana, setHistorialPestana] = useState<"cuadres" | "resumen">("cuadres")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [recepciones, setRecepciones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -476,14 +476,14 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     return new Date().toISOString()
   }
 
-  // Pestañas del Historial: la lista de cuadres y la suma de cobros por entregador.
+  // Pestañas del Historial: la lista de cuadres y el Resumen por día de cada entregador.
   const pestanasHistorial = (
     <div className="flex gap-2 mb-4">
       <Button size="sm" variant={historialPestana === "cuadres" ? "default" : "outline"} onClick={() => setHistorialPestana("cuadres")}>
         Cuadres
       </Button>
-      <Button size="sm" variant={historialPestana === "cobros" ? "default" : "outline"} onClick={() => setHistorialPestana("cobros")}>
-        Cobros por entregador
+      <Button size="sm" variant={historialPestana === "resumen" ? "default" : "outline"} onClick={() => setHistorialPestana("resumen")}>
+        Resumen
       </Button>
     </div>
   )
@@ -1943,91 +1943,15 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
   }
 
-  // incluirPagosAnticipados: solo el flujo de cuadre AGRUPADO sabe mostrar los
-  // cobros de tipo "pago anticipado" (campos medioPago/monto/numeroFactura). El
-  // modal de cuadre individual sigue usando el formato viejo (montoEfectivo/montoNequi)
-  // y no debe recibirlos.
-  const loadCobrosDisponibles = async (entregador: string, incluirPagosAnticipados = false) => {
+  // Los pagos administrativos (Cuadre Administrativo) ya no entran al cuadre de caja: se
+  // confirman allá y cuentan como cobro del entregador en el Resumen del Historial.
+  const loadCobrosDisponibles = async (entregador: string) => {
     setLoadingCobros(true)
     try {
       // Cobros disponibles para vincular (asignados al entregador, sin cobrar aún)
       const res = await fetch(`/api/fiados/asignar-cobro?entregador=${encodeURIComponent(entregador)}`)
       const data = await res.json()
-      const cobrosFiados = data.cobros || []
-
-      // ✅ Pagos anticipados ya identificados para este entregador — se muestran como
-      // un cobro CxC más, listos para que caja los confirme dentro de este cuadre.
-      let cobrosPagosAnticipados: any[] = []
-      if (incluirPagosAnticipados) {
-        try {
-          const resPA = await fetch(`/api/pagos-anticipados?estado=identificado&entregador=${encodeURIComponent(entregador)}`)
-          if (resPA.ok) {
-            const dataPA = await resPA.json()
-            cobrosPagosAnticipados = (dataPA.pagos || []).map((p: any) => ({
-              id:                    `pa-${p.id}`,
-              cliente:               p.cliente || "(sin nombre)",
-              ruta:                  null,
-              saldo_pendiente:       Number(p.monto),
-              esPagoAnticipado:      true,
-              pagoAnticipadoId:      p.id,
-              pagoAnticipadoTipo:    p.tipo,
-              pagoAnticipadoFiadoId: p.tipo === "pedido_asesor" ? p.pedido_id : p.fiado_id,
-              numeroFactura:         p.referencia,
-              medioPago:             p.medio_pago,
-              monto:                 String(p.monto),
-              fiadoEstado:           p.fiado_estado ?? null,
-              fiadoSaldo:            p.fiado_saldo != null ? Number(p.fiado_saldo) : null,
-            }))
-          }
-        } catch (ePA) {
-          console.error("[CAJA] Error cargando pagos anticipados identificados:", ePA)
-        }
-      }
-
-      setCobrosDisponibles([...cobrosFiados, ...cobrosPagosAnticipados])
-
-      // ✅ Los pagos administrativos ya identificados para este entregador se cargan solos
-      // en su cuadre (igual que los cobros que él registra en ruta) y permanecen cargados en
-      // cada cuadre hasta que uno se confirme. Caja puede quitar uno con la X. Se cargan solo
-      // los que tienen fiado asignado, cuyo fiado sigue vivo y mientras alcance el saldo; los
-      // demás se avisan para no dejarlos olvidados.
-      if (incluirPagosAnticipados && cobrosPagosAnticipados.length > 0) {
-        const aCargar: any[] = []
-        const conAviso: string[] = []
-        const saldoPorFiado = new Map<string, number>()
-        const ordenados = [...cobrosPagosAnticipados].sort((a, b) => Number(a.pagoAnticipadoId) - Number(b.pagoAnticipadoId))
-        for (const c of ordenados) {
-          if (idsDescartados.has(`pa:${c.pagoAnticipadoId}`)) continue
-          const etiqueta = `${c.cliente} ${formatCOP(Number(c.monto))}`
-          if (!c.pagoAnticipadoFiadoId) { conAviso.push(`${etiqueta} (sin fiado asignado)`); continue }
-          if (c.pagoAnticipadoTipo === "fiado") {
-            const vivo = !c.fiadoEstado || ["pendiente", "abono_parcial"].includes(c.fiadoEstado)
-            if (!vivo) { conAviso.push(`${etiqueta} (su fiado ya está pagado)`); continue }
-            const clave = String(c.pagoAnticipadoFiadoId)
-            const restante = saldoPorFiado.has(clave) ? saldoPorFiado.get(clave)! : Number(c.fiadoSaldo ?? Infinity)
-            // Hasta $1.000 de más es redondeo de la factura (el pago cierra el fiado); más que eso
-            // es un sobrepago real y se avisa en vez de cargarlo.
-            if (Number(c.monto) > restante + 1000) { conAviso.push(`${etiqueta} (excede el saldo del fiado)`); continue }
-            saldoPorFiado.set(clave, restante - Number(c.monto))
-          }
-          aCargar.push(c)
-        }
-        if (aCargar.length > 0) {
-          setCobrosVinculados(prev => [
-            ...prev,
-            ...aCargar
-              .filter(c => !prev.some(p => p.esPagoAnticipado && p.pagoAnticipadoId === c.pagoAnticipadoId))
-              .map(c => ({ ...c, localId: crypto.randomUUID() })),
-          ])
-        }
-        if (conAviso.length > 0) {
-          toast({
-            title: `${conAviso.length} pago(s) administrativo(s) no se cargaron`,
-            description: conAviso.slice(0, 5).join(" · ") + (conAviso.length > 5 ? " · …" : "") + ". Revísalos en Cuadre Administrativo.",
-            variant: "destructive",
-          })
-        }
-      }
+      setCobrosDisponibles(data.cobros || [])
 
       // ✅ Precargar automáticamente los cobros que el entregador ya registró en ruta,
       // sin importar cuántos días hayan pasado — el entregador puede estar varios días
@@ -2346,7 +2270,8 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }))
 
     setAgrupadoData(agrupado)
-    setCobrosVinculados(borrador?.cobrosVinculados || [])
+    // Un borrador de antes puede traer pagos administrativos: ya no van en el cuadre.
+    setCobrosVinculados((borrador?.cobrosVinculados || []).filter((c: any) => !c.esPagoAnticipado))
     setConsignaciones(borradorConsignaciones)
     setIdsDescartados(new Set(borrador?.idsDescartados || []))
     setDuplicadosBD(new Map())
@@ -2363,7 +2288,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
       descuento: totalDescuentosAgrupado.toString(),
       observaciones: borrador?.observaciones || "",
     }))
-    loadCobrosDisponibles(rutasSeleccionadas[0].entregador, true)
+    loadCobrosDisponibles(rutasSeleccionadas[0].entregador)
     loadConsignacionesEntregador(rutasSeleccionadas[0].entregador || "")
     setShowAgrupadoModal(true)
   }
@@ -2997,10 +2922,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
 
           {selectedView === "comisiones" ? (
             <ComisionesView />
-          ) : selectedView === "historial" && historialPestana === "cobros" ? (
+          ) : selectedView === "historial" && historialPestana === "resumen" ? (
             <Card className="p-6">
               {pestanasHistorial}
-              <CobrosEntregadorView />
+              <ResumenEntregadorView />
             </Card>
           ) : selectedView === "historial" ? (
             <Card className="p-6">
@@ -4647,7 +4572,7 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                                   type="button" size="sm" variant="outline" disabled={aplicandoPagoContado}
                                   className="h-7 text-xs border-amber-400 text-amber-900 hover:bg-amber-100"
                                   onClick={() => aplicarPagoContado(cobro, cobro.numeroReferencia || "", async () => {
-                                    if (agrupadoData?.entregador) await loadCobrosDisponibles(agrupadoData.entregador, true)
+                                    if (agrupadoData?.entregador) await loadCobrosDisponibles(agrupadoData.entregador)
                                   })}
                                 >
                                   {aplicandoPagoContado ? "Aplicando..." : "Aplicar este pago al fiado"}

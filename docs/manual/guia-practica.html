@@ -603,13 +603,13 @@
       <li>Para llevarlo a Excel elige las fechas y toca <span class="b verde">Exportar Excel</span>.</li>
       <li>Para volver a ver todos toca <span class="b borde">Quitar filtro</span>.</li>
     </ol>
-    <h4>Cobros por entregador</h4>
+    <h4>Resumen</h4>
     <ol class="pasos">
-      <li>Dentro de Historial toca <span class="b borde">Cobros por entregador</span> (al lado de <b>Cuadres</b>).</li>
-      <li>Escoge <b>Desde</b> y <b>Hasta</b> y toca <span class="b borde">Ver cobros</span>. Sale una fila por entregador (Alfonso y sus variantes juntos) con lo <b>cobrado por él</b> y los <b>pagos administrativos</b>, en efectivo y en Nequi/banco, y el <b>total</b>.</li>
-      <li>Toca un entregador para ver cada cobro: fecha del cuadre, número de cuadre, cliente, monto y referencia.</li>
+      <li>Dentro de Historial toca <span class="b borde">Resumen</span> (al lado de <b>Cuadres</b>).</li>
+      <li>Escoge el <b>Entregador</b> (o Todos), <b>Desde</b> y <b>Hasta</b> y toca <span class="b borde">Ver</span>. Sale una fila por día con cuatro datos: <b>Entregado</b>, <b>Cobros</b>, <b>Descuadre</b> y <b>Devoluciones</b>, y abajo el total de cada columna.<small>Son datos para informar: no se suman ni se restan entre ellos.</small></li>
+      <li>Toca un día para ver cada cobro: cliente, si fue <b>cobro de él</b> o <b>administrativo</b>, medio, monto y referencia.</li>
     </ol>
-    <div class="aviso bien"><b>Para qué sirve</b>Para revisar la comisión: los pagos administrativos en efectivo no los trae el entregador, pero el cobro es suyo y sí le suman a la comisión.</div>
+    <div class="aviso bien"><b>Para qué sirve</b>Para revisar lo que se le paga al entregador. Los pagos administrativos cuentan como cobro de él el día en que se confirman en Cuadre Administrativo.</div>
   </div>
 
   <!-- C9 -->
@@ -1016,10 +1016,10 @@
       <li>En <b>Líneas de pago</b> <i class="pin">1</i> pon <b>medio</b>, <b>monto</b> y <b>referencia</b> del comprobante.</li>
       <li>Si el cliente pagó el mismo saldo en varias partes (por ejemplo dos transferencias), toca <b>Agregar otro medio</b> <i class="pin">2</i>.</li>
       <li>En <b>“¿A qué corresponde este pago?”</b> <i class="pin">3</i> busca al cliente: <b>“¿Es abono de un fiado?”</b> o <b>“¿Es pago de pedido de asesor?”</b>. En la coincidencia correcta toca <b>Elegir</b>.</li>
-      <li>Escoge el <b>entregador que cobra este pago</b> <i class="pin">4</i>. El sistema sugiere quien dejó esa deuda en ruta; cámbialo si hoy lo cuadra otra persona.</li>
+      <li>Escoge el <b>entregador que cobra este pago</b> <i class="pin">4</i>. El sistema sugiere quien dejó esa deuda en ruta; cámbialo si hoy lo cobra otra persona.</li>
       <li>Toca <span class="b azul">Registrar pago</span> <i class="pin">5</i>.</li>
     </ol>
-    <div class="aviso ojo"><b>Importante</b>Registrar el pago <u>no baja la deuda todavía</u>. La deuda baja cuando <b>caja confirma el cuadre de ese entregador</b>: el pago aparece cargado solo en su cuadre.</div>
+    <div class="aviso ojo"><b>Importante</b>Si elegiste la deuda y el entregador, al registrar el pago <u>la deuda baja de una vez</u> y el pago cuenta como cobro (y comisión) de ese entregador. <b>No pasa por el cuadre de caja.</b> Si sale “Registrado sin confirmar”, lee el motivo, corrígelo y toca <b>Confirmar</b> en la tabla.</div>
     <div class="aviso mal"><b>Cuidado</b>Una referencia se usa una sola vez. Si el sistema dice “La referencia ya fue registrada antes”, revisa el comprobante.</div>
   </div>
 
@@ -1030,13 +1030,14 @@
       <li>En la tabla “Registros de cuadre administrativo” escoge el filtro <b>Pendientes</b>.</li>
       <li>Toca <span class="b borde">Identificar</span> en el pago.</li>
       <li>Busca al cliente (nombre o parte del nombre). Aparecen las coincidencias de fiados o de pedidos de asesor. Toca <b>Elegir</b> en la correcta.</li>
-      <li>Escoge el <b>entregador</b> que lo cobrará y confirma. El pago pasa a <span class="estado">Identificado</span>.</li>
+      <li>Escoge el <b>entregador</b> al que le cuenta el cobro y toca <span class="b borde">Confirmar pago</span>. La deuda baja en ese momento y el pago cuenta como cobro (y comisión) de ese entregador. <b>No pasa por el cuadre de caja.</b></li>
+      <li>Si un pago quedó <span class="estado">Identificado</span> (de antes, o porque no se pudo aplicar), toca <span class="b borde">Confirmar</span> en su fila.<small>Si sale un aviso (fiado ya pagado, el pago excede la deuda, o el entregador ya registró en ruta un cobro igual), corrígelo antes de confirmar.</small></li>
     </ol>
     <table>
       <tr><th>Estado</th><th>Significa</th></tr>
       <tr><td><span class="estado">Pendiente</span></td><td>Llegó el pago, aún no se sabe de qué deuda es.</td></tr>
-      <tr><td><span class="estado" style="background:var(--ambar-bg);color:var(--ambar)">Identificado</span></td><td>Ya tiene deuda y entregador. Espera el cuadre de caja.</td></tr>
-      <tr><td><span class="estado v">Vinculado</span></td><td>Caja lo confirmó: la deuda ya bajó.</td></tr>
+      <tr><td><span class="estado" style="background:var(--ambar-bg);color:var(--ambar)">Identificado</span></td><td>Ya tiene deuda y entregador, pero falta confirmarlo con <b>Confirmar</b>.</td></tr>
+      <tr><td><span class="estado v">Confirmado</span></td><td>La deuda ya bajó y el cobro es del entregador.</td></tr>
     </table>
     <div class="aviso mal"><b>Nunca</b>borres un pago para “quitar una alerta”: es dinero real. Si el pago es mayor que la deuda, pide ayuda para partirlo entre dos deudas del mismo cliente.</div>
   </div>
@@ -1082,7 +1083,7 @@
   <div class="caja" id="ad-comisiones">
     <h3>5. Comisiones</h3>
     <ol class="pasos">
-      <li>En <b>Comisiones</b> escoge <b>Fecha Inicio</b>, <b>Fecha Fin</b> y el <b>Entregador</b>. Verás el <b>Total General</b> y, por día: entregas, devoluciones, <b>base</b>, comisión y estado.<small>La base es lo que el entregador entregó (el “Recibido” del cuadre) más el efectivo de los pagos administrativos de su cuadre.</small></li>
+      <li>En <b>Comisiones</b> escoge <b>Fecha Inicio</b>, <b>Fecha Fin</b> y el <b>Entregador</b>. Verás el <b>Total General</b> y, por día: entregas, devoluciones, <b>base</b>, comisión y estado.<small>La base es lo que el entregador entregó (el “Recibido” del cuadre). Cada pago administrativo confirmado le deja además una comisión propia ese día.</small></li>
       <li>Para <b>pagar</b>: marca las comisiones y usa la opción de marcar como pagadas.</li>
       <li>Para <b>ajustar</b> un día: toca el lápiz, escribe el nuevo porcentaje o el nuevo monto y una nota (“acuerdo especial, bonificación…”). Queda marcado ✏️ Ajustado.</li>
       <li>Para cambiar el <b>porcentaje</b> de un entregador: botón <b>Configuración</b>.</li>

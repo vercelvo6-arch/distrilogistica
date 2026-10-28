@@ -35,6 +35,10 @@ export async function POST(request: Request) {
     let errores = 0
 
     for (const comision of comisiones) {
+      // Sin cuadre = comisión de un pago administrativo confirmado en Cuadre Administrativo:
+      // su base es el monto del pago y no hay cuadre contra el cual recalcularla.
+      if (comision.tipo_cuadre === 'sin_cuadre') continue
+
       // En un cuadre agrupado también cuenta el efectivo de pagos administrativos
       // (no lo trae el entregador, pero es cobro suyo). Misma base que al crear el cuadre.
       const efectivoAdministrativo = comision.tipo_cuadre === 'agrupado'

@@ -3,6 +3,7 @@ import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
 import { buscarReferenciasUsadas } from '@/lib/validar-referencia'
+import { confirmarPagoAdministrativo } from '@/lib/pago-administrativo'
 
 const ROLES_PERMITIDOS = ['caja', 'administrador']
 
@@ -94,6 +95,19 @@ export async function POST(request: NextRequest) {
           )
           RETURNING *
         `
+
+    // Con destino ya identificado en el formulario, se confirma de una vez (mismo paso
+    // que el botón Identificar). Si no se puede aplicar, queda identificado y se avisa.
+    if (tieneDestino) {
+      const r = await confirmarPagoAdministrativo(Number(pago.id), { id: session.user.id, nombre: session.user.nombre })
+      return NextResponse.json({
+        success: true,
+        pago,
+        coincidencias: [],
+        mensaje: r.ok ? r.mensaje : undefined,
+        aviso: r.ok ? undefined : `Quedó identificado, pero no se confirmó: ${r.error}`,
+      })
+    }
 
     // Si ya se identificó el destino explícitamente no hace falta buscar coincidencias.
     const coincidencias = tieneDestino

@@ -4,6 +4,7 @@ import { getDB } from '@/lib/db'
 import { handleDBError } from '@/lib/db-helpers'
 import { buscarReferenciasUsadas, esComprobante, referenciasRepetidasDentroDelCuadre } from '@/lib/validar-referencia'
 import { efectivoPagosAdministrativosDelCuadre, OBSERVACION_PAGO_ADMINISTRATIVO } from '@/lib/comision-cuadre'
+import { OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO } from '@/lib/pago-administrativo'
 
 export async function POST(request: Request) {
   const sql = getDB()
@@ -122,7 +123,10 @@ export async function POST(request: Request) {
     const totalEntregado = totalCargue - totalFiadosNuevos - totalDevoluciones - totalRepasos - totalAgotados
 
     // ─── 4. CALCULAR COBROS VINCULADOS ────────────────────────────────────────
-    const cobros = cobrosVinculados || []
+    // Los pagos administrativos ya no se confirman en el cuadre de caja (se confirman en
+    // Cuadre Administrativo). Si llega uno de un borrador viejo, se ignora: aplicarlo aquí
+    // bajaría el fiado dos veces.
+    const cobros = (cobrosVinculados || []).filter((c: any) => !c.esPagoAnticipado)
     // El efectivo de un pago administrativo (pago anticipado en efectivo) NO cuenta aquí: ya
     // entró por administración y el entregador nunca lo manipuló, así que no suma al esperado
     // ni a los cobros en efectivo del cuadre. Igual baja el fiado y deja su abono (más abajo).
@@ -207,6 +211,7 @@ export async function POST(request: Request) {
           AND monto_nequi = ${Number(c.montoNequi) || 0}
           AND LOWER(referencia_pago) = LOWER(${ref})
           AND planilla_cobro_id IS NULL
+          AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
       `) as any[]
       idsAbonoPropio.push(...coherentes.map((a: any) => a.id))
     }
@@ -427,6 +432,7 @@ export async function POST(request: Request) {
               AND monto_abono = ${efectivo}
               AND monto_nequi = ${nequi}
               AND planilla_cobro_id IS NULL
+              AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
             ORDER BY created_at ASC
             LIMIT 1
           `
@@ -496,6 +502,7 @@ export async function POST(request: Request) {
               AND monto_abono = ${efectivo}
               AND monto_nequi = ${nequi}
               AND planilla_cobro_id IS NULL
+              AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
             ORDER BY created_at ASC
             LIMIT 1
           `
@@ -649,6 +656,7 @@ export async function POST(request: Request) {
               WHERE pedido_id = ${String(Number(cobro.id))}
                 AND entregador_cobro = ${entregador}
                 AND planilla_cobro_id IS NULL
+                AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
                 AND DATE(fecha_abono AT TIME ZONE 'America/Bogota') = CURRENT_DATE
             `
           }
