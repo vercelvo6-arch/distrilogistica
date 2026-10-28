@@ -347,15 +347,25 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
         const res = await fetch("/api/pagos-anticipados/aplicar-pendientes", { method: "POST" })
         const data = await res.json()
         if (!res.ok) return
-        if (data.aplicados > 0) {
-          toast({ title: "Pagos aplicados", description: `${data.aplicados} pago(s) pendiente(s) se aplicaron a su fiado.` })
-          loadPagos()
-        }
-        if (data.sinAplicar?.length > 0) {
+        // Los posibles pagos repetidos no se avisan aquí: quedan en la lista como Identificado
+        // (con su botón Confirmar) y no deben salir en cada visita. Un solo aviso, porque la
+        // pantalla muestra un aviso a la vez.
+        const conProblema = (data.sinAplicar || []).filter((p: any) => p.codigo !== "posible_duplicado")
+        if (data.aplicados > 0) loadPagos()
+        if (data.aplicados > 0 || conProblema.length > 0) {
+          const partes: string[] = []
+          if (data.aplicados > 0) partes.push(`${data.aplicados} pago(s) pendiente(s) se aplicaron a su fiado.`)
+          if (conProblema.length > 0) {
+            partes.push(
+              `${conProblema.length} sin aplicar: ` +
+              conProblema.slice(0, 4).map((p: any) => `${p.cliente || `Pago ${p.id}`}: ${p.motivo}`).join(" · ") +
+              (conProblema.length > 4 ? " · …" : "")
+            )
+          }
           toast({
-            title: `${data.sinAplicar.length} pago(s) siguen sin aplicar`,
-            description: data.sinAplicar.slice(0, 4).map((p: any) => `${p.cliente || `Pago ${p.id}`}: ${p.motivo}`).join(" · ") + (data.sinAplicar.length > 4 ? " · …" : ""),
-            variant: "destructive",
+            title: conProblema.length > 0 ? "Revisar pagos administrativos" : "Pagos aplicados",
+            description: partes.join(" "),
+            variant: conProblema.length > 0 ? "destructive" : "default",
           })
         }
       } catch (error) {

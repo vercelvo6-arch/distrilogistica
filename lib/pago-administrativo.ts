@@ -251,17 +251,17 @@ export async function confirmarPagoAdministrativo(
 // registrado en ruta) siguen identificados y se devuelven con su motivo.
 export async function aplicarPagosPendientes(
   usuario: { id: string | number; nombre: string }
-): Promise<{ aplicados: number; sinAplicar: { id: number; cliente: string | null; motivo: string }[] }> {
+): Promise<{ aplicados: number; sinAplicar: { id: number; cliente: string | null; motivo: string; codigo?: string }[] }> {
   const sql = getDB()
   const pendientes = (await sql`
     SELECT id, cliente FROM pagos_anticipados WHERE estado = 'identificado' ORDER BY id
   `) as any[]
   let aplicados = 0
-  const sinAplicar: { id: number; cliente: string | null; motivo: string }[] = []
+  const sinAplicar: { id: number; cliente: string | null; motivo: string; codigo?: string }[] = []
   for (const p of pendientes) {
     const r = await confirmarPagoAdministrativo(Number(p.id), usuario)
     if (r.ok) aplicados++
-    else sinAplicar.push({ id: Number(p.id), cliente: p.cliente || null, motivo: r.error })
+    else sinAplicar.push({ id: Number(p.id), cliente: p.cliente || null, motivo: r.error, codigo: r.codigo })
   }
   return { aplicados, sinAplicar }
 }
