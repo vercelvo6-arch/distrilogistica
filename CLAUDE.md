@@ -53,7 +53,7 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 - Todo script que cambie datos debe ser: **una sola sentencia** (CTEs) → todo o nada; **idempotente** (si se corre dos veces, la segunda no hace nada);
   con guardas en el `WHERE`; y dejar copia de lo borrado en `audit_log`. Valídalo con `EXPLAIN` (sin ejecutar) antes de entregarlo.
 - Antes de borrar o modificar datos del dinero, mira primero el registro (qué es, de quién, qué lo referencia).
-- Revisa en la base si un script ya se aplicó antes de asumirlo (`scripts/` es solo el registro). Aplicados y verificados: 020 (respaldo antes de borrar cuadres), 026 (ajuste Yeimy/Leder) y 027 (tablas de inventario). Pendiente de correr: 031 (borra los fiados eliminados 733 y 2087 de Yeimy y sus pagos; solo queda su fiado vivo 1926).
+- Revisa en la base si un script ya se aplicó antes de asumirlo (`scripts/` es solo el registro). Aplicados y verificados: 020 (respaldo antes de borrar cuadres), 026 (ajuste Yeimy/Leder), 027 (tablas de inventario) y 031 (borró los fiados eliminados 733 y 2087 de Yeimy y sus pagos; solo queda su fiado vivo 1926).
 
 ## 4. Trampas técnicas (te van a ahorrar horas)
 - **El driver `neon()` HTTP NO hace transacciones reales.** `BEGIN/COMMIT` en llamadas separadas no hacen nada. Para atomicidad usa `sql.transaction([...])` o una sola sentencia con CTEs. `app/api/cuadres-caja/route.ts` todavía tiene `BEGIN/COMMIT` falsos (deuda conocida; por eso se hicieron idempotentes las operaciones).
