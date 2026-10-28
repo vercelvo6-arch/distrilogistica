@@ -34,6 +34,7 @@ import { useToast } from "@/hooks/use-toast"
 import { CardNovedadesInteractivo } from "@/components/novedades/card-novedades-interactivo-caja"
 import { BadgeNovedades } from "@/components/novedades/badge-novedades-lista"
 import { ComisionesView } from "@/components/comisiones-view"
+import { CobrosEntregadorView } from "@/components/cobros-entregador-view"
 import { CuadreEditModal } from "@/components/cuadre-edit-modal"
 
 interface CajaViewProps {
@@ -74,6 +75,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [filterFechaDesde, setFilterFechaDesde] = useState(getDateDaysAgo(7))
   const [filterFechaHasta, setFilterFechaHasta] = useState(new Date().toISOString().split("T")[0])
   const [selectedView, setSelectedView] = useState<"caja" | "historial" | "comisiones">("caja")
+  const [historialPestana, setHistorialPestana] = useState<"cuadres" | "cobros">("cuadres")
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
   const [recepciones, setRecepciones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -473,6 +475,18 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }
     return new Date().toISOString()
   }
+
+  // Pestañas del Historial: la lista de cuadres y la suma de cobros por entregador.
+  const pestanasHistorial = (
+    <div className="flex gap-2 mb-4">
+      <Button size="sm" variant={historialPestana === "cuadres" ? "default" : "outline"} onClick={() => setHistorialPestana("cuadres")}>
+        Cuadres
+      </Button>
+      <Button size="sm" variant={historialPestana === "cobros" ? "default" : "outline"} onClick={() => setHistorialPestana("cobros")}>
+        Cobros por entregador
+      </Button>
+    </div>
+  )
 
   async function loadHistorial() {
     try {
@@ -2490,7 +2504,9 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
             cliente:               c.cliente || "",
             montoEfectivo:         esEfectivo ? Number(c.monto) || 0 : 0,
             montoNequi:            esEfectivo ? 0 : Number(c.monto) || 0,
-            referencia:            buildReferenciaCobro(c),
+            // Sin comprobante (pago en efectivo) no hay referencia: antes se enviaba
+            // "Efectivo" y el cierre lo tomaba como duplicado de otros pagos en efectivo.
+            referencia:            c.numeroFactura?.trim() ? buildReferenciaCobro(c) : null,
             esPagoAnticipado:      true,
             pagoAnticipadoId:      c.pagoAnticipadoId,
             pagoAnticipadoTipo:    c.pagoAnticipadoTipo,
@@ -2981,8 +2997,14 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
 
           {selectedView === "comisiones" ? (
             <ComisionesView />
+          ) : selectedView === "historial" && historialPestana === "cobros" ? (
+            <Card className="p-6">
+              {pestanasHistorial}
+              <CobrosEntregadorView />
+            </Card>
           ) : selectedView === "historial" ? (
             <Card className="p-6">
+              {pestanasHistorial}
   <div className="flex justify-between items-center mb-4">
     <h2 className="text-lg font-semibold">Historial de Recepciones</h2>
     

@@ -1,5 +1,12 @@
 import { getDB } from './db'
 
+// Un comprobante de pago (Nequi, consignación, transferencia) siempre trae números.
+// Textos como "Efectivo" o "Nequi" no son una referencia: no identifican un pago y no
+// pueden compararse como duplicados.
+export function esComprobante(numero: string | null | undefined): boolean {
+  return /\d/.test(String(numero || ''))
+}
+
 // Busca, entre TODAS las tablas donde puede quedar guardada una referencia de pago
 // real (consignación, cobro CxC, pago anticipado — sin importar el evento que la
 // originó), cuáles de los números dados ya existen en algún lado. Es la única fuente

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { efectivoPagosAdministrativosDelCuadre } from '@/lib/comision-cuadre'
 
 export async function POST(request: Request) {
   try {
@@ -34,7 +35,12 @@ export async function POST(request: Request) {
     let errores = 0
 
     for (const comision of comisiones) {
-      const efectivoReal = Number(comision.efectivo_real)
+      // En un cuadre agrupado también cuenta el efectivo de pagos administrativos
+      // (no lo trae el entregador, pero es cobro suyo). Misma base que al crear el cuadre.
+      const efectivoAdministrativo = comision.tipo_cuadre === 'agrupado'
+        ? await efectivoPagosAdministrativosDelCuadre(Number(comision.origen_id))
+        : 0
+      const efectivoReal = Number(comision.efectivo_real) + efectivoAdministrativo
 
       if (efectivoReal === 0) {
         console.log(`[RECALCULAR] ⚠️ No se encontró efectivo real para comisión ${comision.id}`)

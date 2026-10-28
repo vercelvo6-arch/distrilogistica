@@ -69,7 +69,8 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 - **Esperado** = Cargue − Novedades (fiado, devoluciones, repasos, agotados, descuentos, varios, errores de facturación) + Cobros CxC.
 - **Recibido (lo que "entregó")** = Billetes + Monedas + Consignaciones + Cobros por Nequi/banco. **La comisión del entregador se calcula sobre este total.**
 - Los **cobros en efectivo ya van dentro de billetes/monedas**: no se suman aparte al Recibido.
-- Un **pago administrativo en efectivo** (módulo Cuadre Administrativo) baja el fiado y deja su abono, pero **NO suma al Esperado ni a los cobros en efectivo**: el entregador nunca manipuló ese dinero.
+- Un **pago administrativo en efectivo** (módulo Cuadre Administrativo) baja el fiado y deja su abono, pero **NO suma al Esperado ni a los cobros en efectivo**: el entregador nunca manipuló ese dinero. **Sí suma a la base de su comisión** (el cobro es suyo).
+- **Base de la comisión** = Recibido + efectivo de pagos administrativos del cuadre (`lib/comision-cuadre.ts`, que lo lee de `abonos_fiados` por la observación del abono). La misma fórmula al crear el cuadre, al editarlo y en `/api/comisiones/recalcular`. Hasta oct-2026 el cuadre agrupado usaba lo Entregado (sin cobros): las comisiones agrupadas anteriores quedaron con esa base.
 - Hay un trigger (`after_cuadre_eliminar_planillas`) que **borra los pedidos (y sus productos) al insertar el cuadre**. El detalle de qué pidió cada cliente solo existe mientras caja no cuadra. Desde el script `020` (aplicado) ese detalle se copia a `pedidos_archivo` / `pedido_productos_archivo` justo antes de borrarse.
 - Al cerrar, un saldo de fiado **menor a $1 se cierra en 0** (los pagos son en pesos enteros y las facturas traen centavos).
 - El cuadre agrupado carga solo los cobros que el entregador registró en ruta y los **pagos administrativos identificados** de ese entregador.
@@ -82,6 +83,8 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 
 ### 5.3 Antifraude de referencias (`lib/validar-referencia.ts`)
 - Una referencia de pago (Nequi, consignación…) **no puede usarse dos veces**. Se revisa en consignaciones, cobros (abonos), pagos anticipados y cuadres.
+- Solo cuenta como referencia lo que tiene números (`esComprobante`). Un pago administrativo en efectivo no tiene comprobante: antes se enviaba la palabra "Efectivo" y el cierre agrupado se bloqueaba por un duplicado invisible. Al bloquear, el cierre dice en qué línea del cuadre está cada referencia.
+- Al reintentar un cierre que se cayó a la mitad, los abonos que dejó ese intento (misma deuda, montos y referencia, sin cuadre) no cuentan como duplicado.
 - Índice único `idx_abonos_fiados_referencia_por_deuda (referencia_pago, pedido_id)`: el mismo comprobante puede repartirse entre **varias deudas del mismo cliente**, pero no reutilizarse para otro.
 - **Duplicado coherente:** mismo fiado + mismos montos + abono aún sin conciliar = es el mismo pago (no un fraude): se reutiliza en vez de crear otro. Así el entregador puede registrar en ruta y caja abrirlo sin que salga como duplicado.
 - `pagos_anticipados.referencia` es **única**; para partir un comprobante en dos pagos, la segunda parte lleva sufijo (`-2`).
@@ -131,7 +134,7 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 
 ## 8. Pendientes conocidos
 - **Inventario:** conseguir un CSV de ventas del POS que contenga una devolución para confirmar cómo las marca; subir el inventario real del POS (con cantidades) para el cruce de saldos; interpretar la composición de los kits.
-- **Historial de cuadres:** filtro por entregador (agrupando variantes como Alfonso), por rango de fechas y vista de **cobros por entregador** con el desglose: billetes, monedas, consignaciones (pedido / cobro / depósito de efectivo) y cobros por Nequi/banco; descarga a Excel para caja y administrador.
+- **Historial de cuadres:** ya existen el filtro por entregador y la pestaña **Cobros por entregador** (`components/cobros-entregador-view.tsx`, `/api/cuadres-caja/cobros`: cobros de fiados en cuadres cerrados, separando lo cobrado por él y los pagos administrativos). Falta: desglose de billetes, monedas y consignaciones (pedido / cobro / depósito) y descarga a Excel de esa pestaña.
 - Casilla "Pedido / Cobro / Depósito" por consignación en el cuadre (y reparto con sufijo `-#`).
 - Revisar ~60 abonos registrados directo por administración (sin entregador y sin cuadre; algunos de montos grandes) que no entran a ningún cuadre.
 - Revisar los ~28 fiados históricos pagados de más (necesita verificación caso por caso con el dueño).
