@@ -504,13 +504,13 @@
       <li>Escoge el <b>entregador que cobra este pago</b>: el sistema sugiere quien dejó esa deuda en ruta; cámbialo si hoy lo cuadra otra persona.</li>
       <li>Guarda.</li>
     </ol>
-    <div class="aviso ojo"><b>Importante</b>Si al guardar ya elegiste la deuda y el entregador, el pago <u>se confirma de una vez</u>: la deuda baja y el pago cuenta como cobro (y comisión) de ese entregador. <b>Ya no pasa por el cuadre de caja.</b> Si no se puede aplicar (fiado ya pagado, excede la deuda, o el entregador ya registró en ruta un cobro igual), queda Identificado y el sistema avisa por qué.</div>
+    <div class="aviso ojo"><b>Importante</b>Si al guardar ya elegiste la deuda, el pago <u>se confirma de una vez</u>: la deuda baja y el pago cuenta como cobro (y comisión, si es entregador) de quien elegiste o, si no eligiste, de quien tiene el fiado. <b>Ya no pasa por el cuadre de caja.</b> Si el cliente pagó de más, igual se aplica y el fiado queda en $0. Solo queda Identificado si hay un motivo real: el fiado ya está pagado o eliminado, el entregador ya registró en ruta un cobro igual, o parece el mismo pago subido dos veces (misma referencia, deuda y monto). Cada vez que abres esta pantalla, los pagos Identificados se intentan aplicar solos.</div>
 
     <h3>6.2 Los estados de un pago</h3>
     <table>
       <tr><th>Estado</th><th>Qué significa</th></tr>
       <tr><td><span class="estado gris">Pendiente</span></td><td>El pago llegó pero aún no sabemos a qué deuda corresponde. Usa <span class="boton claro">Identificar</span>.</td></tr>
-      <tr><td><span class="estado alerta">Identificado</span></td><td>Ya tiene deuda y entregador, pero falta confirmarlo: pulsa <span class="boton">Confirmar</span> en su fila.</td></tr>
+      <tr><td><span class="estado alerta">Identificado</span></td><td>Ya tiene deuda, pero no se pudo aplicar (el aviso dice por qué). Corrige lo que indica o pulsa <span class="boton">Confirmar</span> en su fila.</td></tr>
       <tr><td><span class="estado ok">Confirmado</span></td><td>La deuda ya bajó y el cobro es del entregador. Aparece en Historial → Resumen.</td></tr>
     </table>
     <p>Arriba de la tabla puedes cambiar entre <b>Pendientes, Identificados, Confirmados y Todos</b>. Si te equivocaste de deuda, un pago <u>Identificado</u> se puede volver a identificar con otro destino.</p>

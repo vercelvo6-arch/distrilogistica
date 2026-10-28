@@ -102,6 +102,7 @@ export async function confirmarPagoAdministrativo(
     }
   }
 
+  let sobrante = 0
   if (pago.tipo === 'fiado') {
     const fiadoId = Number(pago.fiado_id)
     const [fiado] = (await sql`
@@ -112,11 +113,9 @@ export async function confirmarPagoAdministrativo(
     if (!['pendiente', 'abono_parcial'].includes(fiado.estado)) {
       return { ok: false, error: `El fiado de ${fiado.cliente} ya está pagado: no se aplicó el pago`, status: 409 }
     }
-    // Hasta $1.000 de más es redondeo de la factura (el pago cierra el fiado); más que eso
-    // es un sobrepago real: mismo límite que usaba el cuadre de caja.
-    if (monto > Number(fiado.saldo_pendiente) + 1000) {
-      return { ok: false, error: `El pago excede el saldo del fiado de ${fiado.cliente}: ajústelo o pártalo`, status: 409 }
-    }
+    // Si pagó más de lo que debía (a veces consignan unos pesos de más), el pago igual se
+    // aplica: el fiado queda en 0 y el abono guarda el monto completo. Solo se avisa.
+    sobrante = Math.max(0, Math.round(monto - Number(fiado.saldo_pendiente)))
     // Si el entregador ya registró en ruta un cobro igual de este fiado (y aún no se
     // cuadró), puede ser el mismo pago anotado dos veces. No se adivina: se avisa.
     const [igual] = (await sql`
@@ -214,8 +213,9 @@ export async function confirmarPagoAdministrativo(
     WHERE entregador = ${entregador} AND activo = true
     LIMIT 1
   `) as any[]
+  const notaSobrante = sobrante >= 1000 ? ` Pagó ${formatoPesos(sobrante)} de más: el fiado quedó en $0.` : ''
   if (!config) {
-    return { ok: true, mensaje: `Pago confirmado y aplicado — cuenta como cobro de ${entregador} (sin comisión)` }
+    return { ok: true, mensaje: `Pago confirmado y aplicado — cuenta como cobro de ${entregador} (sin comisión).${notaSobrante}` }
   }
   try {
     const porcentaje = Number(config.porcentaje_comision)
@@ -237,12 +237,33 @@ export async function confirmarPagoAdministrativo(
     console.error('[PAGO ADMINISTRATIVO] No se registró la comisión:', error)
     return {
       ok: true,
-      mensaje: `Pago confirmado y aplicado — cuenta como cobro de ${entregador}`,
+      mensaje: `Pago confirmado y aplicado — cuenta como cobro de ${entregador}.${notaSobrante}`,
       aviso: 'No se pudo registrar la comisión de este cobro: revísela en Comisiones.',
     }
   }
 
-  return { ok: true, mensaje: `Pago confirmado y aplicado — cuenta como cobro y comisión de ${entregador}` }
+  return { ok: true, mensaje: `Pago confirmado y aplicado — cuenta como cobro y comisión de ${entregador}.${notaSobrante}` }
+}
+
+// Aplica solos los pagos que quedaron 'identificado' (de antes del cambio, o que no se
+// pudieron aplicar en su momento). Corre al abrir Cuadre Administrativo. Los que tienen un
+// motivo real para no aplicarse (fiado eliminado, posible pago repetido, cobro igual ya
+// registrado en ruta) siguen identificados y se devuelven con su motivo.
+export async function aplicarPagosPendientes(
+  usuario: { id: string | number; nombre: string }
+): Promise<{ aplicados: number; sinAplicar: { id: number; cliente: string | null; motivo: string }[] }> {
+  const sql = getDB()
+  const pendientes = (await sql`
+    SELECT id, cliente FROM pagos_anticipados WHERE estado = 'identificado' ORDER BY id
+  `) as any[]
+  let aplicados = 0
+  const sinAplicar: { id: number; cliente: string | null; motivo: string }[] = []
+  for (const p of pendientes) {
+    const r = await confirmarPagoAdministrativo(Number(p.id), usuario)
+    if (r.ok) aplicados++
+    else sinAplicar.push({ id: Number(p.id), cliente: p.cliente || null, motivo: r.error })
+  }
+  return { aplicados, sinAplicar }
 }
 
 function formatoPesos(n: number): string {

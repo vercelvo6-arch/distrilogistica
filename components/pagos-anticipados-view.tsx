@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useState, useEffect, useCallback, useMemo } from "react"
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -335,6 +335,34 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
   useEffect(() => {
     loadPagos()
   }, [loadPagos])
+
+  // Al abrir la pantalla se aplican solos los pagos que quedaron identificados sin bajar el
+  // fiado (de antes del cambio, o que no se pudieron aplicar en su momento). Una vez por visita.
+  const pendientesAplicados = useRef(false)
+  useEffect(() => {
+    if (pendientesAplicados.current) return
+    pendientesAplicados.current = true
+    ;(async () => {
+      try {
+        const res = await fetch("/api/pagos-anticipados/aplicar-pendientes", { method: "POST" })
+        const data = await res.json()
+        if (!res.ok) return
+        if (data.aplicados > 0) {
+          toast({ title: "Pagos aplicados", description: `${data.aplicados} pago(s) pendiente(s) se aplicaron a su fiado.` })
+          loadPagos()
+        }
+        if (data.sinAplicar?.length > 0) {
+          toast({
+            title: `${data.sinAplicar.length} pago(s) siguen sin aplicar`,
+            description: data.sinAplicar.slice(0, 4).map((p: any) => `${p.cliente || `Pago ${p.id}`}: ${p.motivo}`).join(" · ") + (data.sinAplicar.length > 4 ? " · …" : ""),
+            variant: "destructive",
+          })
+        }
+      } catch (error) {
+        console.error("[PAGOS-ANTICIPADOS] Error aplicando pendientes:", error)
+      }
+    })()
+  }, [loadPagos, toast])
 
   // ── Búsqueda de fiados (Sección A) ──────────────────────────────────────────
   useEffect(() => {
