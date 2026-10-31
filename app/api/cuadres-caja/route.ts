@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { getDB } from '@/lib/db'
 import { handleDBError } from '@/lib/db-helpers'
-import { buscarReferenciasUsadas, referenciasRepetidasDentroDelCuadre } from '@/lib/validar-referencia'
+import { buscarReferenciasUsadas, esComprobante, referenciasRepetidasDentroDelCuadre } from '@/lib/validar-referencia'
+import { efectivoPagosAdministrativosDelCuadre, OBSERVACION_PAGO_ADMINISTRATIVO } from '@/lib/comision-cuadre'
+import { OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO } from '@/lib/pago-administrativo'
 
 export async function POST(request: Request) {
   const sql = getDB()
@@ -121,7 +123,10 @@ export async function POST(request: Request) {
     const totalEntregado = totalCargue - totalFiadosNuevos - totalDevoluciones - totalRepasos - totalAgotados
 
     // ─── 4. CALCULAR COBROS VINCULADOS ────────────────────────────────────────
-    const cobros = cobrosVinculados || []
+    // Los pagos administrativos ya no se confirman en el cuadre de caja (se confirman en
+    // Cuadre Administrativo). Si llega uno de un borrador viejo, se ignora: aplicarlo aquí
+    // bajaría el fiado dos veces.
+    const cobros = (cobrosVinculados || []).filter((c: any) => !c.esPagoAnticipado)
     // El efectivo de un pago administrativo (pago anticipado en efectivo) NO cuenta aquí: ya
     // entró por administración y el entregador nunca lo manipuló, así que no suma al esperado
     // ni a los cobros en efectivo del cuadre. Igual baja el fiado y deja su abono (más abajo).
@@ -163,10 +168,20 @@ export async function POST(request: Request) {
     // Misma lógica (cliente-consciente) que /api/caja/recibir-efectivo — cuadre es
     // cuadre, individual o agrupado no deberían comportarse distinto — por eso vive en
     // lib/validar-referencia.ts en vez de reimplementarse en cada endpoint.
-    const entradasDelCuadre = [
-      ...(consignacionesArray || []).map((c: any) => ({ numero: c.numero, cliente: c.cliente })),
-      ...cobros.map((c: any) => ({ numero: c.referencia, cliente: c.cliente })),
-    ]
+    //
+    // Solo se revisa lo que es un comprobante (tiene al menos un número). Un pago
+    // administrativo en efectivo no tiene comprobante y la pantalla le ponía como
+    // referencia la palabra "Efectivo": todos chocaban entre sí y con los abonos de
+    // pagos administrativos ya confirmados, y el cierre se bloqueaba por un
+    // "duplicado" que no aparecía en ninguna línea.
+    const entradasDelCuadre: { numero: string; cliente: string; tipo: string }[] = [
+      ...(consignacionesArray || []).map((c: any) => ({ numero: c.numero, cliente: c.cliente, tipo: 'consignación' })),
+      ...cobros.map((c: any) => ({
+        numero: c.referencia,
+        cliente: c.cliente,
+        tipo: c.esPagoAnticipado ? 'pago administrativo' : c.yaRegistrado ? 'cobro registrado en ruta' : 'cobro',
+      })),
+    ].filter((e) => esComprobante(e.numero))
     const numerosDelCuadre = entradasDelCuadre
       .map((e: any) => String(e.numero || '').trim())
       .filter((n: string) => n.length > 0)
@@ -178,6 +193,28 @@ export async function POST(request: Request) {
     const idsAbonoPropio = cobros
       .map((c: any) => c.abonoId)
       .filter((id: any) => id)
+
+    // Si un intento anterior de este mismo cuadre se cayó a la mitad (el BEGIN/COMMIT
+    // de abajo no es una transacción real), sus abonos quedaron guardados sin cuadre.
+    // Al reintentar, el cobro se encontraba a sí mismo y se bloqueaba como duplicado,
+    // aunque más abajo ese mismo abono se reutiliza (duplicado coherente). Se excluye
+    // con el mismo criterio: misma deuda, mismos montos, misma referencia, sin cuadre.
+    for (const c of cobros) {
+      if (c.yaRegistrado || c.abonoId) continue
+      const ref = String(c.referencia || '').trim()
+      const deuda = c.esPagoAnticipado ? c.pagoAnticipadoFiadoId : c.id
+      if (!esComprobante(ref) || !deuda) continue
+      const coherentes = (await sql`
+        SELECT id FROM abonos_fiados
+        WHERE pedido_id = ${String(deuda)}
+          AND monto_abono = ${Number(c.montoEfectivo) || 0}
+          AND monto_nequi = ${Number(c.montoNequi) || 0}
+          AND LOWER(referencia_pago) = LOWER(${ref})
+          AND planilla_cobro_id IS NULL
+          AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
+      `) as any[]
+      idsAbonoPropio.push(...coherentes.map((a: any) => a.id))
+    }
     const idsPagoAnticipadoPropio = cobros
       .filter((c: any) => c.esPagoAnticipado)
       .map((c: any) => c.pagoAnticipadoId)
@@ -190,9 +227,22 @@ export async function POST(request: Request) {
     })
 
     if (repetidosEnEsteCuadre.size > 0 || yaUsadasEnBD.length > 0) {
-      const todas = Array.from(new Set([...repetidosEnEsteCuadre, ...yaUsadasEnBD]))
+      // Se dice en qué línea de ESTE cuadre está cada referencia, para que caja la
+      // encuentre en pantalla (antes solo llegaba el número, sin decir dónde estaba).
+      const describir = (numero: string, motivo: string) => {
+        const lineas = entradasDelCuadre
+          .filter((e) => String(e.numero || '').trim().toLowerCase() === numero)
+          .map((e) => `${e.tipo}${e.cliente ? ` de ${e.cliente}` : ''}`)
+        return `${numero} (${motivo}; en este cuadre: ${lineas.join(' y ') || 'sin línea'})`
+      }
+      const detalle = [
+        ...Array.from(repetidosEnEsteCuadre).map((n) => describir(n, 'repetida para clientes distintos')),
+        ...yaUsadasEnBD
+          .filter((n) => !repetidosEnEsteCuadre.has(n))
+          .map((n) => describir(n, 'ya registrada antes en el sistema')),
+      ]
       return NextResponse.json(
-        { error: `Referencia(s) duplicada(s) o ya registrada(s): ${todas.join(', ')}. Corrija antes de confirmar el cuadre.` },
+        { error: `Referencia(s) duplicada(s): ${detalle.join(' · ')}. Corrija antes de confirmar el cuadre.` },
         { status: 409 }
       )
     }
@@ -343,7 +393,7 @@ export async function POST(request: Request) {
                 ${nequi > 0 && efectivo > 0 ? 'mixto' : nequi > 0 ? 'nequi' : 'efectivo'},
                 ${cobro.referencia?.trim() || null},
                 NOW(),
-                ${'Cuadre administrativo confirmado en cuadre de caja'},
+                ${OBSERVACION_PAGO_ADMINISTRATIVO},
                 ${entregador},
                 'fiados',
                 NOW()
@@ -382,6 +432,7 @@ export async function POST(request: Request) {
               AND monto_abono = ${efectivo}
               AND monto_nequi = ${nequi}
               AND planilla_cobro_id IS NULL
+              AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
             ORDER BY created_at ASC
             LIMIT 1
           `
@@ -451,6 +502,7 @@ export async function POST(request: Request) {
               AND monto_abono = ${efectivo}
               AND monto_nequi = ${nequi}
               AND planilla_cobro_id IS NULL
+              AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
             ORDER BY created_at ASC
             LIMIT 1
           `
@@ -604,6 +656,7 @@ export async function POST(request: Request) {
               WHERE pedido_id = ${String(Number(cobro.id))}
                 AND entregador_cobro = ${entregador}
                 AND planilla_cobro_id IS NULL
+                AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
                 AND DATE(fecha_abono AT TIME ZONE 'America/Bogota') = CURRENT_DATE
             `
           }
@@ -643,7 +696,11 @@ export async function POST(request: Request) {
       `
       if (configComision) {
         const porcentaje       = Number(configComision.porcentaje_comision)
-        const baseComisionable = Math.round(totalEntregado * 100) / 100
+        // Base = Recibido (lo que entregó) + efectivo de pagos administrativos, que no lo
+        // trae él pero es cobro suyo. Antes este cuadre usaba lo Entregado (sin cobros),
+        // distinto de editar el cuadre, del cuadre individual y de recalcular.
+        const efectivoAdministrativo = await efectivoPagosAdministrativosDelCuadre(cuadreId)
+        const baseComisionable = Math.round((totalFisicoRecibido + efectivoAdministrativo) * 100) / 100
         const montoComision    = Math.round(baseComisionable * (porcentaje / 100) * 100) / 100
         await sql`
           INSERT INTO comisiones (

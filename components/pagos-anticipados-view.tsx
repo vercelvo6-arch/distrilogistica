@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useState, useEffect, useCallback, useMemo } from "react"
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -96,12 +96,12 @@ function BadgeAntiguedad({ registradoEn }: { registradoEn: string }) {
 
 function BadgeEstado({ estado }: { estado: EstadoPago }) {
   if (estado === "vinculado") {
-    return <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">Vinculado</Badge>
+    return <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">Confirmado</Badge>
   }
   if (estado === "identificado") {
     return (
       <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300">
-        Identificado - pendiente de cuadre
+        Identificado - falta confirmar
       </Badge>
     )
   }
@@ -336,6 +336,44 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
     loadPagos()
   }, [loadPagos])
 
+  // Al abrir la pantalla se aplican solos los pagos que quedaron identificados sin bajar el
+  // fiado (de antes del cambio, o que no se pudieron aplicar en su momento). Una vez por visita.
+  const pendientesAplicados = useRef(false)
+  useEffect(() => {
+    if (pendientesAplicados.current) return
+    pendientesAplicados.current = true
+    ;(async () => {
+      try {
+        const res = await fetch("/api/pagos-anticipados/aplicar-pendientes", { method: "POST" })
+        const data = await res.json()
+        if (!res.ok) return
+        // Los posibles pagos repetidos no se avisan aquí: quedan en la lista como Identificado
+        // (con su botón Confirmar) y no deben salir en cada visita. Un solo aviso, porque la
+        // pantalla muestra un aviso a la vez.
+        const conProblema = (data.sinAplicar || []).filter((p: any) => p.codigo !== "posible_duplicado")
+        if (data.aplicados > 0) loadPagos()
+        if (data.aplicados > 0 || conProblema.length > 0) {
+          const partes: string[] = []
+          if (data.aplicados > 0) partes.push(`${data.aplicados} pago(s) pendiente(s) se aplicaron a su fiado.`)
+          if (conProblema.length > 0) {
+            partes.push(
+              `${conProblema.length} sin aplicar: ` +
+              conProblema.slice(0, 4).map((p: any) => `${p.cliente || `Pago ${p.id}`}: ${p.motivo}`).join(" · ") +
+              (conProblema.length > 4 ? " · …" : "")
+            )
+          }
+          toast({
+            title: conProblema.length > 0 ? "Revisar pagos administrativos" : "Pagos aplicados",
+            description: partes.join(" "),
+            variant: conProblema.length > 0 ? "destructive" : "default",
+          })
+        }
+      } catch (error) {
+        console.error("[PAGOS-ANTICIPADOS] Error aplicando pendientes:", error)
+      }
+    })()
+  }, [loadPagos, toast])
+
   // ── Búsqueda de fiados (Sección A) ──────────────────────────────────────────
   useEffect(() => {
     if (!busquedaFiado.trim()) {
@@ -415,6 +453,8 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
     const errores: string[] = []
     let ultimoPago: PagoAnticipado | null = null
     let ultimasCoincidencias: Coincidencia[] = []
+    // Con destino elegido el pago se confirma al registrarlo; si no se pudo aplicar, llega un aviso.
+    const avisos: string[] = []
     try {
       for (const linea of lineasValidas) {
         try {
@@ -439,6 +479,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
           idsExitosos.add(linea.id)
           ultimoPago = data.pago
           ultimasCoincidencias = data.coincidencias || []
+          if (data.aviso) avisos.push(`${linea.medioPago} ${formatCOP(Number(linea.monto) || 0)}: ${data.aviso}`)
         } catch (error) {
           errores.push(
             `${linea.medioPago} ${formatCOP(Number(linea.monto) || 0)}: ${error instanceof Error ? error.message : "error desconocido"}`
@@ -450,6 +491,10 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
       if (numExitosos > 0) {
         setUltimoPagoRegistrado(ultimoPago)
         setCoincidencias(ultimasCoincidencias)
+      }
+
+      if (avisos.length > 0) {
+        toast({ title: "Registrado sin confirmar", description: avisos.join(" · "), variant: "destructive" })
       }
 
       if (errores.length === 0) {
@@ -527,6 +572,38 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
     return () => clearTimeout(timer)
   }, [pagoAIdentificar, busquedaDestino])
 
+  // Pagos que quedaron identificados (de antes, o que no se pudieron aplicar al identificar):
+  // se confirman aquí, ya no en el cuadre de caja.
+  const [confirmandoId, setConfirmandoId] = useState<number | null>(null)
+  const handleConfirmar = async (pago: PagoAnticipado) => {
+    if (!window.confirm(`¿Confirmar ${pago.medio_pago} ${formatCOP(Number(pago.monto))} de ${pago.cliente || "este cliente"} como cobro de ${pago.entregador_vinculado || "quien tiene el fiado"}?\n\nSe baja el fiado y le cuenta como cobro (y comisión, si es entregador). No pasa por el cuadre de caja.`)) return
+    setConfirmandoId(pago.id)
+    try {
+      const confirmar = (forzarDuplicado: boolean) =>
+        fetch(`/api/pagos-anticipados/${pago.id}/confirmar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ forzarDuplicado }),
+        })
+      let res = await confirmar(false)
+      let data = await res.json()
+      // Posible pago repetido: solo se aplica si quien confirma declara que es un pago distinto.
+      if (!res.ok && data.codigo === "posible_duplicado") {
+        if (!window.confirm(`${data.error}\n\n¿Es un pago DISTINTO y quieres aplicarlo de todas formas? Quedará anotado a tu nombre.`)) return
+        res = await confirmar(true)
+        data = await res.json()
+      }
+      if (!res.ok) throw new Error(data.error || "No se pudo confirmar el pago")
+      toast({ title: "Confirmado", description: data.mensaje })
+      if (data.aviso) toast({ title: "Atención", description: data.aviso, variant: "destructive" })
+      loadPagos()
+    } catch (error) {
+      toast({ title: "No se confirmó", description: error instanceof Error ? error.message : "No se pudo confirmar el pago", variant: "destructive" })
+    } finally {
+      setConfirmandoId(null)
+    }
+  }
+
   const handleIdentificar = async (destino: DestinoCandidato, entregadorFinal: string) => {
     if (!pagoAIdentificar) return
     if (!entregadorFinal.trim()) {
@@ -545,9 +622,18 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Error al identificar el pago")
+      if (!res.ok) {
+        // Quedó identificado pero sin aplicar (p. ej. posible pago repetido): se revisa y se
+        // confirma luego con el botón Confirmar de la lista.
+        if (res.status === 409 && String(data.error || "").startsWith("Quedó identificado")) {
+          cerrarIdentificar()
+          loadPagos()
+        }
+        throw new Error(data.error || "Error al identificar el pago")
+      }
 
-      toast({ title: "Identificado", description: data.mensaje })
+      toast({ title: "Confirmado", description: data.mensaje })
+      if (data.aviso) toast({ title: "Atención", description: data.aviso, variant: "destructive" })
       cerrarIdentificar()
       loadPagos()
     } catch (error) {
@@ -920,7 +1006,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                 >
                   {estado === "pendiente" ? "Pendientes"
                     : estado === "identificado" ? "Identificados"
-                    : estado === "vinculado" ? "Vinculados"
+                    : estado === "vinculado" ? "Confirmados"
                     : "Todos"}
                 </Button>
               ))}
@@ -967,12 +1053,19 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                     <TableCell className="text-xs text-gray-500">{pago.registrado_por || "—"}</TableCell>
                     <TableCell><BadgeEstado estado={pago.estado} /></TableCell>
                     <TableCell>
-                      {pago.estado !== "vinculado" && (
-                        <Button size="sm" variant="outline" onClick={() => abrirIdentificar(pago)}>
-                          <Link2 className="h-3 w-3 mr-1" />
-                          {pago.estado === "identificado" ? "Reidentificar" : "Identificar"}
-                        </Button>
-                      )}
+                      <div className="flex gap-1">
+                        {pago.estado === "identificado" && (
+                          <Button size="sm" onClick={() => handleConfirmar(pago)} disabled={confirmandoId === pago.id}>
+                            {confirmandoId === pago.id ? "Confirmando..." : "Confirmar"}
+                          </Button>
+                        )}
+                        {pago.estado !== "vinculado" && (
+                          <Button size="sm" variant="outline" onClick={() => abrirIdentificar(pago)}>
+                            <Link2 className="h-3 w-3 mr-1" />
+                            {pago.estado === "identificado" ? "Reidentificar" : "Identificar"}
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1020,8 +1113,8 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                 </Select>
                 <p className="text-xs text-gray-400 mt-1">
                   Por defecto se sugiere quien dejó este {destinoParaConfirmar.tipo === "fiado" ? "fiado" : "pedido"} en ruta —
-                  cámbialo si quien realmente está cobrando/cuadrando hoy es otra persona. El pago quedará disponible
-                  en el cuadre de quien elijas aquí, sin pedir de nuevo el soporte.
+                  cámbialo si quien realmente está cobrando hoy es otra persona. Al confirmar se baja el fiado y el
+                  pago cuenta como cobro (y comisión) de quien elijas aquí. No pasa por el cuadre de caja.
                 </p>
               </div>
               <Button variant="ghost" size="sm" className="text-xs" onClick={() => setDestinoParaConfirmar(null)}>
@@ -1071,7 +1164,7 @@ export function PagosAnticipadosView({ user, onLogout }: PagosAnticipadosViewPro
                 disabled={identificando}
                 onClick={() => handleIdentificar(destinoParaConfirmar, entregadorConfirmar)}
               >
-                {identificando ? "Guardando..." : "Confirmar identificación"}
+                {identificando ? "Confirmando..." : "Confirmar pago"}
               </Button>
             )}
           </DialogFooter>

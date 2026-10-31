@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO } from '@/lib/pago-administrativo'
 import { handleDBError } from '@/lib/db-helpers'
 
 // GET /api/fiados/abonos-entregador?entregador=X
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
       JOIN fiados f ON f.id = af.pedido_id::integer
       WHERE af.entregador_cobro = ${entregador}
         AND af.planilla_cobro_id IS NULL
+        AND COALESCE(af.observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
         AND af.fecha_abono >= ${CUTOFF}::timestamptz
       ORDER BY af.fecha_abono DESC
     `

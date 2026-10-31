@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
+import { OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO } from '@/lib/pago-administrativo'
 import { buscarReferenciasUsadas, referenciasRepetidasDentroDelCuadre } from '@/lib/validar-referencia'
 
 export async function POST(request: NextRequest) {
@@ -230,6 +231,7 @@ export async function POST(request: NextRequest) {
             AND monto_abono = ${efectivo}
             AND monto_nequi = ${nequi}
             AND planilla_cobro_id IS NULL
+            AND COALESCE(observaciones, '') <> ${OBSERVACION_PAGO_ADMINISTRATIVO_DIRECTO}
           ORDER BY created_at ASC
           LIMIT 1
         `

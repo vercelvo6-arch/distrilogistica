@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDB } from '@/lib/db'
 import { getSession } from '@/lib/session'
 import { handleDBError } from '@/lib/db-helpers'
+import { confirmarPagoAdministrativo } from '@/lib/pago-administrativo'
 
 const ROLES_PERMITIDOS = ['caja', 'administrador']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PATCH /api/pagos-anticipados/[id]/identificar
-// Marca a qué fiado o pedido de asesor corresponde un pago anticipado, y a qué
-// entregador queda vinculado. NO mueve dinero todavía — no crea abono ni toca
-// saldos: eso solo ocurre cuando caja confirma el cuadre de ese entregador
-// (ver /api/cuadres-caja). El pago pasa de 'pendiente' a 'identificado'.
+// Marca a qué fiado o pedido de asesor corresponde un pago anticipado y a qué
+// entregador queda vinculado, y lo CONFIRMA de una vez: baja el fiado, deja el cobro
+// a nombre del entregador y registra su comisión (lib/pago-administrativo.ts). Ya no
+// espera al cuadre de caja: quien identifica está autorizado por quien cuadra caja.
+// Si algo impide aplicarlo (fiado ya pagado, excede el saldo…), queda 'identificado'
+// y se avisa, para corregirlo y confirmarlo después.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function PATCH(
   request: NextRequest,
@@ -40,9 +43,6 @@ export async function PATCH(
     if (!destinoId) {
       return NextResponse.json({ error: 'destinoId es requerido' }, { status: 400 })
     }
-    if (!entregadorVinculado) {
-      return NextResponse.json({ error: 'entregadorVinculado es requerido' }, { status: 400 })
-    }
 
     const sql = getDB()
 
@@ -59,15 +59,19 @@ export async function PATCH(
         tipo                 = ${destinoTipo},
         fiado_id             = ${destinoTipo === 'fiado' ? String(destinoId) : null},
         pedido_id            = ${destinoTipo === 'pedido_asesor' ? String(destinoId) : null},
-        entregador_vinculado = ${String(entregadorVinculado)},
+        entregador_vinculado = ${entregadorVinculado ? String(entregadorVinculado).trim() : null},
         estado               = 'identificado'
-      WHERE id = ${pagoId}
+      WHERE id = ${pagoId} AND estado <> 'vinculado'
     `
 
-    return NextResponse.json({
-      success: true,
-      mensaje: `Pago identificado — quedará disponible en el cuadre de ${entregadorVinculado}`,
-    })
+    const r = await confirmarPagoAdministrativo(pagoId, { id: session.user.id, nombre: session.user.nombre })
+    if (!r.ok) {
+      return NextResponse.json(
+        { error: `Quedó identificado, pero no se confirmó: ${r.error}`, codigo: r.codigo },
+        { status: r.status }
+      )
+    }
+    return NextResponse.json({ success: true, mensaje: r.mensaje, aviso: r.aviso })
   } catch (error) {
     return handleDBError(error, 'PAGOS_ANTICIPADOS_IDENTIFICAR')
   }
