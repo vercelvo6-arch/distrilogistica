@@ -344,6 +344,24 @@ export async function PATCH(request: NextRequest) {
         AND pp.codigo = ${faltante.codigo}
     `;
 
+    // El producto del mismo entregador y día puede estar en varias planillas (facturas): el faltante vive en una
+    // sola, pero Supervisión junta todas las líneas y basta una sin actualizar para que no se ponga en verde.
+    // Las demás líneas toman el mismo estado (los reemplazos no se tocan).
+    await sql`
+      UPDATE pedido_productos pp
+      SET estado_alistamiento = ${estadoProducto}
+      FROM pedidos p, planillas pl, planillas pl0
+      WHERE pl0.id = ${faltante.planilla_id}
+        AND pl.entregador = pl0.entregador
+        AND pl.fecha_alistamiento IS NOT DISTINCT FROM pl0.fecha_alistamiento
+        AND pl.id <> pl0.id
+        AND pp.pedido_id = p.id
+        AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = pl.id
+        AND p.estado = 'pendiente'
+        AND pp.codigo = ${faltante.codigo}
+        AND pp.estado_alistamiento <> 'reemplazo'
+    `;
+
     console.log(`[FALTANTES SUBSANAR] ✓ Estado actualizado en pedido_productos a: ${estadoProducto}`);
 
     return NextResponse.json({

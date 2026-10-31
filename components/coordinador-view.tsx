@@ -840,6 +840,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
               existing.estadoAlistamiento = "no_alistado"
             } else if (item.estadoAlistamiento === "incompleto" && existing.estadoAlistamiento !== "no_alistado") {
               existing.estadoAlistamiento = "incompleto"
+            } else if (existing.estadoAlistamiento === "pendiente" && item.estadoAlistamiento !== "pendiente") {
+              // Una línea sin marcar (otra factura/planilla del mismo producto) no debe tapar la que sí se
+              // marcó o subsanó; si no, el producto quedaba gris aunque ya estuviera completo.
+              existing.estadoAlistamiento = item.estadoAlistamiento
             }
             if (item.observacionesFaltante) {
               existing.observacionesFaltante = existing.observacionesFaltante
