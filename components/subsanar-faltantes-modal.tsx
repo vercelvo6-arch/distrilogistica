@@ -25,6 +25,8 @@ export interface Faltante {
   // Faltantes del mismo producto en las demás planillas de la tarjeta (uno por planilla):
   // se subsanan juntos y cantidad_faltante es la suma de todos.
   ids?: (string | number)[]
+  // Lo que escribió el alistador, por ruta, para compararlo con la cantidad antes de confirmar.
+  comentarios?: { rutas: string[]; texto: string }[]
 }
 
 interface SubsanarModalProps {
@@ -145,6 +147,23 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
                 <span className="font-semibold text-blue-900">Cantidad faltante: </span>
                 <span className="text-xl font-bold text-red-600">{faltante.cantidad_faltante}</span> unidades
               </p>
+              {faltante.comentarios && faltante.comentarios.length > 0 && (
+                <div className="mt-2 rounded bg-white/70 p-2">
+                  <p className="text-xs font-semibold text-blue-900">Comentario del alistador:</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {faltante.comentarios.map((c, i) => (
+                      <li key={i} className="text-sm text-gray-700">
+                        •{" "}
+                        {c.rutas.length > 0 ? (
+                          <strong>{c.rutas.length === 1 ? `Ruta ${c.rutas[0]}` : `Rutas ${c.rutas.join(", ")}`}:</strong>
+                        ) : null}{" "}
+                        {c.texto}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-xs text-gray-500">Si no coincide con la cantidad, guíate por lo que se contó en bodega.</p>
+                </div>
+              )}
             </div>
           </div>
 

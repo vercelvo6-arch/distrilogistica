@@ -382,6 +382,10 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       ruta: rutas.length > 0 ? rutas.join(", ") : sheets[0]?.ruta || "",
       estado: producto.estadoAlistamiento,
       observaciones: producto.observacionesFaltante,
+      comentarios: (() => {
+        const deFaltantes = comentariosPorRuta(pendientes)
+        return deFaltantes.length > 0 ? deFaltantes : comentariosPorRuta(comentariosDeLineas(producto))
+      })(),
     })
   }
 
@@ -1434,12 +1438,12 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                   .sort((a: any, b: any) => String(a.descripcion || "").localeCompare(String(b.descripcion || "")))
 
                                 if (faltantesPendientes.length === 0) return null
-                                const totalUnidades = faltantesPendientes.reduce((sum: number, f: any) => sum + f.pendiente, 0)
-
+                                // Lista de control: qué productos faltan por subsanar y lo que escribió el alistador.
+                                // Sin cifras calculadas, para que no choquen con sus comentarios.
                                 return (
                                   <div className="mb-4 bg-red-50 border-l-4 border-red-500 rounded p-3">
                                     <h4 className="font-bold text-sm text-red-900 mb-2">
-                                      ⚠️ Faltantes pendientes ({faltantesPendientes.length} productos, {totalUnidades} unidades)
+                                      ⚠️ Faltantes pendientes ({faltantesPendientes.length} {faltantesPendientes.length === 1 ? "producto" : "productos"})
                                     </h4>
                                     <ul className="space-y-1.5">
                                       {faltantesPendientes.map((f: any) => (
@@ -1448,23 +1452,12 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           <span>
                                             <strong>{f.descripcion || f.codigo}</strong>
                                             <span className="text-gray-500 font-mono text-xs"> ({f.codigo})</span>
-                                            {" — "}
-                                            <strong
-                                              className={
-                                                f.planillas > 1
-                                                  ? "px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 border border-orange-300"
-                                                  : "text-red-700"
-                                              }
-                                              title={f.planillas > 1 ? `Suma de ${f.planillas} planillas` : undefined}
-                                            >
-                                              faltan {f.pendiente}
-                                            </strong>
-                                            {" de "}{f.cantidad_solicitada}
-                                            {Number(f.cantidad_disponible) > 0
-                                              ? ` (se alistaron ${f.cantidad_disponible})`
-                                              : " (no se alistó)"}
-                                            {f.planillas > 1 ? <span className="text-orange-700"> · {f.planillas} planillas</span> : null}
-                                            {renderComentarios(f.filas)}
+                                            {f.planillas > 1 ? (
+                                              <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-orange-100 text-orange-800 border border-orange-300">
+                                                {f.planillas} planillas
+                                              </span>
+                                            ) : null}
+                                            {renderComentarios(f.filas) || <span className="text-gray-500"> · sin comentario del alistador</span>}
                                           </span>
                                         </li>
                                       ))}
