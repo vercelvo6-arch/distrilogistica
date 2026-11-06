@@ -243,6 +243,7 @@ export async function GET() {
         pe.saldo_pendiente,
         pe.descuento,
         pe.motivo_descuento,
+        pp.id as producto_id,
         pp.codigo,
         pp.nombre,
         pp.categoria,
@@ -282,6 +283,7 @@ export async function GET() {
           pe.cliente,
           pe.estado as pedido_estado,
           pe.observaciones as pedido_observaciones,
+          pp.id as producto_id,
           pp.codigo,
           pp.nombre,
           pp.categoria,
@@ -373,6 +375,7 @@ export async function GET() {
 
         if (row.codigo) {
           pedido.productos.push({
+            id: row.producto_id,
             codigo: row.codigo,
             nombre: row.nombre,
             categoria: row.categoria,
@@ -415,6 +418,7 @@ export async function GET() {
 
       if (row.codigo) {
         pedido.productos.push({
+          id: row.producto_id,
           codigo: row.codigo,
           nombre: row.nombre,
           categoria: row.categoria,

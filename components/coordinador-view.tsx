@@ -173,15 +173,17 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     // Construir payload limpio sin campos undefined
     const payload: any = {
       faltanteId: data.faltanteId,
+      // El producto puede tener un faltante en cada planilla de la tarjeta: se subsanan juntos.
+      faltanteIds: faltanteParaSubsanar?.ids && faltanteParaSubsanar.ids.length > 0 ? faltanteParaSubsanar.ids : undefined,
       tipoResolucion: data.tipoResolucion || 'completo',
       observaciones_resolucion: data.observaciones_resolucion || data.observaciones || 'Subsanado desde coordinador'
     }
 
     // Determinar cantidadResuelta según el tipo de resolución
     if (data.tipoResolucion === 'completo') {
-      // Para completo, usar la cantidad del faltante
+      // Para completo, usar la cantidad del faltante (la suma, si son varias planillas)
       const faltantesDelProducto = faltantes.find(f => f.id === data.faltanteId)
-      payload.cantidadResuelta = faltantesDelProducto?.cantidad_faltante || 0
+      payload.cantidadResuelta = faltanteParaSubsanar?.cantidad_faltante ?? faltantesDelProducto?.cantidad_faltante ?? 0
     } else if (data.tipoResolucion === 'parcial') {
       // Para parcial, usar la cantidad especificada
       const cantidad = data.cantidadResuelta || data.cantidadSubsanada || 0
@@ -324,37 +326,70 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     alert("Error al cargar datos de supervisión: " + (err as Error).message)
   }
 }
-  // ✅ FIX: Función async separada para abrir modal de subsanar (pedidos de último momento)
-  const handleAbrirSubsanar = async (producto: any, entregador: string, sheets: any[]) => {
-    const faltantesDelProducto = faltantes.filter(
-      (f) => f.codigo === producto.codigo && f.entregador === entregador && f.estado === "pendiente",
+  // Planillas del grupo (entregador y día) que tienen este producto por alistar, en el orden del grupo.
+  // Misma regla que getConsolidatedProducts.
+  const planillasConProducto = (sheets: any[], codigo: string) =>
+    sheets.filter((s: any) =>
+      [
+        ...(s.orders || []).filter((o: any) => o.estado === "pendiente" && !o.mercanciaEnOtraPlanilla),
+        ...(s.mercanciaReasignada || []).filter((o: any) => o.estado === "pendiente"),
+      ].some((o: any) => o.items?.some((p: any) => p.codigo === codigo)),
     )
 
-    if (faltantesDelProducto.length > 0) {
-      setFaltanteParaSubsanar({
-        id: faltantesDelProducto[0].id,
-        codigo: producto.codigo,
-        descripcion: producto.descripcion,
-        categoria: producto.categoria,
-        cantidad_faltante: faltantesDelProducto[0].cantidad_faltante,
-        entregador: entregador,
-        ruta: sheets[0]?.ruta || "",
-        estado: producto.estadoAlistamiento,
-        observaciones: producto.observacionesFaltante,
-      })
+  // Desde el reparto por planilla, un producto puede tener un faltante en cada planilla del grupo.
+  // Se toman los del grupo, en su orden; si ninguno es del grupo (datos viejos), el primero como antes.
+  const faltantesDelGrupo = (lista: any[], codigo: string, entregador: string, sheets: any[]) => {
+    const orden = new Map(sheets.map((s: any, i: number) => [String(s.id), i]))
+    const delProducto = lista.filter((f) => f.codigo === codigo && f.entregador === entregador)
+    const delGrupo = delProducto
+      .filter((f) => orden.has(String(f.planilla_id)))
+      .sort((a, b) => (orden.get(String(a.planilla_id)) ?? 0) - (orden.get(String(b.planilla_id)) ?? 0))
+    return delGrupo.length > 0 ? delGrupo : delProducto.slice(0, 1)
+  }
+
+  const abrirModalSubsanar = (pendientes: any[], producto: any, entregador: string, sheets: any[]) => {
+    const rutas = Array.from(new Set(pendientes.map((f) => f.ruta).filter(Boolean)))
+    setFaltanteParaSubsanar({
+      id: pendientes[0].id,
+      ids: pendientes.map((f) => f.id),
+      codigo: producto.codigo,
+      descripcion: producto.descripcion,
+      categoria: producto.categoria,
+      cantidad_faltante: pendientes.reduce((s, f) => s + (Number(f.cantidad_faltante) || 0), 0),
+      entregador: entregador,
+      ruta: rutas.length > 0 ? rutas.join(", ") : sheets[0]?.ruta || "",
+      estado: producto.estadoAlistamiento,
+      observaciones: producto.observacionesFaltante,
+    })
+  }
+
+  // ✅ FIX: Función async separada para abrir modal de subsanar (pedidos de último momento)
+  const handleAbrirSubsanar = async (producto: any, entregador: string, sheets: any[]) => {
+    const pendientesDelGrupo = faltantesDelGrupo(
+      faltantes.filter((f) => f.estado === "pendiente"),
+      producto.codigo,
+      entregador,
+      sheets,
+    )
+
+    if (pendientesDelGrupo.length > 0) {
+      abrirModalSubsanar(pendientesDelGrupo, producto, entregador, sheets)
     } else {
-      // Crear faltante automáticamente si no existe (pedido de último momento)
-      const sheetDelEntregador = sheets.find((s: any) => s.entregador === entregador)
+      // Crear faltante automáticamente si no existe (pedido de último momento): se reparte entre las
+      // planillas del grupo que tienen el producto, como lo hace el alistador.
+      const conProducto = planillasConProducto(sheets, producto.codigo)
+      const sheetDelEntregador = conProducto[0] || sheets.find((s: any) => s.entregador === entregador)
       const createResponse = await fetch('/api/faltantes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           planilla_id: sheetDelEntregador?.id,
+          planillaIds: conProducto.map((s: any) => s.id),
           codigo: producto.codigo,
           descripcion: producto.descripcion,
           categoria: producto.categoria || '',
           entregador: entregador,
-          ruta: sheets[0]?.ruta || '',
+          ruta: sheetDelEntregador?.ruta || sheets[0]?.ruta || '',
           cantidadSolicitada: producto.cantidadTotal,
           cantidadDisponible: 0,
           cantidadFaltante: producto.cantidadTotal,
@@ -366,21 +401,14 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       })
       if (createResponse.ok) {
         const faltantesResp = await fetch('/api/faltantes').then(r => r.json())
-        const nuevoFaltante = (faltantesResp.faltantes || []).find(
-          (f: any) => f.codigo === producto.codigo && f.entregador === entregador && f.estado === 'pendiente'
+        const nuevos = faltantesDelGrupo(
+          (faltantesResp.faltantes || []).filter((f: any) => f.estado === 'pendiente'),
+          producto.codigo,
+          entregador,
+          sheets,
         )
-        if (nuevoFaltante) {
-          setFaltanteParaSubsanar({
-            id: nuevoFaltante.id,
-            codigo: producto.codigo,
-            descripcion: producto.descripcion,
-            categoria: producto.categoria,
-            cantidad_faltante: producto.cantidadTotal,
-            entregador: entregador,
-            ruta: sheets[0]?.ruta || '',
-            estado: producto.estadoAlistamiento,
-            observaciones: producto.observacionesFaltante,
-          })
+        if (nuevos.length > 0) {
+          abrirModalSubsanar(nuevos, producto, entregador, sheets)
         }
       } else {
         alert("Error al registrar el faltante automáticamente")
@@ -407,7 +435,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     const nota = window.prompt("Nota breve sobre el error de alistamiento (obligatoria):")
     if (!nota || !nota.trim()) return
 
-    const sheetDelEntregador = sheets.find((s: any) =>
+    // La cantidad real es de todo el grupo: se reparte entre sus planillas con este producto.
+    const conProducto = planillasConProducto(sheets, producto.codigo)
+    const sheetDelEntregador = conProducto[0] || sheets.find((s: any) =>
       [...(s.orders || []).filter((o: any) => !o.mercanciaEnOtraPlanilla), ...(s.mercanciaReasignada || [])].some((o: any) =>
         o.items?.some((p: any) => p.codigo === producto.codigo)
       )
@@ -419,6 +449,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           planilla_id: sheetDelEntregador?.id,
+          planillaIds: conProducto.map((s: any) => s.id),
           codigo: producto.codigo,
           descripcion: producto.descripcion,
           categoria: producto.categoria || '',
@@ -445,10 +476,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
   }
 
-  const handleRevertirFaltante = async (producto: any, entregador: string) => {
-    const faltantesDelProducto = faltantesResueltos.filter(
-      (f) => f.codigo === producto.codigo && f.entregador === entregador,
-    )
+  const handleRevertirFaltante = async (producto: any, entregador: string, sheets: any[] = []) => {
+    // Los faltantes del producto en las planillas del grupo se subsanan juntos: se revierten juntos.
+    const faltantesDelProducto = faltantesDelGrupo(faltantesResueltos, producto.codigo, entregador, sheets)
 
     if (faltantesDelProducto.length === 0) {
       alert("No se encontró el registro de faltante para revertir")
@@ -464,19 +494,22 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     }
 
     try {
-      const response = await fetch("/api/faltantes/revertir", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          faltanteId: faltantesDelProducto[0].id,
-          justificacion: justificacion.trim(),
-        }),
-      })
+      let result: any = {}
+      for (const f of faltantesDelProducto) {
+        const response = await fetch("/api/faltantes/revertir", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            faltanteId: f.id,
+            justificacion: justificacion.trim(),
+          }),
+        })
 
-      const result = await response.json()
+        result = await response.json()
 
-      if (!response.ok) {
-        throw new Error(result.error || "Error al revertir")
+        if (!response.ok) {
+          throw new Error(result.error || "Error al revertir")
+        }
       }
 
       alert(result.mensaje || "Faltante revertido correctamente")
@@ -834,7 +867,15 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         order.items.forEach((item: any) => {
           const comentarioItem = (item.comentario || "").trim()
           const existing = productMap.get(item.codigo)
+          // Cuánto aporta cada planilla al total (para marcar en naranja lo que viene sumado de varias).
+          const sumarPlanilla = (p: any) => {
+            const actual = p.porPlanilla.get(sheet.id) || { ruta: sheet.ruta, cantidad: 0 }
+            actual.cantidad += Number(item.cantidad) || 0
+            p.porPlanilla.set(sheet.id, actual)
+            if (item.observacionesFaltante && !p.notas.includes(item.observacionesFaltante)) p.notas.push(item.observacionesFaltante)
+          }
           if (existing) {
+            sumarPlanilla(existing)
             existing.cantidadTotal += item.cantidad
             if (item.estadoAlistamiento === "no_alistado") {
               existing.estadoAlistamiento = "no_alistado"
@@ -845,20 +886,24 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
               // marcó o subsanó; si no, el producto quedaba gris aunque ya estuviera completo.
               existing.estadoAlistamiento = item.estadoAlistamiento
             }
-            if (item.observacionesFaltante) {
-              existing.observacionesFaltante = existing.observacionesFaltante
-                ? `${existing.observacionesFaltante}; ${item.observacionesFaltante}`
-                : item.observacionesFaltante
+            // Las notas no se pegan una tras otra ("Pendiente 4; Pendiente 4"): se guarda la primera
+            // y las demás quedan en `notas` para verlas al pasar el mouse.
+            if (!existing.observacionesFaltante && item.observacionesFaltante) {
+              existing.observacionesFaltante = item.observacionesFaltante
             }
             if (comentarioItem) {
               existing.comentarios.push({ cliente: order.cliente, texto: comentarioItem })
             }
           } else {
-            productMap.set(item.codigo, {
+            const nuevo = {
               ...item,
               cantidadTotal: item.cantidad,
               comentarios: comentarioItem ? [{ cliente: order.cliente, texto: comentarioItem }] : [],
-            })
+              porPlanilla: new Map<string, { ruta: string; cantidad: number }>(),
+              notas: [] as string[],
+            }
+            sumarPlanilla(nuevo)
+            productMap.set(item.codigo, nuevo)
           }
         })
       })
@@ -1321,14 +1366,32 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                               {(() => {
                                 // Faltantes que el alistador marcó en estas planillas y que siguen sin resolver,
                                 // con lo que falta por entregar de cada uno.
+                                // El mismo producto en varias planillas va en UNA línea con las unidades sumadas
+                                // (naranja si suma más de una planilla), no repetido.
                                 const idsPlanillas = new Set(sheets.map((s) => s.id))
-                                const faltantesPendientes = faltantes
+                                const porCodigo = new Map<string, any>()
+                                faltantes
                                   .filter((f: any) => idsPlanillas.has(f.planilla_id))
-                                  .map((f: any) => ({
-                                    ...f,
-                                    pendiente: Math.max(0, (Number(f.cantidad_faltante) || 0) - (Number(f.cantidad_resuelta) || 0)),
-                                  }))
-                                  .filter((f: any) => f.pendiente > 0)
+                                  .forEach((f: any) => {
+                                    const pendiente = Math.max(0, (Number(f.cantidad_faltante) || 0) - (Number(f.cantidad_resuelta) || 0))
+                                    if (pendiente <= 0) return
+                                    const g = porCodigo.get(f.codigo)
+                                    if (!g) {
+                                      porCodigo.set(f.codigo, {
+                                        ...f,
+                                        pendiente,
+                                        cantidad_solicitada: Number(f.cantidad_solicitada) || 0,
+                                        cantidad_disponible: Number(f.cantidad_disponible) || 0,
+                                        planillas: 1,
+                                      })
+                                    } else {
+                                      g.pendiente += pendiente
+                                      g.cantidad_solicitada += Number(f.cantidad_solicitada) || 0
+                                      g.cantidad_disponible += Number(f.cantidad_disponible) || 0
+                                      g.planillas += 1
+                                    }
+                                  })
+                                const faltantesPendientes = Array.from(porCodigo.values())
                                   .sort((a: any, b: any) => String(a.descripcion || "").localeCompare(String(b.descripcion || "")))
 
                                 if (faltantesPendientes.length === 0) return null
@@ -1347,12 +1410,25 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                             <strong>{f.descripcion || f.codigo}</strong>
                                             <span className="text-gray-500 font-mono text-xs"> ({f.codigo})</span>
                                             {" — "}
-                                            <strong className="text-red-700">faltan {f.pendiente}</strong>
+                                            <strong
+                                              className={
+                                                f.planillas > 1
+                                                  ? "px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 border border-orange-300"
+                                                  : "text-red-700"
+                                              }
+                                              title={f.planillas > 1 ? `Suma de ${f.planillas} planillas` : undefined}
+                                            >
+                                              faltan {f.pendiente}
+                                            </strong>
                                             {" de "}{f.cantidad_solicitada}
                                             {Number(f.cantidad_disponible) > 0
                                               ? ` (se alistaron ${f.cantidad_disponible})`
                                               : " (no se alistó)"}
-                                            {f.observaciones ? <span className="text-gray-500"> · {f.observaciones}</span> : null}
+                                            {f.planillas > 1 ? (
+                                              <span className="text-orange-700"> · {f.planillas} planillas</span>
+                                            ) : f.observaciones ? (
+                                              <span className="text-gray-500"> · {f.observaciones}</span>
+                                            ) : null}
                                           </span>
                                         </li>
                                       ))}
@@ -1412,7 +1488,19 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                           </span>
                                         </td>
                                         <td className="text-right py-2 md:py-3 px-2 md:px-4 font-bold text-base">
-                                          {producto.cantidadTotal}
+                                          {(producto.porPlanilla?.size || 0) > 1 ? (
+                                            // Naranja = el total suma el mismo producto de varias planillas.
+                                            <span
+                                              className="inline-block px-2 py-0.5 rounded bg-orange-100 text-orange-800 border border-orange-300"
+                                              title={`Suma de ${producto.porPlanilla.size} planillas: ${Array.from(producto.porPlanilla.values())
+                                                .map((p: any) => `Ruta ${p.ruta}: ${p.cantidad}`)
+                                                .join(" + ")}`}
+                                            >
+                                              {producto.cantidadTotal}
+                                            </span>
+                                          ) : (
+                                            producto.cantidadTotal
+                                          )}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
                                           <span
@@ -1444,12 +1532,51 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                             <span className="text-orange-600 font-medium">
                                               🔄 {producto.productoReemplazo}
                                             </span>
-                                          ) : producto.observacionesFaltante || "-"}
+                                          ) : (() => {
+                                            // Lo que falta se muestra sumado (un faltante por planilla), no como
+                                            // notas pegadas; naranja si junta varias planillas.
+                                            const idsGrupo = new Set(sheets.map((s: any) => String(s.id)))
+                                            const pend = faltantes.filter(
+                                              (f: any) =>
+                                                f.estado === "pendiente" &&
+                                                f.codigo === producto.codigo &&
+                                                idsGrupo.has(String(f.planilla_id)),
+                                            )
+                                            const notasTodas = (producto.notas || []).join(" | ")
+                                            if (pend.length === 0) {
+                                              return <span title={notasTodas || undefined}>{producto.observacionesFaltante || "-"}</span>
+                                            }
+                                            const total = pend.reduce((s: number, f: any) => s + (Number(f.cantidad_faltante) || 0), 0)
+                                            return (
+                                              <span title={notasTodas || undefined}>
+                                                <span
+                                                  className={`font-semibold ${
+                                                    pend.length > 1
+                                                      ? "px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 border border-orange-300"
+                                                      : "text-red-700"
+                                                  }`}
+                                                >
+                                                  Faltan {total}
+                                                  {pend.length > 1 ? ` (${pend.length} planillas)` : ""}
+                                                </span>
+                                                {pend.length === 1 && producto.observacionesFaltante ? ` · ${producto.observacionesFaltante}` : ""}
+                                              </span>
+                                            )
+                                          })()}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
                                           {(() => {
                                             const tieneFaltanteResuelto = faltantesResueltos.some(
                                               (f) => f.codigo === producto.codigo && f.entregador === entregador
+                                            )
+                                            // Aunque el producto se vea completo, si en alguna planilla del grupo queda un
+                                            // faltante pendiente (p. ej. datos de antes de esta corrección), se puede subsanar.
+                                            const idsGrupo = new Set(sheets.map((s: any) => String(s.id)))
+                                            const quedaPendiente = faltantes.some(
+                                              (f: any) =>
+                                                f.estado === "pendiente" &&
+                                                f.codigo === producto.codigo &&
+                                                idsGrupo.has(String(f.planilla_id)),
                                             )
                                             return (
                                               <div className="flex flex-col gap-1 items-stretch">
@@ -1457,7 +1584,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                   variant="outline"
                                                   size="sm"
                                                   onClick={() => handleAbrirSubsanar(producto, entregador, sheets)}
-                                                  disabled={producto.estadoAlistamiento === "completo"}
+                                                  disabled={producto.estadoAlistamiento === "completo" && !quedaPendiente}
                                                   className="whitespace-nowrap"
                                                 >
                                                   Subsanar
@@ -1467,7 +1594,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                     variant="outline"
                                                     size="sm"
                                                     className="text-red-600 border-red-300 hover:bg-red-50 whitespace-nowrap"
-                                                    onClick={() => handleRevertirFaltante(producto, entregador)}
+                                                    onClick={() => handleRevertirFaltante(producto, entregador, sheets)}
                                                   >
                                                     Revertir
                                                   </Button>

@@ -69,6 +69,8 @@ export async function PATCH(request: NextRequest) {
 
     // 2️⃣ Desbloquear el botón "Subsanar" en Supervisión: SOLO la bandera de estado.
     //    cantidad_disponible NO se toca — eso pertenece al inventario y queda fuera del alcance.
+    //    Solo las líneas que tenían la novedad: las que el alistador dejó completas siguen completas
+    //    (cada línea guarda su propio estado, ver lib/alistamiento-reparto.ts).
     await sql`
       UPDATE pedido_productos pp
       SET estado_alistamiento = 'incompleto'
@@ -76,6 +78,9 @@ export async function PATCH(request: NextRequest) {
       WHERE pp.pedido_id = p.id
         AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${faltante.planilla_id}
         AND pp.codigo = ${faltante.codigo}
+        AND (COALESCE(pp.cantidad_faltante, 0) > 0
+             OR COALESCE(pp.unidad_incompleta, false) = true
+             OR pp.estado_alistamiento <> 'completo')
     `;
 
     console.log(`[FALTANTES REVERTIR] ✓ Faltante ${faltanteId} revertido por ${session.user.nombre || session.user.id}: ${justificacion}`);

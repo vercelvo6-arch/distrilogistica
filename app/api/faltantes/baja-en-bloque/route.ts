@@ -57,6 +57,10 @@ export async function POST(request: NextRequest) {
         WHERE pp.pedido_id = p.id
           AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = b.planilla_id
           AND pp.codigo = b.codigo
+          -- Solo las líneas con la novedad; las que se alistaron completas siguen completas.
+          AND (COALESCE(pp.cantidad_faltante, 0) > 0
+               OR COALESCE(pp.unidad_incompleta, false) = true
+               OR pp.estado_alistamiento <> 'completo')
         RETURNING pp.id
       ),
       auditoria AS (

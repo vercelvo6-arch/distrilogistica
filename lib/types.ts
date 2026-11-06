@@ -15,7 +15,9 @@ export interface OrderItem {
   cantidadFaltante?: number
   unidadIncompleta?: boolean
   observacionesFaltante?: string | null
-  estadoAlistamiento?: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado'
+  estadoAlistamiento?: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado' | 'reemplazo'
+  // id de la línea en pedido_productos (para pintar el reparto del alistamiento sin recargar)
+  ppId?: string
   // Campos para entregas parciales ✅ NUEVOS
   cantidadEntregada?: number | null
   subtotalAjustado?: number | null

@@ -22,6 +22,9 @@ export interface Faltante {
   estado: string
   tipo_resolucion?: string
   observaciones?: string
+  // Faltantes del mismo producto en las demás planillas de la tarjeta (uno por planilla):
+  // se subsanan juntos y cantidad_faltante es la suma de todos.
+  ids?: (string | number)[]
 }
 
 interface SubsanarModalProps {

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { repartirAlistamiento, repartirSubsanacion, resumirPorPlanilla, type EstadoAlistamiento } from "@/lib/alistamiento-reparto";
 
 // POST - Registrar faltante
+//
+// El alistador marca un producto UNA vez para toda su tarjeta (todas las planillas del entregador).
+// Con `planillaIds` (las planillas de la tarjeta, en el orden en que se ven) el total se reparte
+// línea por línea y cada planilla guarda su propio estado y su propio faltante
+// (lib/alistamiento-reparto.ts). Sin `planillaIds` se reparte dentro de `planilla_id`.
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
@@ -11,15 +17,16 @@ export async function POST(request: NextRequest) {
     }
     const body = await request.json();
     console.log('[FALTANTES] Guardando:', body);
-    const { 
+    const {
       planilla_id,
+      planillaIds,
       codigo,
       descripcion,
       categoria,
       entregador,
       ruta,
       cantidadSolicitada,
-      cantidadDisponible, 
+      cantidadDisponible,
       cantidadFaltante,
       unidadIncompleta,
       observaciones,
@@ -39,105 +46,150 @@ export async function POST(request: NextRequest) {
         ? `REEMPLAZO POR: ${String(productoReemplazo).trim().replace(/\|/g, '/')}${observacionesSinPrefijo ? ' | ' + observacionesSinPrefijo : ''}`
         : observaciones;
 
-    const estadoFinal = estadoAlistamiento || 
-      (cantidadDisponible === 0 || cantidadDisponible === null ? 'no_alistado' : 
+    const estadoFinal: EstadoAlistamiento = estadoAlistamiento ||
+      (cantidadDisponible === 0 || cantidadDisponible === null ? 'no_alistado' :
        (unidadIncompleta || cantidadDisponible < cantidadSolicitada ? 'incompleto' : 'completo'));
 
     console.log('[FALTANTES] Estado final:', estadoFinal);
 
-    // 1️⃣ Solo guardar faltante si NO es completo
-    if (estadoFinal !== 'completo') {
-      await sql`
-        INSERT INTO faltantes (
-          planilla_id,
-          entregador,
-          ruta,
-          codigo,
-          descripcion,
-          categoria,
-          cantidad_solicitada,
-          cantidad_disponible,
-          cantidad_faltante,
-          unidad_incompleta,
-          observaciones,
-          marcado_por,
-          estado,
-          fecha_marcado
-        ) VALUES (
-          ${planilla_id},
-          ${entregador},
-          ${ruta},
-          ${codigo},
-          ${descripcion},
-          ${categoria || ''},
-          ${cantidadSolicitada},
-          ${cantidadDisponible},
-          ${cantidadFaltante},
-          ${unidadIncompleta || false},
-          ${observacionesGuardar || ''},
-          ${marcadoPor},
-          'pendiente',
-          NOW()
-        )
-        ON CONFLICT (planilla_id, codigo) 
-        DO UPDATE SET
-          cantidad_disponible = ${cantidadDisponible},
-          cantidad_faltante = ${cantidadFaltante},
-          unidad_incompleta = ${unidadIncompleta || false},
-          observaciones = ${observacionesGuardar || ''},
-          fecha_marcado = NOW()
-      `;
-      
-      console.log('[FALTANTES] ✓ Faltante guardado');
-    } else {
-      await sql`
-        DELETE FROM faltantes 
-        WHERE planilla_id = ${planilla_id} 
-          AND codigo = ${codigo}
-      `;
-      console.log('[FALTANTES] ✓ Faltante eliminado (producto completo)');
+    const ids: string[] = Array.from(new Set(
+      (Array.isArray(planillaIds) && planillaIds.length > 0 ? planillaIds : [planilla_id])
+        .filter((id: any) => id !== null && id !== undefined && id !== '')
+        .map((id: any) => String(id))
+    ));
+
+    if (ids.length === 0 || !codigo) {
+      return NextResponse.json({ error: 'Faltan datos: planilla y código' }, { status: 400 });
     }
 
-    // 2️⃣ ACTUALIZAR ESTADO EN PEDIDO_PRODUCTOS
-    const pedidosAfectados = await sql`
-      SELECT DISTINCT pedido_id 
+    // Líneas con mercancía por alistar de este producto en esas planillas (mismas que ve el alistador:
+    // pedidos 'pendiente', la mercancía es de COALESCE(planilla_mercancia_id, planilla_id)).
+    const lineasDB = await sql`
+      SELECT pp.id::text AS id,
+             pp.cantidad,
+             COALESCE(p.planilla_mercancia_id, p.planilla_id)::text AS planilla_id
       FROM pedido_productos pp
       JOIN pedidos p ON pp.pedido_id = p.id
-      WHERE COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${planilla_id}
+      WHERE COALESCE(p.planilla_mercancia_id, p.planilla_id)::text = ANY(${ids}::text[])
         AND pp.codigo = ${codigo}
+        AND p.estado = 'pendiente'
+      ORDER BY array_position(${ids}::text[], COALESCE(p.planilla_mercancia_id, p.planilla_id)::text),
+               p.secuencia NULLS LAST, pp.id
     `;
 
-    console.log('[FALTANTES] 🔍 Query result:', {
-      planilla_id,
-      codigo,
-      pedidosEncontrados: pedidosAfectados.length,
-      pedidosIds: pedidosAfectados.map((p: any) => p.pedido_id)
-    });
+    const planillasDB = await sql`
+      SELECT id::text AS id, tipo_ruta, entregador FROM planillas WHERE id::text = ANY(${ids}::text[])
+    `;
+    const infoPlanilla = new Map<string, any>(planillasDB.map((p: any) => [p.id, p]));
 
-    console.log('[FALTANTES] Actualizando', pedidosAfectados.length, 'productos');
-
-    if (pedidosAfectados.length > 0) {
-      const pedidoIds = pedidosAfectados.map((p: any) => p.pedido_id);
-      
-      await sql`
-        UPDATE pedido_productos
-        SET 
-          estado_alistamiento = ${estadoFinal},
-          cantidad_disponible = ${cantidadDisponible},
-          cantidad_faltante = ${cantidadFaltante},
-          unidad_incompleta = ${unidadIncompleta || false},
-          observaciones_faltante = ${observacionesGuardar || null}
-        WHERE pedido_id = ANY(${pedidoIds}::text[])
-          AND codigo = ${codigo}
-      `;
+    // Sin líneas (p. ej. el pedido ya no está pendiente): se guarda como antes, en una sola planilla.
+    if (lineasDB.length === 0) {
+      if (estadoFinal !== 'completo') {
+        await sql`
+          INSERT INTO faltantes (
+            planilla_id, entregador, ruta, codigo, descripcion, categoria,
+            cantidad_solicitada, cantidad_disponible, cantidad_faltante, unidad_incompleta,
+            observaciones, marcado_por, estado, fecha_marcado
+          ) VALUES (
+            ${ids[0]}, ${entregador}, ${ruta}, ${codigo}, ${descripcion}, ${categoria || ''},
+            ${cantidadSolicitada}, ${cantidadDisponible}, ${cantidadFaltante}, ${unidadIncompleta || false},
+            ${observacionesGuardar || ''}, ${marcadoPor}, 'pendiente', NOW()
+          )
+          ON CONFLICT (planilla_id, codigo)
+          DO UPDATE SET
+            cantidad_disponible = ${cantidadDisponible},
+            cantidad_faltante = ${cantidadFaltante},
+            unidad_incompleta = ${unidadIncompleta || false},
+            observaciones = ${observacionesGuardar || ''},
+            fecha_marcado = NOW()
+        `;
+      } else {
+        await sql`DELETE FROM faltantes WHERE planilla_id = ${ids[0]} AND codigo = ${codigo} AND estado = 'pendiente'`;
+      }
+      return NextResponse.json({ success: true, estado: estadoFinal, productosActualizados: 0, lineas: [] });
     }
 
-    console.log('[FALTANTES] ✓ Estados actualizados en pedido_productos');
+    const disponibleTotal = estadoFinal === 'completo'
+      ? Number.MAX_SAFE_INTEGER
+      : Number(cantidadDisponible) || 0;
 
-    return NextResponse.json({ 
+    const lineas = repartirAlistamiento(
+      lineasDB.map((l: any) => ({ id: l.id, planillaId: l.planilla_id, cantidad: Number(l.cantidad) || 0 })),
+      disponibleTotal,
+      estadoFinal,
+    );
+    const porPlanilla = resumirPorPlanilla(lineas);
+    const obsLinea = (estado: EstadoAlistamiento) => (estado === 'completo' ? null : (observacionesGuardar || null));
+
+    // Todo en una sola transacción: o queda guardado en todas las planillas, o en ninguna.
+    const consultas: any[] = [];
+    for (const r of porPlanilla) {
+      const info = infoPlanilla.get(r.planillaId);
+      if (r.estado === 'completo') {
+        consultas.push(sql`
+          DELETE FROM faltantes
+          WHERE planilla_id = ${r.planillaId} AND codigo = ${codigo} AND estado = 'pendiente'
+        `);
+      } else {
+        consultas.push(sql`
+          INSERT INTO faltantes (
+            planilla_id, entregador, ruta, codigo, descripcion, categoria,
+            cantidad_solicitada, cantidad_disponible, cantidad_faltante, unidad_incompleta,
+            observaciones, marcado_por, estado, fecha_marcado
+          ) VALUES (
+            ${r.planillaId}, ${info?.entregador ?? entregador}, ${info?.tipo_ruta ?? ruta}, ${codigo},
+            ${descripcion}, ${categoria || ''},
+            ${r.solicitada}, ${r.disponible}, ${r.faltante}, ${r.unidadIncompleta},
+            ${observacionesGuardar || ''}, ${marcadoPor}, 'pendiente', NOW()
+          )
+          ON CONFLICT (planilla_id, codigo)
+          DO UPDATE SET
+            cantidad_solicitada = ${r.solicitada},
+            cantidad_disponible = ${r.disponible},
+            cantidad_faltante = ${r.faltante},
+            unidad_incompleta = ${r.unidadIncompleta},
+            observaciones = ${observacionesGuardar || ''},
+            fecha_marcado = NOW()
+        `);
+      }
+    }
+
+    consultas.push(sql`
+      UPDATE pedido_productos pp
+      SET estado_alistamiento = v.estado,
+          cantidad_disponible = v.disponible,
+          cantidad_faltante = v.faltante,
+          unidad_incompleta = v.unidad_incompleta,
+          observaciones_faltante = v.obs
+      FROM unnest(
+        ${lineas.map((l) => l.id)}::text[],
+        ${lineas.map((l) => l.estado)}::text[],
+        ${lineas.map((l) => l.disponible)}::numeric[],
+        ${lineas.map((l) => l.faltante)}::numeric[],
+        ${lineas.map((l) => l.unidadIncompleta)}::boolean[],
+        ${lineas.map((l) => obsLinea(l.estado))}::text[]
+      ) AS v(id, estado, disponible, faltante, unidad_incompleta, obs)
+      WHERE pp.id::text = v.id
+    `);
+
+    await sql.transaction(consultas);
+
+    console.log('[FALTANTES] ✓ Repartido en', porPlanilla.length, 'planilla(s) y', lineas.length, 'línea(s)');
+
+    return NextResponse.json({
       success: true,
       estado: estadoFinal,
-      productosActualizados: pedidosAfectados.length
+      productosActualizados: lineas.length,
+      planillas: porPlanilla,
+      lineas: lineas.map((l) => ({
+        id: l.id,
+        planillaId: l.planillaId,
+        estadoAlistamiento: l.estado,
+        cantidadDisponible: l.disponible,
+        cantidadFaltante: l.faltante,
+        unidadIncompleta: l.unidadIncompleta,
+        observacionesFaltante: obsLinea(l.estado),
+      })),
     });
   } catch (error) {
     console.error('[FALTANTES] ERROR:', error);
@@ -208,7 +260,94 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Subsana UN faltante (una planilla) y actualiza sus líneas de producto.
+async function subsanarUno(
+  sql: any,
+  faltante: any,
+  tipoResolucion: 'completo' | 'parcial' | 'definitivo',
+  cantidadResueltaFinal: number,
+  observacionesFinal: string,
+  userId: any,
+) {
+  let resultado: any;
+
+  if (tipoResolucion === 'parcial') {
+    const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal;
+    resultado = await sql`
+      UPDATE faltantes
+      SET
+        cantidad_faltante = ${cantidadPendiente},
+        cantidad_disponible = ${Number(faltante.cantidad_disponible) + cantidadResueltaFinal},
+        observaciones = ${observacionesFinal}
+      WHERE id = ${faltante.id}
+      RETURNING *
+    `;
+    console.log(`[FALTANTES SUBSANAR] ✓ Faltante ${faltante.id}: quedan ${cantidadPendiente} unidades pendientes`);
+  } else {
+    resultado = await sql`
+      UPDATE faltantes
+      SET
+        estado = ${tipoResolucion === 'completo' ? 'resuelto' : 'definitivo'},
+        tipo_resolucion = ${tipoResolucion},
+        cantidad_resuelta = ${cantidadResueltaFinal},
+        resuelto_por = ${userId},
+        fecha_resolucion = NOW(),
+        observaciones_resolucion = ${observacionesFinal}
+      WHERE id = ${faltante.id}
+      RETURNING *
+    `;
+    console.log(`[FALTANTES SUBSANAR] ✓ Faltante ${faltante.id} marcado como ${tipoResolucion}`);
+  }
+
+  const estadoProducto = tipoResolucion === 'definitivo' ? 'no_alistado' :
+                        cantidadResueltaFinal >= faltante.cantidad_faltante ? 'completo' :
+                        'incompleto';
+
+  // Solo las líneas de esta planilla que tenían la novedad: las que el alistador dejó completas
+  // se quedan como están (cada línea guarda su estado real, ver lib/alistamiento-reparto.ts).
+  await sql`
+    UPDATE pedido_productos pp
+    SET
+      estado_alistamiento = ${estadoProducto},
+      cantidad_disponible = CASE WHEN ${estadoProducto} = 'completo' THEN pp.cantidad ELSE pp.cantidad_disponible END,
+      observaciones_faltante = ${observacionesFinal}
+    FROM pedidos p
+    WHERE pp.pedido_id = p.id
+      AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${faltante.planilla_id}
+      AND pp.codigo = ${faltante.codigo}
+      AND (COALESCE(pp.cantidad_faltante, 0) > 0
+           OR COALESCE(pp.unidad_incompleta, false) = true
+           OR pp.estado_alistamiento <> 'completo')
+  `;
+
+  // Datos de antes del reparto por planilla: el registro vivía en una sola planilla y las demás
+  // del mismo entregador y día quedaban en 'pendiente'. Esas líneas toman el mismo estado para que
+  // Supervisión ponga el producto en verde. Las líneas que ya tienen su propio estado no se tocan.
+  await sql`
+    UPDATE pedido_productos pp
+    SET estado_alistamiento = ${estadoProducto}
+    FROM pedidos p, planillas pl, planillas pl0
+    WHERE pl0.id = ${faltante.planilla_id}
+      AND pl.entregador = pl0.entregador
+      AND pl.fecha_alistamiento IS NOT DISTINCT FROM pl0.fecha_alistamiento
+      AND pl.id <> pl0.id
+      AND pp.pedido_id = p.id
+      AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = pl.id
+      AND p.estado = 'pendiente'
+      AND pp.codigo = ${faltante.codigo}
+      AND pp.estado_alistamiento = 'pendiente'
+      AND NOT EXISTS (
+        SELECT 1 FROM faltantes f2
+        WHERE f2.planilla_id = pl.id AND f2.codigo = pp.codigo AND f2.estado = 'pendiente'
+      )
+  `;
+
+  return resultado[0];
+}
+
 // PATCH - Subsanar faltante
+// Con `faltanteIds` se subsana el producto de toda la tarjeta (un faltante por planilla): las
+// unidades conseguidas se reparten en orden entre esos faltantes.
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getSession();
@@ -217,18 +356,24 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { 
+    const {
       faltanteId,
+      faltanteIds,
       tipoResolucion,
       cantidadResuelta,
       observaciones_resolucion
     } = body;
 
-    // ✅ DEBUG: verificar qué faltanteId llega exactamente
-    console.log('[FALTANTES PATCH] faltanteId recibido:', faltanteId, typeof faltanteId);
+    console.log('[FALTANTES PATCH] faltanteId(s) recibido(s):', faltanteIds || faltanteId);
+
+    const lista: string[] = Array.from(new Set(
+      (Array.isArray(faltanteIds) && faltanteIds.length > 0 ? faltanteIds : [faltanteId])
+        .filter((id: any) => id !== null && id !== undefined && id !== '')
+        .map((id: any) => String(id))
+    ));
 
     // Validaciones
-    if (!faltanteId || !tipoResolucion) {
+    if (lista.length === 0 || !tipoResolucion) {
       return NextResponse.json(
         { error: 'Faltan datos requeridos: faltanteId y tipoResolucion' },
         { status: 400 }
@@ -253,123 +398,66 @@ export async function PATCH(request: NextRequest) {
 
     const sql = getDB();
 
-    // ✅ FIX: buscar sin filtrar por estado para dar mejor mensaje de error
-    const faltanteActual = await sql`
-      SELECT * FROM faltantes WHERE id = ${faltanteId}
+    const encontrados = await sql`
+      SELECT * FROM faltantes WHERE id::text = ANY(${lista}::text[])
     `;
 
-    if (faltanteActual.length === 0) {
-      console.log('[FALTANTES PATCH] ❌ Faltante no encontrado con id:', faltanteId);
+    if (encontrados.length === 0) {
+      console.log('[FALTANTES PATCH] ❌ Faltante no encontrado:', lista);
       return NextResponse.json(
         { error: 'Faltante no encontrado en la base de datos' },
         { status: 404 }
       );
     }
 
-    // ✅ FIX: verificar estado por separado para dar mensaje específico
-    if (faltanteActual[0].estado !== 'pendiente') {
-      console.log('[FALTANTES PATCH] ❌ Faltante ya procesado, estado actual:', faltanteActual[0].estado);
+    const enOrden = lista
+      .map((id) => encontrados.find((f: any) => String(f.id) === id))
+      .filter(Boolean) as any[];
+    const pendientes = enOrden.filter((f) => f.estado === 'pendiente');
+
+    if (pendientes.length === 0) {
       return NextResponse.json(
-        { error: `Este faltante ya fue procesado (estado: ${faltanteActual[0].estado})` },
+        { error: `Este faltante ya fue procesado (estado: ${enOrden[0].estado})` },
         { status: 409 }
       );
     }
 
-    const faltante = faltanteActual[0];
+    const totalFaltante = pendientes.reduce((s, f) => s + (Number(f.cantidad_faltante) || 0), 0);
 
-    // Calcular valores según tipo de resolución
-    let cantidadResueltaFinal: number;
-    
-    if (tipoResolucion === 'completo') {
-      cantidadResueltaFinal = faltante.cantidad_faltante;
-    } else if (tipoResolucion === 'parcial') {
-      cantidadResueltaFinal = cantidadResuelta;
-      
-      if (cantidadResueltaFinal > faltante.cantidad_faltante) {
-        return NextResponse.json(
-          { error: `No puede resolver más de lo que falta (máximo: ${faltante.cantidad_faltante})` },
-          { status: 400 }
-        );
-      }
-    } else {
-      cantidadResueltaFinal = 0;
+    if (tipoResolucion === 'parcial' && Number(cantidadResuelta) > totalFaltante) {
+      return NextResponse.json(
+        { error: `No puede resolver más de lo que falta (máximo: ${totalFaltante})` },
+        { status: 400 }
+      );
     }
 
-    let resultado: any;
+    const tocan = tipoResolucion === 'completo'
+      ? pendientes.map((f) => Number(f.cantidad_faltante) || 0)
+      : tipoResolucion === 'definitivo'
+        ? pendientes.map(() => 0)
+        : repartirSubsanacion(pendientes.map((f) => Number(f.cantidad_faltante) || 0), Number(cantidadResuelta));
 
-    if (tipoResolucion === 'parcial') {
-      const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal;
-      
-      resultado = await sql`
-        UPDATE faltantes
-        SET 
-          cantidad_faltante = ${cantidadPendiente},
-          cantidad_disponible = ${faltante.cantidad_disponible + cantidadResueltaFinal},
-          observaciones = ${observacionesFinal}
-        WHERE id = ${faltanteId}
-        RETURNING *
-      `;
-      
-      console.log(`[FALTANTES SUBSANAR] ✓ Faltante actualizado: quedan ${cantidadPendiente} unidades pendientes`);
-    } else {
-      resultado = await sql`
-        UPDATE faltantes
-        SET 
-          estado = ${tipoResolucion === 'completo' ? 'resuelto' : 'definitivo'},
-          tipo_resolucion = ${tipoResolucion},
-          cantidad_resuelta = ${cantidadResueltaFinal},
-          resuelto_por = ${session.user.id},
-          fecha_resolucion = NOW(),
-          observaciones_resolucion = ${observacionesFinal}
-        WHERE id = ${faltanteId}
-        RETURNING *
-      `;
-      
-      console.log(`[FALTANTES SUBSANAR] ✓ Faltante marcado como ${tipoResolucion}`);
+    const resultados: any[] = [];
+    let totalResuelto = 0;
+    for (let i = 0; i < pendientes.length; i++) {
+      const f = pendientes[i];
+      const toca = tocan[i];
+      let tipo: 'completo' | 'parcial' | 'definitivo';
+      if (tipoResolucion === 'definitivo') tipo = 'definitivo';
+      else if (toca >= (Number(f.cantidad_faltante) || 0)) tipo = 'completo';
+      else if (toca > 0) tipo = 'parcial';
+      else continue; // a este faltante no le alcanzó: sigue pendiente
+      resultados.push(await subsanarUno(sql, f, tipo, toca, observacionesFinal, session.user.id));
+      totalResuelto += toca;
     }
-    
-    const estadoProducto = tipoResolucion === 'definitivo' ? 'no_alistado' : 
-                          cantidadResueltaFinal >= faltante.cantidad_faltante ? 'completo' : 
-                          'incompleto';
-
-    await sql`
-      UPDATE pedido_productos pp
-      SET 
-        estado_alistamiento = ${estadoProducto},
-        cantidad_disponible = ${faltante.cantidad_disponible + cantidadResueltaFinal},
-        observaciones_faltante = ${observacionesFinal}
-      FROM pedidos p
-      WHERE pp.pedido_id = p.id
-        AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${faltante.planilla_id}
-        AND pp.codigo = ${faltante.codigo}
-    `;
-
-    // El producto del mismo entregador y día puede estar en varias planillas (facturas): el faltante vive en una
-    // sola, pero Supervisión junta todas las líneas y basta una sin actualizar para que no se ponga en verde.
-    // Las demás líneas toman el mismo estado (los reemplazos no se tocan).
-    await sql`
-      UPDATE pedido_productos pp
-      SET estado_alistamiento = ${estadoProducto}
-      FROM pedidos p, planillas pl, planillas pl0
-      WHERE pl0.id = ${faltante.planilla_id}
-        AND pl.entregador = pl0.entregador
-        AND pl.fecha_alistamiento IS NOT DISTINCT FROM pl0.fecha_alistamiento
-        AND pl.id <> pl0.id
-        AND pp.pedido_id = p.id
-        AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = pl.id
-        AND p.estado = 'pendiente'
-        AND pp.codigo = ${faltante.codigo}
-        AND pp.estado_alistamiento <> 'reemplazo'
-    `;
-
-    console.log(`[FALTANTES SUBSANAR] ✓ Estado actualizado en pedido_productos a: ${estadoProducto}`);
 
     return NextResponse.json({
       success: true,
-      faltante: resultado[0],
-      mensaje: 
-        tipoResolucion === 'completo' ? `Faltante resuelto completamente (${cantidadResueltaFinal} unidades)` :
-        tipoResolucion === 'parcial' ? `Resueltas ${cantidadResueltaFinal} unidades. Quedan ${faltante.cantidad_faltante - cantidadResueltaFinal} pendientes` :
+      faltante: resultados[0],
+      faltantes: resultados,
+      mensaje:
+        tipoResolucion === 'completo' ? `Faltante resuelto completamente (${totalResuelto} unidades)` :
+        tipoResolucion === 'parcial' ? `Resueltas ${totalResuelto} unidades. Quedan ${totalFaltante - totalResuelto} pendientes` :
         'Faltante marcado como definitivo (no hay producto disponible)'
     });
 

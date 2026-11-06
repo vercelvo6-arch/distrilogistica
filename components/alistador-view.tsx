@@ -31,9 +31,12 @@ interface ConsolidatedProduct {
   cantidadFaltante: number
   unidadIncompleta: boolean
   observacionesFaltante: string | null
-  estadoAlistamiento: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado'
+  estadoAlistamiento: 'pendiente' | 'completo' | 'incompleto' | 'no_alistado' | 'reemplazo'
   comentarios: { cliente: string; texto: string }[]
 }
+
+// Gravedad del estado: la tarjeta muestra el de la línea más grave (igual que lib/alistamiento-reparto.ts).
+const GRAVEDAD_ESTADO: Record<string, number> = { pendiente: 0, completo: 1, incompleto: 2, no_alistado: 3, reemplazo: 4 }
 
 export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [routeSheets, setRouteSheets] = useState<RouteSheet[]>([])
@@ -185,6 +188,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           unidadIncompleta: prod.unidad_incompleta || false,
           observacionesFaltante: prod.observaciones_faltante,
           estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
+          ppId: prod.id,
           comentario: prod.comentario,
         })),
       })),
@@ -210,6 +214,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
           unidadIncompleta: prod.unidad_incompleta || false,
           observacionesFaltante: prod.observaciones_faltante,
           estadoAlistamiento: prod.estado_alistamiento || 'pendiente',
+          ppId: prod.id,
           comentario: prod.comentario,
         })),
       })),
@@ -288,6 +293,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
   const getConsolidatedProducts = (sheets: RouteSheet[]): ConsolidatedProduct[] => {
     const productMap = new Map<string, ConsolidatedProduct>()
+    const lineas = new Map<string, { pendientes: number; registradas: number; peor: string }>()
 
     sheets.forEach((sheet) => {
       // Los pedidos reasignados desde cuadre de caja llegan con estado ya
@@ -305,38 +311,58 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       pedidosConMercancia.forEach((order) => {
         order.items.forEach((item) => {
           const comentarioItem = (item.comentario || "").trim()
-          const existing = productMap.get(item.codigo)
-          if (existing) {
-            existing.cantidadTotal += item.cantidad
-            if (item.cantidadFaltante) {
-              existing.cantidadFaltante += item.cantidadFaltante
-            }
-            if (item.unidadIncompleta) {
-              existing.unidadIncompleta = true
-            }
-            if (item.estadoAlistamiento && item.estadoAlistamiento !== 'pendiente') {
-              existing.estadoAlistamiento = item.estadoAlistamiento
-            }
-            if (comentarioItem) {
-              existing.comentarios.push({ cliente: order.cliente, texto: comentarioItem })
-            }
-          } else {
-            productMap.set(item.codigo, {
+          const estadoItem = item.estadoAlistamiento || 'pendiente'
+          const disponibleItem =
+            item.cantidadDisponible === null || item.cantidadDisponible === undefined ? null : Number(item.cantidadDisponible) || 0
+          let existing = productMap.get(item.codigo)
+          if (!existing) {
+            existing = {
               codigo: item.codigo,
               descripcion: item.descripcion,
               categoria: item.categoria,
-              cantidadTotal: item.cantidad,
+              cantidadTotal: 0,
               valorUnidad: item.valorUnidad,
-              cantidadDisponible: item.cantidadDisponible,
-              cantidadFaltante: item.cantidadFaltante || 0,
-              unidadIncompleta: item.unidadIncompleta || false,
-              observacionesFaltante: item.observacionesFaltante,
-              estadoAlistamiento: item.estadoAlistamiento || 'pendiente',
-              comentarios: comentarioItem ? [{ cliente: order.cliente, texto: comentarioItem }] : [],
-            })
+              cantidadDisponible: null,
+              cantidadFaltante: 0,
+              unidadIncompleta: false,
+              observacionesFaltante: null,
+              estadoAlistamiento: 'pendiente',
+              comentarios: [],
+            }
+            productMap.set(item.codigo, existing)
+            lineas.set(item.codigo, { pendientes: 0, registradas: 0, peor: 'pendiente' })
+          }
+          const resumen = lineas.get(item.codigo)!
+
+          // Cada línea (producto de un pedido) guarda su propia parte: aquí se suman.
+          existing.cantidadTotal += item.cantidad
+          existing.cantidadFaltante += Number(item.cantidadFaltante) || 0
+          if (disponibleItem !== null) {
+            existing.cantidadDisponible = (existing.cantidadDisponible || 0) + disponibleItem
+          }
+          if (item.unidadIncompleta) existing.unidadIncompleta = true
+          if (!existing.observacionesFaltante && item.observacionesFaltante) {
+            existing.observacionesFaltante = item.observacionesFaltante
+          }
+          if (estadoItem === 'pendiente') {
+            resumen.pendientes++
+          } else {
+            resumen.registradas++
+            if ((GRAVEDAD_ESTADO[estadoItem] ?? 0) > (GRAVEDAD_ESTADO[resumen.peor] ?? 0)) resumen.peor = estadoItem
+          }
+          if (comentarioItem) {
+            existing.comentarios.push({ cliente: order.cliente, texto: comentarioItem })
           }
         })
       })
+    })
+
+    // Estado del producto en la tarjeta: si alguna línea no se ha registrado (p. ej. llegó una planilla
+    // de otro entregador o un pedido nuevo), el producto sigue "Pendiente" para que se cuente completo.
+    // Si todas están registradas, se muestra el estado más grave.
+    productMap.forEach((p, codigo) => {
+      const r = lineas.get(codigo)!
+      p.estadoAlistamiento = r.pendientes > 0 ? 'pendiente' : (r.peor as ConsolidatedProduct['estadoAlistamiento'])
     })
 
     return Array.from(productMap.values()).sort((a, b) => {
@@ -383,23 +409,23 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
     try {
       setSaving(true)
 
-      // Misma regla que getConsolidatedProducts: solo los pedidos 'pendiente' tienen
-      // mercancía por alistar. Si se escogía una planilla donde el código solo estaba
-      // en un repaso o en un pedido ya resuelto, el estado se guardaba allí y el
-      // producto que se ve volvía a "Pendiente" (gris) al refrescar.
-      const sheetForEntregador = routeSheets.find(s =>
-        s.entregador === editingProduct.entregador &&
+      // Planillas de la tarjeta que tienen este producto por alistar (misma regla que
+      // getConsolidatedProducts: solo pedidos 'pendiente'; la mercancía reasignada cuenta en la
+      // planilla donde se cargó). El servidor reparte el total entre todas, línea por línea, para
+      // que cada planilla guarde su propio estado y, si se reasigna a otro entregador, se lleve
+      // solo lo suyo (lib/alistamiento-reparto.ts).
+      const codigo = editingProduct.product.codigo
+      const tieneProducto = (s: RouteSheet) =>
         [
           ...s.orders.filter(order => order.estado === 'pendiente' && !order.mercanciaEnOtraPlanilla),
           ...(s.mercanciaReasignada || []).filter(order => order.estado === 'pendiente'),
-        ].some(order =>
-          order.items.some(item => item.codigo === editingProduct.product.codigo)
-        )
-      )
+        ].some(order => order.items.some(item => item.codigo === codigo))
+      const planillasTarjeta = (groupedByDeliveryPerson[editingProduct.entregador] || []).filter(tieneProducto)
 
-      if (!sheetForEntregador) {
+      if (planillasTarjeta.length === 0) {
         throw new Error('No se encontró planilla para el entregador')
       }
+      const sheetForEntregador = planillasTarjeta[0]
 
       const faltante = editingProduct.product.cantidadTotal - disponible
 
@@ -408,7 +434,8 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           planilla_id: sheetForEntregador.id,
-          codigo: editingProduct.product.codigo,
+          planillaIds: planillasTarjeta.map(s => s.id),
+          codigo,
           descripcion: editingProduct.product.descripcion,
           categoria: editingProduct.product.categoria,
           entregador: editingProduct.entregador,
@@ -424,45 +451,36 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
         }),
       })
 
+      const resultado = await saveResponse.json().catch(() => ({}))
       if (!saveResponse.ok) {
-        const errorData = await saveResponse.json()
-        throw new Error(errorData.error || 'Error al guardar estado')
+        throw new Error(resultado.error || 'Error al guardar estado')
       }
 
-      let yaActualizado = false
-      // La mercancía de pedidos reasignados (mercanciaReasignada) también se pinta;
-      // si no, el producto seguía en gris hasta refrescar aunque ya estuviera guardado.
-      const marcarPedido = (order: any) => order.mercanciaEnOtraPlanilla ? order : ({
-              ...order,
-              items: order.items.map((item: any) => {
-                if (item.codigo === editingProduct.product.codigo) {
-                  const obs = !yaActualizado ? observaciones.trim() || null : null
-                  if (!yaActualizado) yaActualizado = true
-                  return {
-                    ...item,
-                    estadoAlistamiento: estadoSeleccionado,
-                    cantidadDisponible: disponible,
-                    cantidadFaltante: faltante,
-                    unidadIncompleta: estadoSeleccionado === 'incompleto',
-                    observacionesFaltante: obs,
-                    productoReemplazo: estadoSeleccionado === 'reemplazo' ? productoReemplazo.trim() : null,
-                  }
-                }
-                return item
-              })
-            })
-      const updatedSheets = routeSheets.map(sheet => {
-        if (sheet.entregador === editingProduct.entregador) {
+      // Se pinta lo que guardó el servidor en cada línea, sin volver a cargar todas las planillas.
+      const porLinea = new Map<string, any>((resultado.lineas || []).map((l: any) => [String(l.id), l]))
+      const marcarPedido = (order: any) => ({
+        ...order,
+        items: order.items.map((item: any) => {
+          const guardada = item.ppId ? porLinea.get(String(item.ppId)) : undefined
+          if (!guardada) return item
           return {
-            ...sheet,
-            orders: sheet.orders.map(marcarPedido),
-            mercanciaReasignada: (sheet.mercanciaReasignada || []).map(marcarPedido),
+            ...item,
+            estadoAlistamiento: guardada.estadoAlistamiento,
+            cantidadDisponible: guardada.cantidadDisponible,
+            cantidadFaltante: guardada.cantidadFaltante,
+            unidadIncompleta: guardada.unidadIncompleta,
+            observacionesFaltante: guardada.observacionesFaltante,
           }
-        }
-        return sheet
+        }),
       })
+      setRouteSheets(prev => prev.map(sheet => ({
+        ...sheet,
+        orders: sheet.orders.map(marcarPedido),
+        mercanciaReasignada: (sheet.mercanciaReasignada || []).map(marcarPedido),
+      })))
 
-      setRouteSheets(updatedSheets)
+      // Si el servidor no devolvió líneas (no había mercancía pendiente), se recarga para no mostrar algo viejo.
+      if (porLinea.size === 0) await loadData()
       setEditingProduct(null)
       setDisponibleInput("")
       setEstadoSeleccionado("completo")
