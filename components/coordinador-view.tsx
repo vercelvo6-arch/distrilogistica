@@ -28,6 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
+import { sumarNotasAlistador } from "@/lib/sumar-notas"
 import { EliminadosView } from "@/components/eliminados-view"
 import { devolverAlistamiento } from "@/lib/actions/planillas"
 
@@ -1397,12 +1398,14 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                         cantidad_solicitada: Number(f.cantidad_solicitada) || 0,
                                         cantidad_disponible: Number(f.cantidad_disponible) || 0,
                                         planillas: 1,
+                                        filas: [f],
                                       })
                                     } else {
                                       g.pendiente += pendiente
                                       g.cantidad_solicitada += Number(f.cantidad_solicitada) || 0
                                       g.cantidad_disponible += Number(f.cantidad_disponible) || 0
                                       g.planillas += 1
+                                      g.filas.push(f)
                                     }
                                   })
                                 const faltantesPendientes = Array.from(porCodigo.values())
@@ -1438,10 +1441,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                             {Number(f.cantidad_disponible) > 0
                                               ? ` (se alistaron ${f.cantidad_disponible})`
                                               : " (no se alistó)"}
-                                            {f.planillas > 1 ? (
-                                              <span className="text-orange-700"> · {f.planillas} planillas</span>
-                                            ) : f.observaciones ? (
-                                              <span className="text-gray-500"> · {f.observaciones}</span>
+                                            {f.planillas > 1 ? <span className="text-orange-700"> · {f.planillas} planillas</span> : null}
+                                            {sumarNotasAlistador(f.filas) ? (
+                                              <span className="text-gray-500"> · {sumarNotasAlistador(f.filas)}</span>
                                             ) : null}
                                           </span>
                                         </li>
@@ -1573,7 +1575,15 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                   Faltan {total}
                                                   {pend.length > 1 ? ` (${pend.length} planillas)` : ""}
                                                 </span>
-                                                {/* Las notas viejas ("Pendiente 2…") contradicen la cifra real: van solo al pasar el mouse. */}
+                                                {(() => {
+                                                  // Nota del alistador sumada entre planillas ("Pendiente 2 blíster" + "Pendiente 2
+                                                  // blíster" = "Pendiente 4 blíster"). Si el faltante ya no tiene la nota (se
+                                                  // reemplaza al subsanar en parte), se usa la de las líneas, sin repetir.
+                                                  const nota =
+                                                    sumarNotasAlistador(pend) ||
+                                                    sumarNotasAlistador((producto.notas || []).map((n: string) => ({ observaciones: n, fecha_marcado: null })))
+                                                  return nota ? <span className="text-gray-600"> · {nota}</span> : null
+                                                })()}
                                               </span>
                                             )
                                           })()}
