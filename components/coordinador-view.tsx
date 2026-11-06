@@ -1582,22 +1582,12 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                             if (pend.length === 0) {
                                               return <span title={notasTodas || undefined}>{producto.observacionesFaltante || "-"}</span>
                                             }
-                                            const total = pend.reduce((s: number, f: any) => s + (Number(f.cantidad_faltante) || 0), 0)
+                                            // Sin cifra calculada ("Faltan X"): se prestaba a confusión con lo que escribió
+                                            // el alistador. Solo sus comentarios, uno por ruta. Si el faltante ya no los tiene
+                                            // (se reemplazan al subsanar en parte), se toman de las líneas.
                                             return (
                                               <span title={notasTodas || undefined}>
-                                                <span
-                                                  className={`font-semibold ${
-                                                    pend.length > 1
-                                                      ? "px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 border border-orange-300"
-                                                      : "text-red-700"
-                                                  }`}
-                                                >
-                                                  Faltan {total}
-                                                  {pend.length > 1 ? ` (${pend.length} planillas)` : ""}
-                                                </span>
-                                                {/* Comentarios originales del alistador, uno por ruta. Si el faltante ya no los
-                                                    tiene (se reemplazan al subsanar en parte), se toman de las líneas. */}
-                                                {renderComentarios(pend) || renderComentarios(comentariosDeLineas(producto))}
+                                                {renderComentarios(pend) || renderComentarios(comentariosDeLineas(producto)) || "-"}
                                               </span>
                                             )
                                           })()}
