@@ -909,6 +909,20 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       })
     })
 
+    // Si en alguna planilla del grupo queda un faltante pendiente del producto, no puede verse
+    // "Completo" (pasaba con datos de antes del reparto por planilla): se muestra "Incompleto".
+    const idsGrupo = new Set(sheets.map((s: any) => String(s.id)))
+    const conFaltantePendiente = new Set(
+      faltantes
+        .filter((f: any) => f.estado === "pendiente" && idsGrupo.has(String(f.planilla_id)))
+        .map((f: any) => f.codigo),
+    )
+    productMap.forEach((p: any) => {
+      if (conFaltantePendiente.has(p.codigo) && (p.estadoAlistamiento === "completo" || p.estadoAlistamiento === "pendiente")) {
+        p.estadoAlistamiento = "incompleto"
+      }
+    })
+
     return Array.from(productMap.values()).sort((a: any, b: any) => {
       const cat = (a.categoria || "").localeCompare(b.categoria || "")
       return cat !== 0 ? cat : a.descripcion.localeCompare(b.descripcion)
@@ -1559,7 +1573,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                   Faltan {total}
                                                   {pend.length > 1 ? ` (${pend.length} planillas)` : ""}
                                                 </span>
-                                                {pend.length === 1 && producto.observacionesFaltante ? ` · ${producto.observacionesFaltante}` : ""}
+                                                {/* Las notas viejas ("Pendiente 2…") contradicen la cifra real: van solo al pasar el mouse. */}
                                               </span>
                                             )
                                           })()}
