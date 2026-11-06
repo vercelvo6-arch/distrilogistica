@@ -28,7 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
-import { sumarNotasAlistador } from "@/lib/sumar-notas"
+import { comentariosPorRuta, etiquetaRutas, type FaltanteConNota } from "@/lib/sumar-notas"
 import { EliminadosView } from "@/components/eliminados-view"
 import { devolverAlistamiento } from "@/lib/actions/planillas"
 
@@ -347,6 +347,27 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       .sort((a, b) => (orden.get(String(a.planilla_id)) ?? 0) - (orden.get(String(b.planilla_id)) ?? 0))
     return delGrupo.length > 0 ? delGrupo : delProducto.slice(0, 1)
   }
+
+  // Comentarios del alistador tal como los escribió, uno por línea con su ruta.
+  const renderComentarios = (filas: FaltanteConNota[]) => {
+    const lista = comentariosPorRuta(filas)
+    if (lista.length === 0) return null
+    return (
+      <ul className="mt-1 space-y-0.5">
+        {lista.map((c, i) => (
+          <li key={i} className="text-xs text-gray-700">
+            • {c.rutas.length > 0 ? <strong>{etiquetaRutas(c.rutas)}:</strong> : null} {c.texto}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  // Comentarios guardados en las líneas de producto (cuando el faltante ya no los tiene), por ruta.
+  const comentariosDeLineas = (producto: any): FaltanteConNota[] =>
+    Array.from((producto.porPlanilla?.values() || []) as Iterable<any>).flatMap((p: any) =>
+      (p.notas || []).map((n: string) => ({ observaciones: n, ruta: p.ruta, fecha_marcado: null })),
+    )
 
   const abrirModalSubsanar = (pendientes: any[], producto: any, entregador: string, sheets: any[]) => {
     const rutas = Array.from(new Set(pendientes.map((f) => f.ruta).filter(Boolean)))
@@ -870,8 +891,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
           const existing = productMap.get(item.codigo)
           // Cuánto aporta cada planilla al total (para marcar en naranja lo que viene sumado de varias).
           const sumarPlanilla = (p: any) => {
-            const actual = p.porPlanilla.get(sheet.id) || { ruta: sheet.ruta, cantidad: 0 }
+            const actual = p.porPlanilla.get(sheet.id) || { ruta: sheet.ruta, cantidad: 0, notas: [] as string[] }
             actual.cantidad += Number(item.cantidad) || 0
+            if (item.observacionesFaltante && !actual.notas.includes(item.observacionesFaltante)) actual.notas.push(item.observacionesFaltante)
             p.porPlanilla.set(sheet.id, actual)
             if (item.observacionesFaltante && !p.notas.includes(item.observacionesFaltante)) p.notas.push(item.observacionesFaltante)
           }
@@ -900,7 +922,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
               ...item,
               cantidadTotal: item.cantidad,
               comentarios: comentarioItem ? [{ cliente: order.cliente, texto: comentarioItem }] : [],
-              porPlanilla: new Map<string, { ruta: string; cantidad: number }>(),
+              porPlanilla: new Map<string, { ruta: string; cantidad: number; notas: string[] }>(),
               notas: [] as string[],
             }
             sumarPlanilla(nuevo)
@@ -1442,9 +1464,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                               ? ` (se alistaron ${f.cantidad_disponible})`
                                               : " (no se alistó)"}
                                             {f.planillas > 1 ? <span className="text-orange-700"> · {f.planillas} planillas</span> : null}
-                                            {sumarNotasAlistador(f.filas) ? (
-                                              <span className="text-gray-500"> · {sumarNotasAlistador(f.filas)}</span>
-                                            ) : null}
+                                            {renderComentarios(f.filas)}
                                           </span>
                                         </li>
                                       ))}
@@ -1575,15 +1595,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                   Faltan {total}
                                                   {pend.length > 1 ? ` (${pend.length} planillas)` : ""}
                                                 </span>
-                                                {(() => {
-                                                  // Nota del alistador sumada entre planillas ("Pendiente 2 blíster" + "Pendiente 2
-                                                  // blíster" = "Pendiente 4 blíster"). Si el faltante ya no tiene la nota (se
-                                                  // reemplaza al subsanar en parte), se usa la de las líneas, sin repetir.
-                                                  const nota =
-                                                    sumarNotasAlistador(pend) ||
-                                                    sumarNotasAlistador((producto.notas || []).map((n: string) => ({ observaciones: n, fecha_marcado: null })))
-                                                  return nota ? <span className="text-gray-600"> · {nota}</span> : null
-                                                })()}
+                                                {/* Comentarios originales del alistador, uno por ruta. Si el faltante ya no los
+                                                    tiene (se reemplazan al subsanar en parte), se toman de las líneas. */}
+                                                {renderComentarios(pend) || renderComentarios(comentariosDeLineas(producto))}
                                               </span>
                                             )
                                           })()}
