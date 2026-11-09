@@ -25,6 +25,17 @@ export function esNotaDelSistema(texto: string): boolean {
   return NOTA_DEL_SISTEMA.test(String(texto || "").trim())
 }
 
+// Comentario vigente de un faltante: el último que se escribió. Si el coordinador escribió uno al
+// subsanar y luego se revirtió, ese es el que vale ("faltan 3 displeys" reemplaza a "FALTAN 10
+// DISPLEYS" del alistador): Revertir solo devuelve el estado, no el comentario, y no se muestra
+// ningún historial. Los faltantes revertidos antes de este cambio también se ven así.
+export function comentarioVigente(f: { observaciones?: string | null; observaciones_resolucion?: string | null }): string {
+  const resolucion = String(f.observaciones_resolucion || "")
+  if (!resolucion.includes("[REVERTIDO")) return String(f.observaciones || "")
+  const notaCoordinador = resolucion.replace(/\s*\[REVERTIDO por [^\]]*\]/g, "").trim()
+  return notaCoordinador && !esNotaDelSistema(notaCoordinador) ? notaCoordinador : String(f.observaciones || "")
+}
+
 export function comentariosPorRuta(faltantes: FaltanteConNota[]): ComentarioRuta[] {
   const grupos = new Map<string, ComentarioRuta>()
   for (const f of faltantes) {

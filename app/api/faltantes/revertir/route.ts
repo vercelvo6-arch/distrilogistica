@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { comentarioVigente } from '@/lib/sumar-notas';
 
 // PATCH - Revertir un faltante ya resuelto/definitivo, para corregir un error de subsanación
 export async function PATCH(request: NextRequest) {
@@ -18,16 +19,11 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
+    // La justificación ya no se pide (el coordinador no la necesita); si llega, se guarda sin mostrarse.
     const { faltanteId, justificacion } = body;
 
     if (!faltanteId) {
       return NextResponse.json({ error: 'ID de faltante requerido' }, { status: 400 });
-    }
-
-    if (!justificacion?.trim()) {
-      return NextResponse.json({
-        error: 'Debe indicar una justificación para revertir'
-      }, { status: 400 });
     }
 
     const sql = getDB();
@@ -48,8 +44,18 @@ export async function PATCH(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Conservar el historial de la resolución anterior dentro de las observaciones
-    const observacionesConHistorial = `${faltante.observaciones_resolucion || ''} [REVERTIDO por ${session.user.nombre || session.user.id}: ${justificacion.trim()}]`.trim();
+    // Revertir solo devuelve el ESTADO. El comentario que se ve en Supervisión es el último que se
+    // escribió: si el coordinador escribió uno al subsanar ("faltan 3 displeys"), ese reemplaza al del
+    // alistador ("FALTAN 10 DISPLEYS") en vez de volver a aparecer el viejo junto al nuevo. Si no
+    // escribió nada (texto automático), queda el del alistador.
+    const ultimoComentario = comentarioVigente({
+      observaciones: faltante.observaciones,
+      observaciones_resolucion: `${faltante.observaciones_resolucion || ''} [REVERTIDO por ${session.user.nombre || session.user.id}]`,
+    });
+
+    // Marca interna de que se revirtió (no se muestra en ninguna pantalla mientras está pendiente).
+    const motivo = String(justificacion || '').trim();
+    const observacionesConHistorial = `${faltante.observaciones_resolucion || ''} [REVERTIDO por ${session.user.nombre || session.user.id}${motivo ? `: ${motivo}` : ''}]`.trim();
 
     // 1️⃣ Revertir el faltante: vuelve a "pendiente" con sus cantidades originales
     //    cantidad_faltante NO se toca aquí — para resoluciones "completo"/"definitivo"
@@ -62,6 +68,7 @@ export async function PATCH(request: NextRequest) {
         cantidad_resuelta = 0,
         resuelto_por = NULL,
         fecha_resolucion = NULL,
+        observaciones = ${ultimoComentario},
         observaciones_resolucion = ${observacionesConHistorial}
       WHERE id = ${faltanteId}
       RETURNING *

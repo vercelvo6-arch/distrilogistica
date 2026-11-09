@@ -28,7 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
-import { comentariosPorRuta, esNotaDelSistema, etiquetaRutas, type FaltanteConNota } from "@/lib/sumar-notas"
+import { comentarioVigente, comentariosPorRuta, esNotaDelSistema, etiquetaRutas, type FaltanteConNota } from "@/lib/sumar-notas"
 import { EliminadosView } from "@/components/eliminados-view"
 import { devolverAlistamiento } from "@/lib/actions/planillas"
 
@@ -511,11 +511,8 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       return
     }
 
-    const justificacion = window.prompt(
-      `¿Por qué se revierte la subsanación de "${producto.descripcion}"?\n\nEsta justificación quedará registrada.`
-    )
-
-    if (!justificacion || !justificacion.trim()) {
+    // Solo se confirma: el coordinador no necesita escribir un porqué ni ver un historial.
+    if (!window.confirm(`¿Revertir "${producto.descripcion}"?\n\nVuelve a quedar pendiente. El comentario escrito se conserva.`)) {
       return
     }
 
@@ -525,10 +522,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
         const response = await fetch("/api/faltantes/revertir", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            faltanteId: f.id,
-            justificacion: justificacion.trim(),
-          }),
+          body: JSON.stringify({ faltanteId: f.id }),
         })
 
         result = await response.json()
@@ -1565,11 +1559,18 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                             // Lo que falta se muestra sumado (un faltante por planilla), no como
                                             // notas pegadas; naranja si junta varias planillas.
                                             const idsGrupo = new Set(sheets.map((s: any) => String(s.id)))
-                                            const pend = faltantes.filter(
-                                              (f: any) =>
-                                                f.estado === "pendiente" &&
-                                                f.codigo === producto.codigo &&
-                                                idsGrupo.has(String(f.planilla_id)),
+                                            // Cada faltante muestra su comentario vigente: si se revirtió, el último que
+                                            // escribió el coordinador, no el del alistador que ya había corregido.
+                                            const pend = faltantes
+                                              .filter(
+                                                (f: any) =>
+                                                  f.estado === "pendiente" &&
+                                                  f.codigo === producto.codigo &&
+                                                  idsGrupo.has(String(f.planilla_id)),
+                                              )
+                                              .map((f: any) => ({ ...f, observaciones: comentarioVigente(f) }))
+                                            const fueRevertido = pend.some((f: any) =>
+                                              String(f.observaciones_resolucion || "").includes("[REVERTIDO"),
                                             )
                                             const notasTodas = (producto.notas || []).join(" | ")
                                             if (pend.length === 0) {
@@ -1579,7 +1580,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                             // solo cambia el estado). Solo se agrega si no es uno de los comentarios del alistador.
                                             const comentariosAlistador = renderComentarios(pend)
                                             const textosAlistador = new Set(comentariosPorRuta(pend).map((c) => c.texto))
-                                            const comentariosEscritos = comentariosAlistador
+                                            // Revertido: solo el comentario vigente, sin los textos anteriores de las líneas
+                                            // (sería un historial visible).
+                                            const comentariosEscritos = comentariosAlistador && !fueRevertido
                                               ? (producto.notas || []).filter(
                                                   (t: string) => t && !esNotaDelSistema(t) && !textosAlistador.has(String(t).trim()),
                                                 )
