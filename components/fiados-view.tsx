@@ -49,6 +49,7 @@ interface Abono {
   metodo_pago: string
   observaciones?: string
   registrado_por: string
+  entregador_cobro?: string | null
 }
 
 interface ResumenFiados {
@@ -138,7 +139,13 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
   // Filtros
   const [entregadorFilter, setEntregadorFilter] = useState("all")
-  const [mostrarPagados, setMostrarPagados] = useState(false)
+  // Filtros para buscar un fiado: se combinan entre sí sobre lo que se cargó (fechas + entregador).
+  const [busqueda, setBusqueda] = useState("")
+  const [rutaFilter, setRutaFilter] = useState("all")
+  const [estadoFilter, setEstadoFilter] = useState<"por_cobrar" | "pendiente" | "abono_parcial" | "pagados" | "todos">("por_cobrar")
+  const [cobradoPorFilter, setCobradoPorFilter] = useState("all")
+  // Los pagados solo se piden al servidor cuando el estado elegido los incluye.
+  const mostrarPagados = estadoFilter === "pagados" || estadoFilter === "todos"
   const [fechaInicio, setFechaInicio] = useState(() => {
     const date = new Date()
     date.setDate(1)
@@ -728,10 +735,47 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
     }
   }
 
+  // "Alfonso 72 - 84" y "Alfonso 6C-7B-93" son el mismo entregador: se agrupan por la primera palabra.
+  const familiaEntregador = (nombre?: string | null) => {
+    const palabras = String(nombre || "").trim().split(/\s+/)
+    const primera = (palabras[0] || "").toLowerCase()
+    if (!primera) return ""
+    if (primera === "entregador") return String(nombre).trim()
+    return primera.charAt(0).toUpperCase() + primera.slice(1)
+  }
+  const esPagado = (f: Fiado) => f.estado === "pagado_completo" || f.estado === "pagado"
+  const esAbonoParcial = (f: Fiado) => !esPagado(f) && (f.estado === "abono_parcial" || Number(f.monto_pagado) > 0)
+  const quienesCobraron = (f: Fiado) =>
+    new Set((f.abonos || []).map((a) => familiaEntregador(a.entregador_cobro)).filter(Boolean))
+
+  const rutasDisponibles = Array.from(new Set(fiados.map((f) => String(f.tipo_ruta || "").trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, "es", { numeric: true }))
+  const cobradoresDisponibles = Array.from(new Set(fiados.flatMap((f) => Array.from(quienesCobraron(f)))))
+    .sort((a, b) => a.localeCompare(b))
+
+  const textoBusqueda = busqueda.trim().toLowerCase()
+  const fiadosFiltrados = fiados.filter((f) => {
+    if (textoBusqueda && !`${f.cliente || ""} ${f.direccion || ""} ${f.telefono || ""}`.toLowerCase().includes(textoBusqueda)) return false
+    if (rutaFilter !== "all" && String(f.tipo_ruta || "").trim() !== rutaFilter) return false
+    if (estadoFilter === "por_cobrar" && esPagado(f)) return false
+    if (estadoFilter === "pendiente" && (esPagado(f) || esAbonoParcial(f))) return false
+    if (estadoFilter === "abono_parcial" && !esAbonoParcial(f)) return false
+    if (estadoFilter === "pagados" && !esPagado(f)) return false
+    if (cobradoPorFilter !== "all" && !quienesCobraron(f).has(cobradoPorFilter)) return false
+    return true
+  })
+  const hayFiltrosDeBusqueda = !!textoBusqueda || rutaFilter !== "all" || estadoFilter !== "por_cobrar" || cobradoPorFilter !== "all"
+  const limpiarFiltros = () => {
+    setBusqueda("")
+    setRutaFilter("all")
+    setEstadoFilter("por_cobrar")
+    setCobradoPorFilter("all")
+  }
+
   const exportarCSV = () => {
     const headers = ["Cliente", "Dirección", "Teléfono", "Barrio", "Total", "Pagado", "Saldo", "Fecha", "Entregador", "Ruta", "Estado"]
     
-    const rows = fiados.map(f => [
+    const rows = fiadosFiltrados.map(f => [
       f.cliente,
       f.direccion || '',
       f.telefono || '',
@@ -815,7 +859,7 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                 />
               </div>
               <div className="flex-1 w-full sm:w-auto">
-                <label className="text-sm font-medium mb-2 block">Entregador</label>
+                <label className="text-sm font-medium mb-2 block">Entregador que dejó el fiado</label>
                 <Select value={entregadorFilter} onValueChange={setEntregadorFilter}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Todos" />
@@ -831,17 +875,6 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                 </Select>
               </div>
               <div className="flex gap-2 w-full sm:w-auto">
-                <Button
-                  onClick={() => setMostrarPagados(!mostrarPagados)}
-                  variant={mostrarPagados ? "default" : "outline"}
-                  className={mostrarPagados
-                    ? "flex-1 sm:flex-none bg-green-600 hover:bg-green-700"
-                    : "flex-1 sm:flex-none border-green-300 text-green-700 hover:bg-green-50"
-                  }
-                >
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  {mostrarPagados ? "Ocultando pagados" : "Ver pagados"}
-                </Button>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -870,6 +903,67 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
                   </Button>
                 )}
               </div>
+            </div>
+          </Card>
+
+          {/* Buscar un fiado: filtros que se combinan */}
+          <Card className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+              <div className="lg:col-span-2">
+                <label className="text-sm font-medium mb-2 block">Buscar cliente</label>
+                <Input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Nombre, dirección o teléfono"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Ruta</label>
+                <Select value={rutaFilter} onValueChange={setRutaFilter}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {rutasDisponibles.map((r) => (
+                      <SelectItem key={r} value={r}>Ruta {r}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Estado</label>
+                <Select value={estadoFilter} onValueChange={(v) => setEstadoFilter(v as typeof estadoFilter)}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="por_cobrar">Por cobrar</SelectItem>
+                    <SelectItem value="pendiente">Pendiente (sin abonos)</SelectItem>
+                    <SelectItem value="abono_parcial">Con abono parcial</SelectItem>
+                    <SelectItem value="pagados">Pagados</SelectItem>
+                    <SelectItem value="todos">Todos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Cobrado por</label>
+                <Select value={cobradoPorFilter} onValueChange={setCobradoPorFilter}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Cualquiera" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Cualquiera</SelectItem>
+                    {cobradoresDisponibles.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-sm">
+              <p className="text-muted-foreground">
+                {fiadosFiltrados.length} de {fiados.length} fiado(s) · Pagado{" "}
+                <b>{formatCOP(fiadosFiltrados.reduce((s, f) => s + Number(f.monto_pagado || 0), 0))}</b> · Saldo{" "}
+                <b>{formatCOP(fiadosFiltrados.reduce((s, f) => s + (esPagado(f) ? 0 : Number(f.saldo_pendiente || 0)), 0))}</b>
+              </p>
+              {hayFiltrosDeBusqueda && (
+                <Button variant="ghost" size="sm" onClick={limpiarFiltros}>Quitar filtros</Button>
+              )}
             </div>
           </Card>
 
@@ -910,11 +1004,13 @@ export function FiadosView({ onLogout, userRole, userId }: FiadosViewProps) {
 
             {loading ? (
               <p className="text-center py-8 text-gray-400">Cargando...</p>
-            ) : fiados.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground">No hay fiados para el período seleccionado</p>
+            ) : fiadosFiltrados.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">
+                {fiados.length === 0 ? "No hay fiados para el período seleccionado" : "Ningún fiado coincide con los filtros"}
+              </p>
             ) : (
               <div className="space-y-2">
-                {fiados.map((fiado) => {
+                {fiadosFiltrados.map((fiado) => {
                   const saldo = Number(fiado.saldo_pendiente || fiado.total)
                   const isParcial = Number(fiado.monto_pagado) > 0 && saldo > 0
                   const mostrarBotones = tieneSaldoPendiente(fiado)

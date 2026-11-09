@@ -330,7 +330,11 @@ export async function GET(request: NextRequest) {
     let abonos: any[] = []
     
     if (todosLosFiados.length > 0) {
-      const pedidosIds = todosLosFiados.map((f: any) => f.id).filter(Boolean)
+      // El abono de un fiado de la tabla "fiados" apunta a fiados.id (fiado_tabla_id), no a su
+      // pedido_id: sin este id casi ningún fiado traía sus abonos (y no se podía filtrar por quién cobró).
+      const pedidosIds = Array.from(new Set(
+        todosLosFiados.flatMap((f: any) => [f.id, f.fiado_tabla_id]).filter(Boolean)
+      ))
       
       if (pedidosIds.length > 0) {
         try {
@@ -342,7 +346,9 @@ export async function GET(request: NextRequest) {
               a.fecha_abono,
               a.metodo_pago,
               a.observaciones,
-              a.registrado_por
+              a.registrado_por,
+              a.entregador_cobro,
+              COALESCE(a.monto_nequi, 0) as monto_nequi
             FROM abonos_fiados a
             WHERE a.pedido_id = ANY(${pedidosIds})
             ORDER BY a.fecha_abono DESC
@@ -356,7 +362,7 @@ export async function GET(request: NextRequest) {
 
     const fiadosConAbonos = todosLosFiados.map((fiado: any) => ({
       ...fiado,
-      abonos: abonos.filter((a: any) => a.pedido_id === fiado.id)
+      abonos: abonos.filter((a: any) => a.pedido_id === fiado.id || (fiado.fiado_tabla_id && a.pedido_id === fiado.fiado_tabla_id))
     }))
 
     // ========================================

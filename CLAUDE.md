@@ -79,7 +79,7 @@ Aplicación de logística y caja de una distribuidora: alistamiento de pedidos, 
 - Un abono apunta al fiado con `abonos_fiados.pedido_id = fiados.id` (como texto). `planilla_cobro_id IS NULL` = abono aún sin conciliar en un cuadre.
 - Los fiados nunca se borran de la tabla: se marcan `eliminado = true` (soft delete). Solo los eliminados desde la creación de `eliminaciones_historial` aparecen en la pestaña **Eliminados** y se pueden restaurar.
 - "Eliminar definitivamente" (pestaña Eliminados; solo coordinador/administrador) no permite borrar un fiado con abonos.
-- La pantalla de Fiados muestra por defecto solo el mes actual y solo pendientes ("Mostrar pagados" y las fechas amplían).
+- La pantalla de Fiados muestra por defecto solo el mes actual y solo lo por cobrar. Filtros que se combinan (sobre lo cargado por fechas y entregador): Buscar cliente, Ruta (`fiados.ruta` / `planillas.tipo_ruta`), Estado (Por cobrar, Pendiente, Con abono parcial, Pagados, Todos; Pagados/Todos piden `incluirPagados`) y Cobrado por (`abonos_fiados.entregador_cobro`, agrupado por la primera palabra del nombre). Los abonos de un fiado de la tabla `fiados` se buscan por `fiados.id` (`fiado_tabla_id`), no por su `pedido_id`.
 
 ### 5.3 Antifraude de referencias (`lib/validar-referencia.ts`)
 - Una referencia de pago (Nequi, consignación…) **no puede usarse dos veces**. Se revisa en consignaciones, cobros (abonos), pagos anticipados y cuadres.
