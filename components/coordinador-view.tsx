@@ -383,7 +383,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       estado: producto.estadoAlistamiento,
       observaciones: producto.observacionesFaltante,
       comentarios: (() => {
-        const deFaltantes = comentariosPorRuta(pendientes)
+        const deFaltantes = comentariosPorRuta(pendientes.map((f) => ({ ...f, observaciones: comentarioVigente(f) })))
         return deFaltantes.length > 0 ? deFaltantes : comentariosPorRuta(comentariosDeLineas(producto))
       })(),
     })
@@ -1407,6 +1407,9 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                 const porCodigo = new Map<string, any>()
                                 faltantes
                                   .filter((f: any) => idsPlanillas.has(f.planilla_id))
+                                  // Comentario vigente: si se revirtió, el último que escribió el coordinador
+                                  // ("faltan 3 displeys"), no el del alistador que ya se había corregido.
+                                  .map((f: any) => ({ ...f, observaciones: comentarioVigente(f) }))
                                   .forEach((f: any) => {
                                     const pendiente = Math.max(0, (Number(f.cantidad_faltante) || 0) - (Number(f.cantidad_resuelta) || 0))
                                     if (pendiente <= 0) return

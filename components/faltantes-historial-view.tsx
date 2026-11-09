@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { Download, Filter, AlertTriangle, CheckCircle, Package, X, Trash2, Loader2 } from "lucide-react"
 import type { Faltante } from "@/lib/types"
+import { comentarioVigente } from "@/lib/sumar-notas"
 
 interface FaltantesHistorialViewProps {
   userId?: string
@@ -433,7 +434,7 @@ export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialV
                       </td>
                       <td className="py-3 px-4 text-xs max-w-md">
                         <div className="space-y-1">
-                          {f.observaciones && <p className="text-muted-foreground">📝 {f.observaciones}</p>}
+                          {comentarioVigente(f) && <p className="text-muted-foreground">📝 {comentarioVigente(f)}</p>}
                           {!esPendiente && f.observaciones_resolucion && (
                             <div className={esDefinitivo ? 'text-gray-700' : 'text-green-700'}>
                               <p>{esDefinitivo ? '🚫' : '✅'} {f.observaciones_resolucion}</p>
