@@ -28,7 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
-import { comentariosPorRuta, etiquetaRutas, type FaltanteConNota } from "@/lib/sumar-notas"
+import { comentariosPorRuta, esNotaDelSistema, etiquetaRutas, type FaltanteConNota } from "@/lib/sumar-notas"
 import { EliminadosView } from "@/components/eliminados-view"
 import { devolverAlistamiento } from "@/lib/actions/planillas"
 
@@ -1572,8 +1572,31 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                 idsGrupo.has(String(f.planilla_id)),
                                             )
                                             const notasTodas = (producto.notas || []).join(" | ")
+                                            // Lo que escribió el coordinador al subsanar (y al revertir) queda aparte del comentario del
+                                            // alistador y se sigue viendo aunque se revierta el estado.
+                                            const delCoordinador = Array.from(
+                                              new Set(
+                                                [...faltantes, ...faltantesResueltos]
+                                                  .filter((f: any) => f.codigo === producto.codigo && idsGrupo.has(String(f.planilla_id)))
+                                                  .map((f: any) => String(f.observaciones_resolucion || "").trim())
+                                                  .filter((t: string) => t && !esNotaDelSistema(t)),
+                                              ),
+                                            )
+                                            const comentarioCoordinador =
+                                              delCoordinador.length > 0 ? (
+                                                <ul className="mt-1 space-y-0.5">
+                                                  {delCoordinador.map((t, i) => (
+                                                    <li key={i} className="text-xs text-blue-700">💬 Coordinador: {t}</li>
+                                                  ))}
+                                                </ul>
+                                              ) : null
                                             if (pend.length === 0) {
-                                              return <span title={notasTodas || undefined}>{producto.observacionesFaltante || "-"}</span>
+                                              return (
+                                                <span title={notasTodas || undefined}>
+                                                  {producto.observacionesFaltante || "-"}
+                                                  {comentarioCoordinador}
+                                                </span>
+                                              )
                                             }
                                             // Sin cifra calculada ("Faltan X"): se prestaba a confusión con lo que escribió
                                             // el alistador. Solo sus comentarios, uno por ruta. Si el faltante ya no los tiene
@@ -1581,6 +1604,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                             return (
                                               <span title={notasTodas || undefined}>
                                                 {renderComentarios(pend) || renderComentarios(comentariosDeLineas(producto)) || "-"}
+                                                {comentarioCoordinador}
                                               </span>
                                             )
                                           })()}
