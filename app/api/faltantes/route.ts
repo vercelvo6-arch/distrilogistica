@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { repartirAlistamiento, repartirSubsanacion, resumirPorPlanilla, type EstadoAlistamiento } from "@/lib/alistamiento-reparto";
+import { esNotaDelSistema } from "@/lib/sumar-notas";
 
 // POST - Registrar faltante
 //
@@ -270,6 +271,7 @@ async function subsanarUno(
   userId: any,
 ) {
   let resultado: any;
+  const textoDelSistema = esNotaDelSistema(observacionesFinal);
 
   if (tipoResolucion === 'parcial') {
     const cantidadPendiente = faltante.cantidad_faltante - cantidadResueltaFinal;
@@ -278,7 +280,7 @@ async function subsanarUno(
       SET
         cantidad_faltante = ${cantidadPendiente},
         cantidad_disponible = ${Number(faltante.cantidad_disponible) + cantidadResueltaFinal},
-        observaciones_resolucion = ${observacionesFinal}
+        observaciones = CASE WHEN ${textoDelSistema} THEN observaciones ELSE ${observacionesFinal} END
       WHERE id = ${faltante.id}
       RETURNING *
     `;
@@ -305,13 +307,14 @@ async function subsanarUno(
 
   // Solo las líneas de esta planilla que tenían la novedad: las que el alistador dejó completas
   // se quedan como están (cada línea guarda su estado real, ver lib/alistamiento-reparto.ts).
-  // El comentario del alistador (observaciones y observaciones_faltante) NO se pisa al subsanar: lo que escribe
-  // el coordinador queda aparte, en observaciones_resolucion; así el comentario sigue ahí aunque se revierta.
+  // El comentario de la línea es lo que se ve en Supervisión: se escribe el del coordinador (si escribió uno) y
+  // Revertir no lo toca, solo cambia el estado. Si no escribió nada (texto automático) se deja el que había.
   await sql`
     UPDATE pedido_productos pp
     SET
       estado_alistamiento = ${estadoProducto},
-      cantidad_disponible = CASE WHEN ${estadoProducto} = 'completo' THEN pp.cantidad ELSE pp.cantidad_disponible END
+      cantidad_disponible = CASE WHEN ${estadoProducto} = 'completo' THEN pp.cantidad ELSE pp.cantidad_disponible END,
+      observaciones_faltante = CASE WHEN ${textoDelSistema} THEN pp.observaciones_faltante ELSE ${observacionesFinal} END
     FROM pedidos p
     WHERE pp.pedido_id = p.id
       AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${faltante.planilla_id}
