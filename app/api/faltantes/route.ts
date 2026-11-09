@@ -278,7 +278,7 @@ async function subsanarUno(
       SET
         cantidad_faltante = ${cantidadPendiente},
         cantidad_disponible = ${Number(faltante.cantidad_disponible) + cantidadResueltaFinal},
-        observaciones = ${observacionesFinal}
+        observaciones_resolucion = ${observacionesFinal}
       WHERE id = ${faltante.id}
       RETURNING *
     `;
@@ -305,12 +305,13 @@ async function subsanarUno(
 
   // Solo las líneas de esta planilla que tenían la novedad: las que el alistador dejó completas
   // se quedan como están (cada línea guarda su estado real, ver lib/alistamiento-reparto.ts).
+  // El comentario del alistador (observaciones y observaciones_faltante) NO se pisa al subsanar: lo que escribe
+  // el coordinador queda aparte, en observaciones_resolucion; así el comentario sigue ahí aunque se revierta.
   await sql`
     UPDATE pedido_productos pp
     SET
       estado_alistamiento = ${estadoProducto},
-      cantidad_disponible = CASE WHEN ${estadoProducto} = 'completo' THEN pp.cantidad ELSE pp.cantidad_disponible END,
-      observaciones_faltante = ${observacionesFinal}
+      cantidad_disponible = CASE WHEN ${estadoProducto} = 'completo' THEN pp.cantidad ELSE pp.cantidad_disponible END
     FROM pedidos p
     WHERE pp.pedido_id = p.id
       AND COALESCE(p.planilla_mercancia_id, p.planilla_id) = ${faltante.planilla_id}
