@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { formatCOP } from "@/lib/format-utils"
+import { formatCOP, getFechaHoyBogota } from "@/lib/format-utils"
 import {
   RefreshCw,
   TrendingUp,
@@ -330,9 +330,14 @@ export function DashboardOverview() {
       setAllPlanillas(all)
       recalculate(all, focusDate)
 
-      // Fiados pendientes — igual que el original
+      // Fiados pendientes: el recuadro muestra 8. Sin fechas se traían TODOS los fiados con sus
+      // abonos en cada actualización; con los últimos 30 días sale lo mismo con mucho menos trabajo.
       try {
-        const fRes = await fetch("/api/fiados?estado=pendiente,pagado_parcial")
+        const hoy = getFechaHoyBogota()
+        const hace30 = new Date(`${hoy}T12:00:00`)
+        hace30.setDate(hace30.getDate() - 30)
+        const desde = hace30.toISOString().split("T")[0]
+        const fRes = await fetch(`/api/fiados?fechaInicio=${desde}&fechaFin=${hoy}`)
         if (fRes.ok) {
           const fData = await fRes.json()
           setFiadosPendientes((fData.fiados || []).slice(0, 8))
@@ -358,10 +363,27 @@ export function DashboardOverview() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusDate])
 
+  // Se actualiza solo cada 5 minutos y SOLO mientras la pestaña está a la vista. Antes consultaba
+  // cada minuto aunque nadie la mirara (de noche, minimizada): la base de datos (Neon) nunca se
+  // apagaba y se agotó la capacidad del plan. Al volver a la pestaña se actualiza de una vez.
   useEffect(() => {
     loadData()
-    const interval = setInterval(loadData, 60000)
-    return () => clearInterval(interval)
+    const CINCO_MINUTOS = 5 * 60 * 1000
+    let ultima = Date.now()
+    const actualizarSiVisible = () => {
+      if (document.visibilityState !== "visible") return
+      ultima = Date.now()
+      loadData()
+    }
+    const interval = setInterval(actualizarSiVisible, CINCO_MINUTOS)
+    const alVolver = () => {
+      if (document.visibilityState === "visible" && Date.now() - ultima >= CINCO_MINUTOS) actualizarSiVisible()
+    }
+    document.addEventListener("visibilitychange", alVolver)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", alVolver)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
