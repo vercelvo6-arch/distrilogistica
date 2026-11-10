@@ -69,6 +69,9 @@ export async function PATCH(request: NextRequest) {
         resuelto_por = NULL,
         fecha_resolucion = NULL,
         observaciones = ${ultimoComentario},
+        -- Si el comentario vigente es el del coordinador, conserva la hora en que lo escribió.
+        fecha_subsanacion = CASE WHEN ${ultimoComentario} IS DISTINCT FROM observaciones
+                                 THEN COALESCE(fecha_resolucion, fecha_subsanacion, NOW()) ELSE fecha_subsanacion END,
         observaciones_resolucion = ${observacionesConHistorial}
       WHERE id = ${faltanteId}
       RETURNING *

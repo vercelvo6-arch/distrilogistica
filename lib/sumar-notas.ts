@@ -36,6 +36,39 @@ export function comentarioVigente(f: { observaciones?: string | null; observacio
   return notaCoordinador && !esNotaDelSistema(notaCoordinador) ? notaCoordinador : String(f.observaciones || "")
 }
 
+// El ÚLTIMO comentario escrito sobre un producto, entre todos sus faltantes (de cualquier planilla,
+// pendientes o ya subsanados). Decisión del coordinador: Supervisión muestra solo ese, sin rutas ni
+// listas: si eran 6, llegaron 3 y escribe "quedan 3", eso es lo que se ve. Gana el más reciente:
+// el del alistador (fecha_marcado), el que el coordinador escribió en el faltante (fecha_subsanacion)
+// o la nota con que lo subsanó (fecha_resolucion). Los textos automáticos no cuentan.
+export function ultimoComentario(
+  faltantes: {
+    observaciones?: string | null
+    observaciones_resolucion?: string | null
+    estado?: string | null
+    fecha_marcado?: string | Date | null
+    fecha_subsanacion?: string | Date | null
+    fecha_resolucion?: string | Date | null
+  }[],
+): string {
+  let texto = ""
+  let cuando = -Infinity
+  const ms = (f?: string | Date | null) => (f ? new Date(f as any).getTime() || 0 : 0)
+  const tomar = (t: string | null | undefined, fecha: number) => {
+    const limpio = String(t || "").replace(/\s*\[REVERTIDO por [^\]]*\]/g, "").trim()
+    if (!limpio || esNotaDelSistema(limpio)) return
+    if (fecha >= cuando) {
+      cuando = fecha
+      texto = limpio
+    }
+  }
+  for (const f of faltantes) {
+    tomar(comentarioVigente(f), Math.max(ms(f.fecha_marcado), ms(f.fecha_subsanacion)))
+    if (f.estado && f.estado !== "pendiente") tomar(f.observaciones_resolucion, ms(f.fecha_resolucion))
+  }
+  return texto
+}
+
 export function comentariosPorRuta(faltantes: FaltanteConNota[]): ComentarioRuta[] {
   const grupos = new Map<string, ComentarioRuta>()
   for (const f of faltantes) {

@@ -149,7 +149,7 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
               </p>
               {faltante.comentarios && faltante.comentarios.length > 0 && (
                 <div className="mt-2 rounded bg-white/70 p-2">
-                  <p className="text-xs font-semibold text-blue-900">Comentario del alistador:</p>
+                  <p className="text-xs font-semibold text-blue-900">Último comentario:</p>
                   <ul className="mt-1 space-y-0.5">
                     {faltante.comentarios.map((c, i) => (
                       <li key={i} className="text-sm text-gray-700">
@@ -161,7 +161,6 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-1 text-xs text-gray-500">Si no coincide con la cantidad, guíate por lo que se contó en bodega.</p>
                 </div>
               )}
             </div>

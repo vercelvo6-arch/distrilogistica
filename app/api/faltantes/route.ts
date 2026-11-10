@@ -280,7 +280,8 @@ async function subsanarUno(
       SET
         cantidad_faltante = ${cantidadPendiente},
         cantidad_disponible = ${Number(faltante.cantidad_disponible) + cantidadResueltaFinal},
-        observaciones = CASE WHEN ${textoDelSistema} THEN observaciones ELSE ${observacionesFinal} END
+        observaciones = CASE WHEN ${textoDelSistema} THEN observaciones ELSE ${observacionesFinal} END,
+        fecha_subsanacion = CASE WHEN ${textoDelSistema} THEN fecha_subsanacion ELSE NOW() END
       WHERE id = ${faltante.id}
       RETURNING *
     `;
@@ -294,7 +295,11 @@ async function subsanarUno(
         cantidad_resuelta = ${cantidadResueltaFinal},
         resuelto_por = ${userId},
         fecha_resolucion = NOW(),
-        observaciones_resolucion = ${observacionesFinal}
+        observaciones_resolucion = ${observacionesFinal},
+        -- El comentario que escribe el coordinador pasa a ser el último del producto (Supervisión
+        -- muestra solo ese, ver ultimoComentario en lib/sumar-notas.ts).
+        observaciones = CASE WHEN ${textoDelSistema} THEN observaciones ELSE ${observacionesFinal} END,
+        fecha_subsanacion = CASE WHEN ${textoDelSistema} THEN fecha_subsanacion ELSE NOW() END
       WHERE id = ${faltante.id}
       RETURNING *
     `;

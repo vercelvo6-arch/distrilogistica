@@ -28,7 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
-import { comentarioVigente, comentariosPorRuta, esNotaDelSistema, etiquetaRutas, type FaltanteConNota } from "@/lib/sumar-notas"
+import { ultimoComentario } from "@/lib/sumar-notas"
 import { EliminadosView } from "@/components/eliminados-view"
 import { devolverAlistamiento } from "@/lib/actions/planillas"
 
@@ -348,27 +348,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     return delGrupo.length > 0 ? delGrupo : delProducto.slice(0, 1)
   }
 
-  // Comentarios del alistador tal como los escribió, uno por línea con su ruta.
-  const renderComentarios = (filas: FaltanteConNota[]) => {
-    const lista = comentariosPorRuta(filas)
-    if (lista.length === 0) return null
-    return (
-      <ul className="mt-1 space-y-0.5">
-        {lista.map((c, i) => (
-          <li key={i} className="text-xs text-gray-700">
-            • {c.rutas.length > 0 ? <strong>{etiquetaRutas(c.rutas)}:</strong> : null} {c.texto}
-          </li>
-        ))}
-      </ul>
-    )
-  }
-
-  // Comentarios guardados en las líneas de producto (cuando el faltante ya no los tiene), por ruta.
-  const comentariosDeLineas = (producto: any): FaltanteConNota[] =>
-    Array.from((producto.porPlanilla?.values() || []) as Iterable<any>).flatMap((p: any) =>
-      (p.notas || []).map((n: string) => ({ observaciones: n, ruta: p.ruta, fecha_marcado: null })),
-    )
-
   const abrirModalSubsanar = (pendientes: any[], producto: any, entregador: string, sheets: any[]) => {
     const rutas = Array.from(new Set(pendientes.map((f) => f.ruta).filter(Boolean)))
     setFaltanteParaSubsanar({
@@ -382,9 +361,13 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
       ruta: rutas.length > 0 ? rutas.join(", ") : sheets[0]?.ruta || "",
       estado: producto.estadoAlistamiento,
       observaciones: producto.observacionesFaltante,
+      // Un solo comentario: el último que se escribió sobre el producto en estas planillas.
       comentarios: (() => {
-        const deFaltantes = comentariosPorRuta(pendientes.map((f) => ({ ...f, observaciones: comentarioVigente(f) })))
-        return deFaltantes.length > 0 ? deFaltantes : comentariosPorRuta(comentariosDeLineas(producto))
+        const ids = new Set(sheets.map((s: any) => String(s.id)))
+        const u = ultimoComentario(
+          [...pendientes, ...faltantesResueltos.filter((x: any) => x.codigo === producto.codigo && ids.has(String(x.planilla_id)))],
+        )
+        return u ? [{ rutas: [], texto: u }] : []
       })(),
     })
   }
@@ -1407,9 +1390,6 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                 const porCodigo = new Map<string, any>()
                                 faltantes
                                   .filter((f: any) => idsPlanillas.has(f.planilla_id))
-                                  // Comentario vigente: si se revirtió, el último que escribió el coordinador
-                                  // ("faltan 3 displeys"), no el del alistador que ya se había corregido.
-                                  .map((f: any) => ({ ...f, observaciones: comentarioVigente(f) }))
                                   .forEach((f: any) => {
                                     const pendiente = Math.max(0, (Number(f.cantidad_faltante) || 0) - (Number(f.cantidad_resuelta) || 0))
                                     if (pendiente <= 0) return
@@ -1454,7 +1434,15 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                                 {f.planillas} planillas
                                               </span>
                                             ) : null}
-                                            {renderComentarios(f.filas) || <span className="text-gray-500"> · sin comentario del alistador</span>}
+                                            {(() => {
+                                              // El último comentario escrito sobre el producto, uno solo.
+                                              const u = ultimoComentario(
+                                                [...faltantes, ...faltantesResueltos].filter(
+                                                  (x: any) => x.codigo === f.codigo && idsPlanillas.has(x.planilla_id),
+                                                ),
+                                              )
+                                              return u ? <span> · {u}</span> : <span className="text-gray-500"> · sin comentario</span>
+                                            })()}
                                           </span>
                                         </li>
                                       ))}
@@ -1559,54 +1547,15 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                               🔄 {producto.productoReemplazo}
                                             </span>
                                           ) : (() => {
-                                            // Lo que falta se muestra sumado (un faltante por planilla), no como
-                                            // notas pegadas; naranja si junta varias planillas.
+                                            // UN solo comentario: el último que se escribió sobre este producto en el grupo
+                                            // (alistador o coordinador, de cualquier planilla). Sin rutas ni listas.
                                             const idsGrupo = new Set(sheets.map((s: any) => String(s.id)))
-                                            // Cada faltante muestra su comentario vigente: si se revirtió, el último que
-                                            // escribió el coordinador, no el del alistador que ya había corregido.
-                                            const pend = faltantes
-                                              .filter(
-                                                (f: any) =>
-                                                  f.estado === "pendiente" &&
-                                                  f.codigo === producto.codigo &&
-                                                  idsGrupo.has(String(f.planilla_id)),
-                                              )
-                                              .map((f: any) => ({ ...f, observaciones: comentarioVigente(f) }))
-                                            const fueRevertido = pend.some((f: any) =>
-                                              String(f.observaciones_resolucion || "").includes("[REVERTIDO"),
-                                            )
-                                            const notasTodas = (producto.notas || []).join(" | ")
-                                            if (pend.length === 0) {
-                                              return <span title={notasTodas || undefined}>{producto.observacionesFaltante || "-"}</span>
+                                            const delProducto = new Map<string, any>()
+                                            for (const f of [...faltantes, ...faltantesResueltos] as any[]) {
+                                              if (f.codigo === producto.codigo && idsGrupo.has(String(f.planilla_id))) delProducto.set(String(f.id), f)
                                             }
-                                            // El comentario que quedó escrito en la línea al subsanar sigue viéndose al revertir (Revertir
-                                            // solo cambia el estado). Solo se agrega si no es uno de los comentarios del alistador.
-                                            const comentariosAlistador = renderComentarios(pend)
-                                            const textosAlistador = new Set(comentariosPorRuta(pend).map((c) => c.texto))
-                                            // Revertido: solo el comentario vigente, sin los textos anteriores de las líneas
-                                            // (sería un historial visible).
-                                            const comentariosEscritos = comentariosAlistador && !fueRevertido
-                                              ? (producto.notas || []).filter(
-                                                  (t: string) => t && !esNotaDelSistema(t) && !textosAlistador.has(String(t).trim()),
-                                                )
-                                              : []
-                                            const comentarioEscrito =
-                                              comentariosEscritos.length > 0 ? (
-                                                <ul className="mt-1 space-y-0.5">
-                                                  {comentariosEscritos.map((t: string, i: number) => (
-                                                    <li key={i} className="text-xs text-gray-700">• {t}</li>
-                                                  ))}
-                                                </ul>
-                                              ) : null
-                                            // Sin cifra calculada ("Faltan X"): se prestaba a confusión con lo que escribió
-                                            // el alistador. Solo sus comentarios, uno por ruta. Si el faltante ya no los tiene
-                                            // (se reemplazan al subsanar en parte), se toman de las líneas.
-                                            return (
-                                              <span title={notasTodas || undefined}>
-                                                {comentariosAlistador || renderComentarios(comentariosDeLineas(producto)) || "-"}
-                                                {comentarioEscrito}
-                                              </span>
-                                            )
+                                            const ultimo = ultimoComentario(Array.from(delProducto.values()))
+                                            return <span>{ultimo || producto.observacionesFaltante || "-"}</span>
                                           })()}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
