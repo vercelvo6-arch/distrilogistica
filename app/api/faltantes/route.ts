@@ -281,7 +281,13 @@ async function subsanarUno(
         cantidad_faltante = ${cantidadPendiente},
         cantidad_disponible = ${Number(faltante.cantidad_disponible) + cantidadResueltaFinal},
         observaciones = CASE WHEN ${textoDelSistema} THEN observaciones ELSE ${observacionesFinal} END,
-        fecha_subsanacion = CASE WHEN ${textoDelSistema} THEN fecha_subsanacion ELSE NOW() END
+        fecha_subsanacion = CASE WHEN ${textoDelSistema} THEN fecha_subsanacion ELSE NOW() END,
+        -- Un parcial que cubre justo lo que faltaba deja el faltante completo (antes quedaba
+        -- pendiente en 0 y el producto se veía Incompleto para siempre).
+        estado = CASE WHEN ${cantidadPendiente} <= 0 THEN 'resuelto' ELSE estado END,
+        tipo_resolucion = CASE WHEN ${cantidadPendiente} <= 0 THEN 'completo' ELSE tipo_resolucion END,
+        resuelto_por = CASE WHEN ${cantidadPendiente} <= 0 THEN ${userId} ELSE resuelto_por END,
+        fecha_resolucion = CASE WHEN ${cantidadPendiente} <= 0 THEN NOW() ELSE fecha_resolucion END
       WHERE id = ${faltante.id}
       RETURNING *
     `;

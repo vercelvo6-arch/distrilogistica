@@ -918,7 +918,7 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
     const idsGrupo = new Set(sheets.map((s: any) => String(s.id)))
     const conFaltantePendiente = new Set(
       faltantes
-        .filter((f: any) => f.estado === "pendiente" && idsGrupo.has(String(f.planilla_id)))
+        .filter((f: any) => f.estado === "pendiente" && Number(f.cantidad_faltante) > 0 && idsGrupo.has(String(f.planilla_id)))
         .map((f: any) => f.codigo),
     )
     productMap.forEach((p: any) => {
