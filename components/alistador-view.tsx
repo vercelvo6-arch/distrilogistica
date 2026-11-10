@@ -45,7 +45,10 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const [saving, setSaving] = useState(false)
   const [expandedDeliveryPersons, setExpandedDeliveryPersons] = useState<Set<string>>(new Set())
   const [editingProduct, setEditingProduct] = useState<{ entregador: string; product: ConsolidatedProduct } | null>(null)
-  const [disponibleInput, setDisponibleInput] = useState("")
+  // Cuántas FALTAN (no cuántas hay): sin número prellenado. Antes se preguntaba "¿cuántas hay
+  // disponibles?" con el total prellenado; si se borraba o se escribía otra cosa quedaba en 0 y el
+  // sistema marcaba todo como faltante aunque el comentario dijera menos.
+  const [faltanInput, setFaltanInput] = useState("")
   const [estadoSeleccionado, setEstadoSeleccionado] = useState<'completo' | 'incompleto' | 'no_alistado' | 'reemplazo'>("completo")
   const [observaciones, setObservaciones] = useState("")
   const [productoReemplazo, setProductoReemplazo] = useState("")
@@ -373,7 +376,8 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
   const handleOpenEditDialog = (entregador: string, product: ConsolidatedProduct) => {
     setEditingProduct({ entregador, product })
-    setDisponibleInput(product.cantidadDisponible?.toString() || product.cantidadTotal.toString())
+    // Si ya se registró antes, se muestra lo que quedó guardado; si no, la casilla va vacía.
+    setFaltanInput(product.estadoAlistamiento !== "pendiente" && product.cantidadFaltante > 0 ? String(product.cantidadFaltante) : "")
     
     if (product.estadoAlistamiento === 'no_alistado') {
       setEstadoSeleccionado('no_alistado')
@@ -389,7 +393,22 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
   const handleSaveEstadoAlistamiento = async () => {
     if (!editingProduct) return
 
-    const disponible = Number(disponibleInput) || 0
+    const total = editingProduct.product.cantidadTotal
+    let faltan: number
+    if (estadoSeleccionado === 'completo') faltan = 0
+    else if (estadoSeleccionado === 'no_alistado') faltan = total
+    else {
+      if (faltanInput.trim() === '') {
+        alert(`Escriba cuántas faltan (de ${total} pedidas).`)
+        return
+      }
+      faltan = Number(faltanInput)
+      if (!Number.isFinite(faltan) || faltan < 0 || faltan > total || !Number.isInteger(faltan)) {
+        alert(`La cantidad que falta debe ser un número entero entre 0 y ${total}.`)
+        return
+      }
+    }
+    const disponible = total - faltan
 
     if (estadoSeleccionado === 'no_alistado' && !observaciones.trim()) {
       alert('Por favor agregue observaciones para productos no alistados')
@@ -482,7 +501,7 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       // Si el servidor no devolvió líneas (no había mercancía pendiente), se recarga para no mostrar algo viejo.
       if (porLinea.size === 0) await loadData()
       setEditingProduct(null)
-      setDisponibleInput("")
+      setFaltanInput("")
       setEstadoSeleccionado("completo")
       setObservaciones("")
       setProductoReemplazo("")
@@ -1122,22 +1141,6 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                 </p>
               </div>
 
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  ¿Cuántas unidades hay disponibles?
-                </label>
-                <Input
-                  type="number"
-                  min="0"
-                  max={editingProduct.product.cantidadTotal}
-                  value={disponibleInput}
-                  onChange={(e) => setDisponibleInput(e.target.value)}
-                  placeholder="Ej: 10"
-                  className="text-lg font-bold"
-                  disabled={saving}
-                />
-              </div>
-
               <div className="space-y-3">
                 <label className="text-sm font-medium block">Estado del producto:</label>
                 <RadioGroup 
@@ -1171,6 +1174,43 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
                   </div>
                 </RadioGroup>
               </div>
+
+              {(estadoSeleccionado === "incompleto" || estadoSeleccionado === "reemplazo") && (
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    ¿Cuántas faltan? (de {editingProduct.product.cantidadTotal} pedidas)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max={editingProduct.product.cantidadTotal}
+                    value={faltanInput}
+                    onChange={(e) => setFaltanInput(e.target.value)}
+                    placeholder="Escriba cuántas faltan"
+                    className="text-lg font-bold"
+                    disabled={saving}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    En la misma unidad del pedido. Una promo o un display al que le faltan piezas cuenta como 1.
+                  </p>
+                </div>
+              )}
+
+              {estadoSeleccionado !== "completo" && (() => {
+                const total = editingProduct.product.cantidadTotal
+                const n = estadoSeleccionado === "no_alistado" ? total : faltanInput.trim() === "" ? null : Number(faltanInput)
+                return (
+                  <div className={`rounded-lg border-2 p-3 text-center ${n === null ? "border-gray-200 bg-gray-50" : "border-orange-300 bg-orange-50"}`}>
+                    {n === null ? (
+                      <p className="text-sm text-muted-foreground">Escriba cuántas faltan para ver lo que se va a guardar</p>
+                    ) : (
+                      <p className="text-base font-bold text-orange-900">
+                        Se van a marcar {n} faltante{n === 1 ? "" : "s"} de {total} pedida{total === 1 ? "" : "s"}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
 
               {(estadoSeleccionado === "incompleto" || estadoSeleccionado === "no_alistado") && (
                 <div>

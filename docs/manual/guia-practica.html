@@ -714,22 +714,23 @@
       <span class="etq">Pantalla de ejemplo · ventana “Estado de Alistamiento”</span>
       <div class="etiqueta">Estado del producto: <i class="pin">2</i></div>
       <div class="fila">✅ Completo (todo OK)<br>⚠️ Incompleto (faltan piezas dentro de la unidad)<br>❌ No alistado (no hay stock)<br>🔄 Reemplazo (se entregó otro producto)</div>
-      <div class="etiqueta">¿Cuántas unidades hay disponibles? <i class="pin">3</i></div><span class="campo lleno">22</span>
+      <div class="etiqueta">¿Cuántas faltan? (de 30 pedidas) <i class="pin">3</i></div><span class="campo lleno">8</span>
+      <div class="fila" style="text-align:center"><b>Se van a marcar 8 faltantes de 30 pedidas</b></div>
       <div class="etiqueta">Observaciones (requerido): <i class="pin">4</i></div><span class="campo">Describe la situación: ¿qué falta?, ¿por qué?, ¿cuándo estará disponible?</span>
       <div style="display:flex;gap:6px"><span class="b borde">Cancelar</span> <span class="b azul">Guardar Estado</span> <i class="pin">5</i></div>
     </div>
     <ol class="pasos">
       <li>En el producto toca <span class="b azul">Registrar</span> <i class="pin">1</i> (si ya lo habías anotado dice <b>Editar</b>).</li>
       <li>Elige el <b>estado</b> <i class="pin">2</i> según lo que pasó (tabla de abajo).</li>
-      <li>En <b>“¿Cuántas unidades hay disponibles?”</b> <i class="pin">3</i> escribe cuántas sacaste.</li>
+      <li>Si es Incompleto o Reemplazo, en <b>“¿Cuántas faltan?”</b> <i class="pin">3</i> escribe <b>cuántas faltan</b> (la casilla viene vacía). Una promo o un display al que le faltan piezas cuenta como 1.<small>Revisa el recuadro “Se van a marcar X faltantes de Y pedidas”: es lo que va a quedar guardado y lo que el coordinador va a entregar.</small></li>
       <li>Si algo falló, escribe la <b>observación</b> <i class="pin">4</i>: qué falta, por qué y cuándo llega.</li>
       <li>Toca <span class="b azul">Guardar Estado</span> <i class="pin">5</i>.</li>
     </ol>
     <table>
       <tr><th>Qué pasó</th><th>Qué eliges</th><th>Qué escribes</th></tr>
-      <tr><td>Saqué todas las unidades</td><td>✅ Completo</td><td>Las unidades disponibles = las solicitadas (ya viene así).</td></tr>
-      <tr><td>Saqué solo una parte (tengo 22 de 30)</td><td>⚠️ Incompleto</td><td>22 en unidades disponibles y la observación (obligatoria).</td></tr>
-      <tr><td>No hay nada del producto</td><td>❌ No alistado</td><td>0 en unidades disponibles y la observación (obligatoria).</td></tr>
+      <tr><td>Saqué todas las unidades</td><td>✅ Completo</td><td>Nada: faltan 0.</td></tr>
+      <tr><td>Saqué solo una parte (tengo 22 de 30)</td><td>⚠️ Incompleto</td><td>8 en “¿Cuántas faltan?” y la observación (obligatoria).</td></tr>
+      <tr><td>No hay nada del producto</td><td>❌ No alistado</td><td>Solo la observación (obligatoria): faltan todas.</td></tr>
       <tr><td>Entregué otro producto en su lugar</td><td>🔄 Reemplazo</td><td>El nombre del producto que entregaste (obligatorio), por ejemplo “ACETAMINOFÉN 500MG x 10 SOB”.</td></tr>
     </table>
     <div class="aviso mal"><b>Cuidado</b>Si faltan unidades, <u>no</u> marques “Completo”: el sistema entendería que tienes todo y el faltante no quedaría registrado.</div>
