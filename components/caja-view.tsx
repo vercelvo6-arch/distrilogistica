@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2, Edit2, Banknote } from "lucide-react"
+import { DollarSign, LogOut, Filter, Wallet, History, Calendar, ChevronDown, ChevronUp, Plus, X, Trash2, Edit2, Banknote, FileText } from "lucide-react"
 import type { RouteSheet, User, RecepcionCaja, Order } from "@/lib/types"
 import { formatCOP, getFechaHoyBogota } from "@/lib/format-utils"
 import {
@@ -36,6 +36,7 @@ import { BadgeNovedades } from "@/components/novedades/badge-novedades-lista"
 import { ComisionesView } from "@/components/comisiones-view"
 import { ResumenEntregadorView } from "@/components/resumen-entregador-view"
 import { CuadreEditModal } from "@/components/cuadre-edit-modal"
+import { DetallePlanillaDialog } from "@/components/detalle-planilla-dialog"
 
 interface CajaViewProps {
   onLogout: () => void
@@ -241,6 +242,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [nuevaFechaRuta, setNuevaFechaRuta] = useState("")
   const [cambiandoFecha, setCambiandoFecha] = useState(false)
   const [editandoCuadreId, setEditandoCuadreId] = useState<number | null>(null)
+  const [verPlanillaCuadreId, setVerPlanillaCuadreId] = useState<number | null>(null)
   // Estados para export
   // Filtro del Historial por entregador. Un mismo entregador puede aparecer con nombres distintos
   // según el grupo de rutas ("Alfonso 72 - 84", "Alfonso 6C-7B-93"…), así que se filtra por la
@@ -3040,6 +3042,12 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
   <Badge variant={rec.estado === "cuadrado" ? "default" : "destructive"}>
     {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
   </Badge>
+  {Number(rec.id) > 0 && (
+    <Button variant="outline" size="sm" onClick={() => setVerPlanillaCuadreId(Number(rec.id))}>
+      <FileText className="h-4 w-4 mr-1" />
+      Ver planilla
+    </Button>
+  )}
   
     {rec.tipo === "agrupado" && (
     <Button
@@ -5330,6 +5338,10 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Planillas de un cuadre cerrado, con sus productos (desde el archivo) */}
+      {verPlanillaCuadreId && (
+        <DetallePlanillaDialog cuadreId={verPlanillaCuadreId} onClose={() => setVerPlanillaCuadreId(null)} />
+      )}
       {/* Modal de edición de cuadres */}
       {editandoCuadreId && (
         <CuadreEditModal
