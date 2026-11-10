@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
+import { esKit } from "@/lib/inventario"
 
 export interface Faltante {
   id: number
@@ -145,8 +146,15 @@ export function SubsanarFaltantesModal({ faltante, onClose, onSubmit }: Subsanar
             <div className="mt-3 pt-3 border-t border-blue-300">
               <p className="text-sm">
                 <span className="font-semibold text-blue-900">Cantidad faltante: </span>
-                <span className="text-xl font-bold text-red-600">{faltante.cantidad_faltante}</span> unidades
+                <span className="text-xl font-bold text-red-600">{faltante.cantidad_faltante}</span>{" "}
+                {esKit(faltante.codigo, faltante.descripcion) ? "promo(s) incompleta(s)" : "unidades"}
               </p>
+              {esKit(faltante.codigo, faltante.descripcion) && (
+                <p className="mt-2 rounded bg-amber-100 border border-amber-300 p-2 text-sm text-amber-900">
+                  <strong>Es una promo:</strong> el número cuenta promos a las que les falta algo, no promos
+                  enteras. Entregue solo las piezas que dice el comentario del alistador.
+                </p>
+              )}
               {faltante.comentarios && faltante.comentarios.length > 0 && (
                 <div className="mt-2 rounded bg-white/70 p-2">
                   <p className="text-xs font-semibold text-blue-900">Último comentario:</p>

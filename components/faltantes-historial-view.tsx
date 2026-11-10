@@ -12,6 +12,7 @@ import {
 import { Download, Filter, AlertTriangle, CheckCircle, Package, X, Trash2, Loader2 } from "lucide-react"
 import type { Faltante } from "@/lib/types"
 import { comentarioVigente } from "@/lib/sumar-notas"
+import { agruparFaltantes } from "@/lib/agrupar-faltantes"
 
 interface FaltantesHistorialViewProps {
   userId?: string
@@ -93,6 +94,7 @@ export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialV
       if (filterEstado !== "all") params.append("estado", filterEstado)
       if (filterFechaInicio) params.append("fecha_inicio", filterFechaInicio)
       if (filterFechaFin) params.append("fecha_fin", filterFechaFin)
+      if (filterCodigo) params.append("codigo", filterCodigo)
 
       const response = await fetch(`/api/faltantes/export?${params.toString()}`)
 
@@ -148,32 +150,37 @@ export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialV
     }
   }
 
+  // Un registro del alistador sobre varias planillas se ve como UNA fila (cantidades sumadas,
+  // comentario una vez). Seleccionar la fila selecciona todas sus planillas.
+  const filas = useMemo(() => agruparFaltantes(faltantes), [faltantes])
+
   const stats = {
-    total: faltantes.length,
-    pendientes: faltantes.filter(f => f.estado === 'pendiente').length,
-    resueltos: faltantes.filter(f => f.estado === 'resuelto').length,
-    noEntregados: faltantes.filter(f => (f.estado as string) === 'definitivo').length,
+    total: filas.length,
+    pendientes: filas.filter(f => f.estado === 'pendiente').length,
+    resueltos: filas.filter(f => f.estado === 'resuelto').length,
+    noEntregados: filas.filter(f => (f.estado as string) === 'definitivo').length,
     totalUnidades: faltantes.reduce((sum, f) => sum + (f.cantidad_faltante || 0), 0)
   }
 
   // Solo los pendientes se pueden dar de baja.
-  const pendientesVisibles = useMemo(() => faltantes.filter((f) => f.estado === 'pendiente'), [faltantes])
-  const todosMarcados = pendientesVisibles.length > 0 && pendientesVisibles.every((f) => seleccionados.has(f.id))
+  const pendientesVisibles = useMemo(() => filas.filter((f) => f.estado === 'pendiente'), [filas])
+  const todosMarcados = pendientesVisibles.length > 0 && pendientesVisibles.every((f) => f.ids.every((id) => seleccionados.has(id)))
   const unidadesSeleccionadas = pendientesVisibles
-    .filter((f) => seleccionados.has(f.id))
-    .reduce((sum, f) => sum + (Number(f.cantidad_faltante) || 0), 0)
+    .filter((f) => f.ids.every((id) => seleccionados.has(id)))
+    .reduce((sum, f) => sum + f.cantidad_faltante, 0)
+  const filasSeleccionadas = pendientesVisibles.filter((f) => f.ids.every((id) => seleccionados.has(id))).length
 
-  const alternar = (id: string) => {
+  const alternar = (ids: string[]) => {
     setSeleccionados((prev) => {
       const nuevo = new Set(prev)
-      if (nuevo.has(id)) nuevo.delete(id)
-      else nuevo.add(id)
+      const marcada = ids.every((id) => nuevo.has(id))
+      ids.forEach((id) => (marcada ? nuevo.delete(id) : nuevo.add(id)))
       return nuevo
     })
   }
 
   const alternarTodos = () => {
-    setSeleccionados(todosMarcados ? new Set() : new Set(pendientesVisibles.map((f) => f.id)))
+    setSeleccionados(todosMarcados ? new Set() : new Set(pendientesVisibles.flatMap((f) => f.ids)))
   }
 
   async function confirmarBaja() {
@@ -328,8 +335,8 @@ export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialV
       {puedeDarDeBaja && pendientesVisibles.length > 0 && (
         <Card className="p-3 flex flex-wrap items-center gap-3 bg-orange-50 border-orange-200">
           <span className="text-sm">
-            <strong>{seleccionados.size}</strong> de {pendientesVisibles.length} pendientes seleccionados
-            {seleccionados.size > 0 && <> · <strong>{unidadesSeleccionadas}</strong> unidades</>}
+            <strong>{filasSeleccionadas}</strong> de {pendientesVisibles.length} pendientes seleccionados
+            {filasSeleccionadas > 0 && <> · <strong>{unidadesSeleccionadas}</strong> unidades</>}
           </span>
           <Button variant="outline" size="sm" onClick={alternarTodos}>
             {todosMarcados ? "Quitar selección" : `Seleccionar los ${pendientesVisibles.length} que se ven`}
@@ -389,13 +396,14 @@ export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialV
                 </tr>
               </thead>
               <tbody>
-                {faltantes.map((f) => {
+                {filas.map((f) => {
+                  const marcada = f.ids.every((id) => seleccionados.has(id))
                   const esPendiente = f.estado === 'pendiente'
                   const esDefinitivo = (f.estado as string) === 'definitivo'
                   return (
                     <tr
                       key={f.id}
-                      className={`border-b hover:bg-muted/50 transition-colors ${esPendiente ? 'bg-orange-50' : ''} ${seleccionados.has(f.id) ? 'bg-red-50' : ''}`}
+                      className={`border-b hover:bg-muted/50 transition-colors ${esPendiente ? 'bg-orange-50' : ''} ${marcada ? 'bg-red-50' : ''}`}
                     >
                       {puedeDarDeBaja && (
                         <td className="py-3 px-3">
@@ -403,8 +411,8 @@ export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialV
                             <input
                               type="checkbox"
                               aria-label={`Seleccionar ${f.descripcion || f.codigo}`}
-                              checked={seleccionados.has(f.id)}
-                              onChange={() => alternar(f.id)}
+                              checked={marcada}
+                              onChange={() => alternar(f.ids)}
                             />
                           )}
                         </td>
@@ -459,7 +467,7 @@ export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialV
       <Dialog open={dialogBaja} onOpenChange={(abierto) => { if (!dandoDeBaja) setDialogBaja(abierto) }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Eliminar {seleccionados.size} faltantes pendientes</DialogTitle>
+            <DialogTitle>Eliminar {filasSeleccionadas} faltantes pendientes</DialogTitle>
             <DialogDescription>
               Salen de la lista de pendientes ({unidadesSeleccionadas} unidades) y quedan marcados como
               “No se entregó”, con este motivo, tu nombre y la fecha. No se borra el historial y el coordinador
@@ -473,7 +481,7 @@ export function FaltantesHistorialView({ userId, userRole }: FaltantesHistorialV
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogBaja(false)} disabled={dandoDeBaja}>Cancelar</Button>
             <Button variant="destructive" onClick={confirmarBaja} disabled={dandoDeBaja || !motivoBaja.trim()}>
-              {dandoDeBaja ? <Loader2 className="h-4 w-4 animate-spin" /> : `Eliminar ${seleccionados.size}`}
+              {dandoDeBaja ? <Loader2 className="h-4 w-4 animate-spin" /> : `Eliminar ${filasSeleccionadas}`}
             </Button>
           </DialogFooter>
         </DialogContent>

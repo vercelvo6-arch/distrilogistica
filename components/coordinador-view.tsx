@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SubsanarFaltantesModal, type Faltante, type SubsanacionData } from "@/components/subsanar-faltantes-modal"
 import { ultimoComentario } from "@/lib/sumar-notas"
+import { esKit } from "@/lib/inventario"
 import { EliminadosView } from "@/components/eliminados-view"
 import { devolverAlistamiento } from "@/lib/actions/planillas"
 
@@ -1555,7 +1556,16 @@ export function CoordinadorView({ onLogout, user }: CoordinadorViewProps) {
                                               if (f.codigo === producto.codigo && idsGrupo.has(String(f.planilla_id))) delProducto.set(String(f.id), f)
                                             }
                                             const ultimo = ultimoComentario(Array.from(delProducto.values()))
-                                            return <span>{ultimo || producto.observacionesFaltante || "-"}</span>
+                                            return (
+                                              <span>
+                                                {ultimo || producto.observacionesFaltante || "-"}
+                                                {esKit(producto.codigo, producto.descripcion || "") && (ultimo || producto.observacionesFaltante) ? (
+                                                  <span className="block text-amber-700 font-medium">
+                                                    Es una promo: entregar solo las piezas que dice el comentario
+                                                  </span>
+                                                ) : null}
+                                              </span>
+                                            )
                                           })()}
                                         </td>
                                         <td className="text-center py-2 md:py-3 px-2 md:px-4">
