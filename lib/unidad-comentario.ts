@@ -50,6 +50,9 @@ export function validarUnidadComentario(descripcionProducto: string, comentario:
 // No se revisa: promos y kits, casilla en 0 (unidad incompleta), comentarios sin número o con varios
 // números ("1 rojo 1 surtido", "2 de 6"). Los tamaños de empaque ("x12", "X 18") no cuentan.
 
+// Piezas sueltas dentro de un display o blíster
+const SUBUNIDAD = /\b(sobres?|piezas?|unidades?|und|tabletas?|pastillas?|c[aá]psulas?|tarros?|frascos?|barras?|sueltas?)\b/i
+
 const NUMEROS_EN_LETRAS: Record<string, number> = {
   un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5,
   seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
@@ -79,6 +82,9 @@ export function validarNumeroComentario(descripcionProducto: string, comentario:
   if (!com || KIT.test(String(descripcionProducto || ""))) return null
   const casilla = Number(faltan)
   if (!Number.isFinite(casilla) || casilla <= 0) return null
+  // Un display o blíster al que le faltan piezas cuenta como 1 en la casilla, y el comentario
+  // habla de las piezas ("faltan 3 sobres"): son otra unidad, no se comparan.
+  if (familias(String(descripcionProducto || "")).size > 0 && SUBUNIDAD.test(com)) return null
   const numeros = numerosDelComentario(com)
   if (numeros.length !== 1) return null
   if (numeros[0] !== casilla) {
