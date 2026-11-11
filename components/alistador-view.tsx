@@ -8,7 +8,7 @@ import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect, useRef } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { updatePlanillaEstado } from "@/lib/actions/planillas"
-import { validarUnidadComentario } from "@/lib/unidad-comentario"
+import { validarNumeroComentario, validarUnidadComentario } from "@/lib/unidad-comentario"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -428,7 +428,9 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
 
     // Seguridad: si el producto es blíster, el comentario no puede decir display o caja (y al revés).
     if (estadoSeleccionado !== 'reemplazo') {
-      const errorUnidad = validarUnidadComentario(editingProduct.product.descripcion, observaciones)
+      const errorUnidad =
+        validarUnidadComentario(editingProduct.product.descripcion, observaciones) ||
+        validarNumeroComentario(editingProduct.product.descripcion, observaciones, faltan)
       if (errorUnidad) {
         alert(errorUnidad)
         return

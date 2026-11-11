@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { validarUnidadComentario } from "@/lib/unidad-comentario";
+import { validarNumeroComentario, validarUnidadComentario } from "@/lib/unidad-comentario";
 import { repartirAlistamiento, repartirSubsanacion, resumirPorPlanilla, type EstadoAlistamiento } from "@/lib/alistamiento-reparto";
 import { esNotaDelSistema } from "@/lib/sumar-notas";
 
@@ -56,7 +56,9 @@ export async function POST(request: NextRequest) {
 
     // Seguridad: el comentario debe estar en la unidad del producto (blíster ≠ display/caja).
     if (estadoFinal !== 'reemplazo') {
-      const errorUnidad = validarUnidadComentario(descripcion, observacionesSinPrefijo);
+      const errorUnidad =
+        validarUnidadComentario(descripcion, observacionesSinPrefijo) ||
+        validarNumeroComentario(descripcion, observacionesSinPrefijo, Number(cantidadFaltante));
       if (errorUnidad) return NextResponse.json({ error: errorUnidad }, { status: 400 });
     }
 
