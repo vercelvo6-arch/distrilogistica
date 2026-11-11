@@ -124,6 +124,11 @@ export function validarNumeroComentario(descripcionProducto: string, comentario:
   // "Al displey le faltan 3 unidades": la cantidad son piezas de un display o blíster
   const hablaDePiezas = CANTIDAD_DE_PIEZAS.test(com) && (fp.size > 0 || fc.size > 0)
   if (hablaDePiezas && n > casilla) return null
+  // Productos que vienen en empaque (ristra, tira, paquete, o "X12"): si el comentario cuenta más que la
+  // casilla y no nombra el empaque, son piezas de adentro ("Pendiente 4 venus" en una ristra de Gillette).
+  const esEmpaque = /ristra|tira|paquete|pack|\bx\s?\d/i.test(desc)
+  const nombraEmpaque = /ristra|tira|paquete|pack|displ?[ae]?y|display|caja|bl[ií]st/i.test(com)
+  if (esEmpaque && !nombraEmpaque && n > casilla) return null
 
   return `La casilla dice que faltan ${casilla} y el comentario dice ${n}. Corrija uno de los dos para que coincidan.`
 }
