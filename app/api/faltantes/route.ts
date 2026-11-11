@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { validarNumeroComentario, validarUnidadComentario } from "@/lib/unidad-comentario";
+import { validarComentarioFaltante, validarUnidadComentario } from "@/lib/unidad-comentario";
 import { repartirAlistamiento, repartirSubsanacion, resumirPorPlanilla, type EstadoAlistamiento } from "@/lib/alistamiento-reparto";
 import { esNotaDelSistema } from "@/lib/sumar-notas";
 
@@ -54,14 +54,6 @@ export async function POST(request: NextRequest) {
 
     console.log('[FALTANTES] Estado final:', estadoFinal);
 
-    // Seguridad: el comentario debe estar en la unidad del producto (blíster ≠ display/caja).
-    if (estadoFinal !== 'reemplazo') {
-      const errorUnidad =
-        validarUnidadComentario(descripcion, observacionesSinPrefijo) ||
-        validarNumeroComentario(descripcion, observacionesSinPrefijo, Number(cantidadFaltante));
-      if (errorUnidad) return NextResponse.json({ error: errorUnidad }, { status: 400 });
-    }
-
     const ids: string[] = Array.from(new Set(
       (Array.isArray(planillaIds) && planillaIds.length > 0 ? planillaIds : [planilla_id])
         .filter((id: any) => id !== null && id !== undefined && id !== '')
@@ -77,6 +69,7 @@ export async function POST(request: NextRequest) {
     const lineasDB = await sql`
       SELECT pp.id::text AS id,
              pp.cantidad,
+             pp.nombre,
              COALESCE(p.planilla_mercancia_id, p.planilla_id)::text AS planilla_id
       FROM pedido_productos pp
       JOIN pedidos p ON pp.pedido_id = p.id
@@ -86,6 +79,38 @@ export async function POST(request: NextRequest) {
       ORDER BY array_position(${ids}::text[], COALESCE(p.planilla_mercancia_id, p.planilla_id)::text),
                p.secuencia NULLS LAST, pp.id
     `;
+
+    // ── Controles de seguridad (el servidor no confía en lo que manda la pantalla) ──
+    const filasLineas = lineasDB as any[];
+    const totalDB = filasLineas.reduce((s, l) => s + (Number(l.cantidad) || 0), 0);
+    if (estadoFinal !== 'completo' && filasLineas.length > 0) {
+      const solicitada = Number(cantidadSolicitada);
+      const faltanteNum = Number(cantidadFaltante);
+      const disponibleNum = Number(cantidadDisponible);
+      // 1) La pantalla estaba desactualizada (entró o salió un pedido mientras se alistaba): lo que
+      //    se contó ya no corresponde al total. Antes esto guardaba un faltante distinto al escrito.
+      if (Number.isFinite(solicitada) && Math.abs(solicitada - totalDB) > 0.001) {
+        return NextResponse.json({
+          error: `Las cantidades de este producto cambiaron: ahora son ${totalDB} pedidas (en su pantalla decía ${solicitada}). Cierre esta ventana, actualice la página y regístrelo de nuevo.`
+        }, { status: 409 });
+      }
+      // 2) Lo que falta no puede ser negativo ni mayor a lo pedido, y debe cuadrar con lo disponible.
+      if (!Number.isFinite(faltanteNum) || faltanteNum < 0 || faltanteNum > totalDB ||
+          !Number.isFinite(disponibleNum) || Math.abs(disponibleNum + faltanteNum - totalDB) > 0.001) {
+        return NextResponse.json({ error: `La cantidad que falta debe estar entre 0 y ${totalDB}.` }, { status: 400 });
+      }
+    }
+    // 3) El comentario debe estar en la unidad del producto (blíster ≠ display/caja) y su número debe
+    //    coincidir con lo que falta. Se revisa con el nombre del producto que está en la base de datos.
+    if (estadoFinal !== 'reemplazo' && estadoFinal !== 'completo') {
+      const errorComentario = validarComentarioFaltante({
+        descripcion: filasLineas[0]?.nombre || descripcion,
+        codigo,
+        comentario: observacionesSinPrefijo,
+        faltan: Number(cantidadFaltante),
+      });
+      if (errorComentario) return NextResponse.json({ error: errorComentario }, { status: 400 });
+    }
 
     const planillasDB = await sql`
       SELECT id::text AS id, tipo_ruta, entregador FROM planillas WHERE id::text = ANY(${ids}::text[])
@@ -428,7 +453,7 @@ export async function PATCH(request: NextRequest) {
 
     // Seguridad: la nota del coordinador también debe estar en la unidad del producto.
     if ((encontrados as any[]).length > 0) {
-      const errorUnidad = validarUnidadComentario((encontrados as any[])[0].descripcion, observaciones_resolucion || '');
+      const errorUnidad = validarUnidadComentario((encontrados as any[])[0].descripcion, observaciones_resolucion || '', (encontrados as any[])[0].codigo);
       if (errorUnidad) return NextResponse.json({ error: errorUnidad }, { status: 400 });
     }
 

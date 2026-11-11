@@ -8,7 +8,7 @@ import { formatCOP } from "@/lib/format-utils"
 import { useState, useEffect, useRef } from "react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { updatePlanillaEstado } from "@/lib/actions/planillas"
-import { validarNumeroComentario, validarUnidadComentario } from "@/lib/unidad-comentario"
+import { validarComentarioFaltante } from "@/lib/unidad-comentario"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -426,11 +426,15 @@ export function AlistadorView({ onLogout, user }: AlistadorViewProps) {
       return
     }
 
-    // Seguridad: si el producto es blíster, el comentario no puede decir display o caja (y al revés).
-    if (estadoSeleccionado !== 'reemplazo') {
-      const errorUnidad =
-        validarUnidadComentario(editingProduct.product.descripcion, observaciones) ||
-        validarNumeroComentario(editingProduct.product.descripcion, observaciones, faltan)
+    // Seguridad: el comentario debe estar en la unidad del producto (blíster ≠ display/caja) y su
+    // número debe coincidir con la casilla. El servidor lo vuelve a revisar.
+    if (estadoSeleccionado !== 'reemplazo' && estadoSeleccionado !== 'completo') {
+      const errorUnidad = validarComentarioFaltante({
+        descripcion: editingProduct.product.descripcion,
+        codigo: editingProduct.product.codigo,
+        comentario: observaciones,
+        faltan,
+      })
       if (errorUnidad) {
         alert(errorUnidad)
         return
