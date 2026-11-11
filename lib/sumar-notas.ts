@@ -8,7 +8,9 @@
 // - Un comentario repetido dentro de la misma planilla sale una vez.
 // - Los textos que pone el sistema al subsanar o registrar desde Supervisión no se muestran.
 
-const NOTA_DEL_SISTEMA = /^(subsanado (desde|por) coordinador|registrado por coordinador)$/i
+// También las notas que dejan los scripts de corrección ("Corrección 034: no faltaba…"): eran el
+// "último comentario" por tener la fecha más reciente y tapaban lo que escribió el alistador.
+const NOTA_DEL_SISTEMA = /^(subsanado (desde|por) coordinador|registrado por coordinador|correcci[oó]n \d{3}\b.*)$/i
 
 export interface FaltanteConNota {
   observaciones?: string | null
