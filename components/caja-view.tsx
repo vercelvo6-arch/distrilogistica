@@ -2249,21 +2249,23 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     const borradorGuardado = localStorage.getItem(claveborrador)
     let borrador = borradorGuardado ? JSON.parse(borradorGuardado) : null
 
-    // ✅ Descartar solo borradores viejos (>24h) — un borrador reciente del mismo
-    // entregador se restaura aunque el conjunto de rutas seleccionadas haya cambiado.
-    //
-    // 🚨 FIX CRÍTICO: antes también se descartaba si la lista de rutas no coincidía
-    // EXACTO con la guardada — pero agregar una ruta más a media sesión (llegó una
-    // planilla nueva) es el caso normal, no una "sesión anterior sin relación". Esa
-    // comparación borraba billetes/monedas/consignaciones/cobros ya escritos a mano
-    // cada vez que caja sumaba una ruta, perdiendo el trabajo en curso.
+    // ✅ El borrador DURA HASTA QUE SE LOGRA CUADRAR (antes se descartaba a las 24 h).
+    // Es del entregador y no de un grupo de rutas: el dinero que caja cuenta es el mismo, así que el
+    // cuadre que se haga primero (el del 11 antes que el del 10, por ejemplo) toma esos datos aunque el
+    // conjunto de rutas seleccionadas sea distinto. Se borra al confirmar el cuadre (los datos ya se
+    // usaron) o con el botón "Descartar datos guardados". Al recuperarlo se avisa cuánto tiene.
+    // Agregar una ruta a media sesión es el caso normal: no se compara la lista de rutas.
+    let avisoRecuperado = ""
+    if (borrador && !borrador.guardadoEn) {
+      localStorage.removeItem(claveborrador) // formato muy viejo, sin fecha: no se sabe de cuándo es
+      borrador = null
+    }
     if (borrador) {
-      const VEINTICUATRO_HORAS = 24 * 60 * 60 * 1000
-      const esViejo = !borrador.guardadoEn || (Date.now() - borrador.guardadoEn) > VEINTICUATRO_HORAS
-
-      if (esViejo) {
-        localStorage.removeItem(claveborrador)
-        borrador = null
+      const tieneDatos = Boolean(borrador.billetes || borrador.monedas || borrador.observaciones || (borrador.consignaciones || []).length || (borrador.cobrosVinculados || []).length)
+      if (tieneDatos) {
+        const min = Math.max(0, Math.round((Date.now() - borrador.guardadoEn) / 60000))
+        const hace = min < 60 ? `hace ${Math.max(min, 1)} min` : min < 2880 ? `hace ${Math.round(min / 60)} h` : `hace ${Math.round(min / 1440)} días`
+        avisoRecuperado = `Se recuperaron los datos que ya habían escrito para ${rutasSeleccionadas[0].entregador} (guardados ${hace}). Revísalos antes de confirmar.`
       }
     }
 
@@ -2294,6 +2296,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
     }))
     loadCobrosDisponibles(rutasSeleccionadas[0].entregador)
     loadConsignacionesEntregador(rutasSeleccionadas[0].entregador || "")
+    if (avisoRecuperado) toast({ title: "Datos recuperados", description: avisoRecuperado })
     setShowAgrupadoModal(true)
   }
 
@@ -4838,6 +4841,26 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
                 ))}
               </div>
             )}
+            <Button
+              variant="ghost"
+              className="text-red-600 hover:text-red-700 sm:mr-auto"
+              disabled={submitting}
+              onClick={() => {
+                if (!window.confirm("¿Descartar los datos escritos en este cuadre (billetes, monedas, consignaciones, cobros y observaciones)? No se puede deshacer.")) return
+                if (agrupadoData) {
+                  localStorage.removeItem(`cuadre_borrador_${agrupadoData.entregador}`)
+                  setConsignaciones([])
+                  setCobrosVinculados([])
+                  setIdsDescartados(new Set())
+                  setFormData((prev) => ({ ...prev, billetes: "", monedas: "", observaciones: "" }))
+                  loadCobrosDisponibles(agrupadoData.entregador)
+                  loadConsignacionesEntregador(agrupadoData.entregador || "")
+                  toast({ title: "Datos descartados", description: "Se borraron los datos guardados de este cuadre." })
+                }
+              }}
+            >
+              Descartar datos guardados
+            </Button>
             <Button
               variant="outline"
               onClick={() => {
