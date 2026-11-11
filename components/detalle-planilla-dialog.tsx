@@ -101,7 +101,7 @@ export function DetallePlanillaDialog({ cuadreId, onClose }: { cuadreId: number;
       <DialogContent className="w-[95vw] max-w-5xl sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            Planillas del cuadre #{cuadreId}
+            Planilla alistada · cuadre #{cuadreId}
             {detalle ? ` · ${detalle.cuadre.entregador}` : ""}
           </DialogTitle>
           <DialogDescription>

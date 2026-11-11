@@ -37,6 +37,7 @@ import { ComisionesView } from "@/components/comisiones-view"
 import { ResumenEntregadorView } from "@/components/resumen-entregador-view"
 import { CuadreEditModal } from "@/components/cuadre-edit-modal"
 import { DetallePlanillaDialog } from "@/components/detalle-planilla-dialog"
+import { FaltantesEntregadosDialog } from "@/components/faltantes-entregados-dialog"
 
 interface CajaViewProps {
   onLogout: () => void
@@ -243,6 +244,7 @@ export function CajaView({ onLogout, user }: CajaViewProps) {
   const [cambiandoFecha, setCambiandoFecha] = useState(false)
   const [editandoCuadreId, setEditandoCuadreId] = useState<number | null>(null)
   const [verPlanillaCuadreId, setVerPlanillaCuadreId] = useState<number | null>(null)
+  const [verFaltantesCuadreId, setVerFaltantesCuadreId] = useState<number | null>(null)
   // Estados para export
   // Filtro del Historial por entregador. Un mismo entregador puede aparecer con nombres distintos
   // según el grupo de rutas ("Alfonso 72 - 84", "Alfonso 6C-7B-93"…), así que se filtra por la
@@ -3043,10 +3045,16 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
     {rec.estado === "cuadrado" ? "Cuadrado" : "Con Diferencia"}
   </Badge>
   {Number(rec.id) > 0 && (
-    <Button variant="outline" size="sm" onClick={() => setVerPlanillaCuadreId(Number(rec.id))}>
-      <FileText className="h-4 w-4 mr-1" />
-      Ver planilla
-    </Button>
+    <>
+      <Button variant="outline" size="sm" onClick={() => setVerPlanillaCuadreId(Number(rec.id))}>
+        <FileText className="h-4 w-4 mr-1" />
+        Ver planilla alistada
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => setVerFaltantesCuadreId(Number(rec.id))}>
+        <FileText className="h-4 w-4 mr-1" />
+        Ver planilla con faltantes entregados
+      </Button>
+    </>
   )}
   
     {rec.tipo === "agrupado" && (
@@ -5341,6 +5349,9 @@ const handleNoPagoCobro = async (orderId: string, planillaId: number) => {
       {/* Planillas de un cuadre cerrado, con sus productos (desde el archivo) */}
       {verPlanillaCuadreId && (
         <DetallePlanillaDialog cuadreId={verPlanillaCuadreId} onClose={() => setVerPlanillaCuadreId(null)} />
+      )}
+      {verFaltantesCuadreId && (
+        <FaltantesEntregadosDialog cuadreId={verFaltantesCuadreId} onClose={() => setVerFaltantesCuadreId(null)} />
       )}
       {/* Modal de edición de cuadres */}
       {editandoCuadreId && (

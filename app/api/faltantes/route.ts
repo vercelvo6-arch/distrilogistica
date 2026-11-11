@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { validarUnidadComentario } from "@/lib/unidad-comentario";
 import { repartirAlistamiento, repartirSubsanacion, resumirPorPlanilla, type EstadoAlistamiento } from "@/lib/alistamiento-reparto";
 import { esNotaDelSistema } from "@/lib/sumar-notas";
 
@@ -52,6 +53,12 @@ export async function POST(request: NextRequest) {
        (unidadIncompleta || cantidadDisponible < cantidadSolicitada ? 'incompleto' : 'completo'));
 
     console.log('[FALTANTES] Estado final:', estadoFinal);
+
+    // Seguridad: el comentario debe estar en la unidad del producto (blíster ≠ display/caja).
+    if (estadoFinal !== 'reemplazo') {
+      const errorUnidad = validarUnidadComentario(descripcion, observacionesSinPrefijo);
+      if (errorUnidad) return NextResponse.json({ error: errorUnidad }, { status: 400 });
+    }
 
     const ids: string[] = Array.from(new Set(
       (Array.isArray(planillaIds) && planillaIds.length > 0 ? planillaIds : [planilla_id])
@@ -416,6 +423,12 @@ export async function PATCH(request: NextRequest) {
     const encontrados = await sql`
       SELECT * FROM faltantes WHERE id::text = ANY(${lista}::text[])
     `;
+
+    // Seguridad: la nota del coordinador también debe estar en la unidad del producto.
+    if ((encontrados as any[]).length > 0) {
+      const errorUnidad = validarUnidadComentario((encontrados as any[])[0].descripcion, observaciones_resolucion || '');
+      if (errorUnidad) return NextResponse.json({ error: errorUnidad }, { status: 400 });
+    }
 
     if (encontrados.length === 0) {
       console.log('[FALTANTES PATCH] ❌ Faltante no encontrado:', lista);
